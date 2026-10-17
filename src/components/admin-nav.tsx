@@ -18,7 +18,6 @@ import { useLanguage } from "./language-provider";
 import type { TranslationKey } from "@/lib/i18n/types";
 import type { NavLink } from "./components-nav-types";
 import { useCurrentUser } from "@/hooks/use-current-user";
-import { hasFullAdminAccess } from "@/lib/auth/admin";
 import { NavItem } from "./components-nav";
 import { NavSectionHeader, useSectionOpen } from "./nav-section-header";
 import { SidebarFooter } from "./sidebar-footer";
@@ -99,7 +98,7 @@ export function AdminNav({ className }: { className?: string }) {
   function canSee(link: AdminNavLink): boolean {
     if (!link.permission) return true;
     if (!user) return false;
-    if (link.permission === "primary") return hasFullAdminAccess(user);
+    if (link.permission === "primary") return user.isPrimaryAdmin;
     if (link.permission === "domains") return user.isPrimaryAdmin || user.canManageDomains;
     return user.isPrimaryAdmin || user.canManageUsers;
   }

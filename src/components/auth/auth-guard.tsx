@@ -1,6 +1,5 @@
 "use client";
 
-import { hasFullAdminAccess } from "@/lib/auth/admin";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { authFetch } from "@/lib/auth/client";
@@ -36,7 +35,7 @@ export function AuthGuard({ children, mode = "protected", requireMailbox, requir
 					return;
 				}
 
-				const data = (await response.json()) as { hasMailboxes?: boolean; isSetup?: boolean; user?: { id?: string; role: "admin" | "user"; isPrimaryAdmin: boolean; canManageDomains: boolean; canManageUsers: boolean; canManageMailboxes: boolean; timeZone?: string | null } };
+				const data = (await response.json()) as { hasMailboxes?: boolean; isSetup?: boolean; user?: { id?: string; role?: string; isPrimaryAdmin?: boolean; timeZone?: string | null } };
 				if (data.user?.id) saveUserTimeZonePreference(data.user.id, data.user.timeZone ?? null);
 				if (mode === "public") {
 					if (!allowAuthenticated) router.replace("/inbox");
@@ -58,7 +57,7 @@ export function AuthGuard({ children, mode = "protected", requireMailbox, requir
 					return;
 				}
 
-				if (requirePrimary && !(data.user && hasFullAdminAccess(data.user))) {
+				if (requirePrimary && !data.user?.isPrimaryAdmin) {
 					router.replace("/admin");
 					return;
 				}

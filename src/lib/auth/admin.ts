@@ -28,25 +28,6 @@ export function assertPrimaryAdmin(
 	}
 }
 
-/**
- * Owner-level administration pages (AI, branding, general settings, API keys, webhooks,
- * backups, activity) are open to the primary admin and to any admin who holds every
- * delegated permission. Account roles and the primary-admin transfer stay primary-only.
- */
-export function hasFullAdminAccess(
-	user: Pick<SessionUser, "role" | "isPrimaryAdmin" | "canManageDomains" | "canManageUsers" | "canManageMailboxes">,
-): boolean {
-	return isPrimaryAdmin(user) || (user.role === "admin" && user.canManageDomains && user.canManageUsers && user.canManageMailboxes);
-}
-
-export function assertFullAdminAccess(
-	user: Pick<SessionUser, "role" | "isPrimaryAdmin" | "canManageDomains" | "canManageUsers" | "canManageMailboxes">,
-): void {
-	if (!hasFullAdminAccess(user)) {
-		throw new Error("Forbidden");
-	}
-}
-
 /** Domains can be managed by the primary admin or an admin the primary granted it to. */
 export function canManageDomains(
 	user: Pick<SessionUser, "role" | "isPrimaryAdmin" | "canManageDomains">,

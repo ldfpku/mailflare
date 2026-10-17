@@ -4,7 +4,7 @@ import { getDb } from "@/db";
 import { appSettings } from "@/db/schema";
 import { getEnv } from "@/lib/cloudflare";
 import { requireSessionUser } from "@/lib/api/auth";
-import { hasFullAdminAccess } from "@/lib/auth/admin";
+import { isPrimaryAdmin } from "@/lib/auth/admin";
 import { hasValidSessionMutationOrigin } from "@/lib/auth/origin";
 import { getResendKeyStatus } from "@/lib/email/outbound-provider";
 import { checkResendKey } from "@/lib/email/resend-api";
@@ -15,7 +15,7 @@ async function authorize(request: Request, mutation: boolean) {
 	const env = getEnv();
 	const auth = await requireSessionUser(env, request);
 	if (auth.error) return { env, error: auth.error };
-	if (!hasFullAdminAccess(auth.user)) return { env, error: Response.json({ error: "Only a full administrator can manage the Resend API key" }, { status: 403 }) };
+	if (!isPrimaryAdmin(auth.user)) return { env, error: Response.json({ error: "Only the primary administrator can manage the Resend API key" }, { status: 403 }) };
 	if (mutation && !hasValidSessionMutationOrigin(request)) return { env, error: Response.json({ error: "Invalid origin" }, { status: 403 }) };
 	return { env, error: null };
 }
