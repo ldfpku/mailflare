@@ -1,5 +1,6 @@
 "use client";
 
+import { hasFullAdminAccess } from "@/lib/auth/admin";
 import Link from "next/link";
 import { Bot, Globe2, KeyRound, Mail, Palette, Users } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
@@ -78,7 +79,7 @@ export default function AdminSettingsPage() {
 	function canSee(section: AdminSection): boolean {
 		if (!section.permission) return true;
 		if (!user) return false;
-		if (section.permission === "primary") return user.isPrimaryAdmin;
+		if (section.permission === "primary") return hasFullAdminAccess(user);
 		if (section.permission === "domains") return user.isPrimaryAdmin || user.canManageDomains;
 		return user.isPrimaryAdmin || user.canManageUsers;
 	}
@@ -112,7 +113,7 @@ export default function AdminSettingsPage() {
 					);
 				})}
 			</div>
-			{user?.isPrimaryAdmin && (
+			{user && hasFullAdminAccess(user) && (
 				<div className="mt-8">
 					<AdminUpdateCard />
 				</div>
