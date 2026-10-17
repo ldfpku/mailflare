@@ -22,12 +22,14 @@ import { List, ListRow } from "@/components/ui/list";
 import { SectionRowSkeleton } from "@/components/page-skeletons";
 import { McpAgentInstructions } from "@/components/settings/mcp-agent-instructions";
 import { authFetch } from "@/lib/auth/client";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import type { AdminApiKeyScope } from "@/lib/api/scopes-types";
 import type { ApiKey } from "./types";
 import { ADMIN_KEY_PERMISSIONS, parseApiKeyScopes } from "./utils";
 
 export default function ApiKeysPage() {
 	const { t } = useLanguage();
+	const mcpEnabled = useCurrentUser()?.mcpEnabled ?? false;
 	const qc = useQueryClient();
 	const [name, setName] = useState("");
 	const [scopes, setScopes] = useState<AdminApiKeyScope[]>(["domains"]);
@@ -94,7 +96,7 @@ export default function ApiKeysPage() {
 							<Label htmlFor="admin-key-name">{t("apiKeys.keyName")}</Label>
 							<Input id="admin-key-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} placeholder={t("adminKeys.namePlaceholder")} />
 						</div>
-						<label className="flex items-start gap-3 text-sm"><Checkbox checked={mcpAllowed} onChange={(event) => setMcpAllowed(event.target.checked)} /><span><strong>{t("apiKeys.allowMcp")}</strong><span className="mt-1 block text-neutral-500">{t("adminKeys.allowMcpHint")}</span></span></label>
+						<label className={`flex items-start gap-3 text-sm ${mcpEnabled ? "" : "opacity-50"}`}><Checkbox checked={mcpAllowed} disabled={!mcpEnabled} onChange={(event) => setMcpAllowed(event.target.checked)} /><span><strong>{t("apiKeys.allowMcp")}</strong><span className="mt-1 block text-neutral-500">{mcpEnabled ? t("adminKeys.allowMcpHint") : t("apiKeys.mcpNotEnabled")}</span></span></label>
 						<fieldset className="space-y-2">
 							<legend className="text-sm font-medium">{t("apiKeys.permissions")}</legend>
 							<div className="space-y-2">

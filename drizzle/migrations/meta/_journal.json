@@ -400,6 +400,20 @@
       "when": 1788850805023,
       "tag": "0064_add_jmap_changes_and_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1792200001000,
+      "tag": "0065_add_mcp_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1792200002000,
+      "tag": "0066_smj_brand_name",
+      "breakpoints": true
     }
   ]
 }

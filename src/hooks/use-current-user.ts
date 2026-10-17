@@ -12,6 +12,7 @@ export type CurrentUser = {
 	canManageMailboxes: boolean;
 	canManageDomains: boolean;
 	canManageUsers: boolean;
+	mcpEnabled: boolean;
 	hasAvatar: boolean;
 };
 

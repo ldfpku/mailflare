@@ -8,6 +8,7 @@ export type ManagedAccount = {
 	canManageMailboxes: boolean;
 	canManageDomains: boolean;
 	canManageUsers: boolean;
+	mcpEnabled: boolean;
 	forwardingEmail: string | null;
 	hasAvatar: boolean;
 	/** Whether the signed-in admin may modify this account. */

@@ -29,6 +29,7 @@ export async function GET(request: Request, { params }: AccountRouteParams) {
 			canManageMailboxes: account.canManageMailboxes,
 			canManageDomains: account.canManageDomains,
 			canManageUsers: account.canManageUsers,
+			mcpEnabled: account.mcpEnabled,
 			forwardingEmail: account.forwardingEmail,
 			hasAvatar: !!account.avatarKey,
 			editable: isPrimaryAdmin(actor) || (canManageUsers(actor) && account.role === "user" && !account.isPrimaryAdmin),
@@ -76,6 +77,7 @@ export async function PATCH(request: Request, { params }: AccountRouteParams) {
 		canManageMailboxes: parsed.data.canManageMailboxes,
 		...(actorIsPrimary && parsed.data.canManageDomains !== undefined ? { canManageDomains: parsed.data.canManageDomains } : {}),
 		...(actorIsPrimary && parsed.data.canManageUsers !== undefined ? { canManageUsers: parsed.data.canManageUsers } : {}),
+		...(parsed.data.mcpEnabled !== undefined ? { mcpEnabled: parsed.data.mcpEnabled } : {}),
 		...(parsed.data.forwardingEmail !== undefined ? { forwardingEmail: parsed.data.forwardingEmail } : {}),
 	}).where(eq(users.id, id));
 	return NextResponse.json({ ok: true });

@@ -9,8 +9,24 @@
 	--card: #ffffff;
 	--muted: #eef3fb;
 	--border: #dadce0;
-	--primary: #0b57d0;
+	--primary: #034fbc;
 	--primary-foreground: #ffffff;
+}
+
+/* SMJ brand (BIS v1.5, B12-B14): blue-600 is SMJ Blue, blue-900 is Well Navy,
+   blue-100 is Light Blue and blue-400 is Chart Blue. Signal orange is not used for text. */
+@theme {
+	--color-blue-50: #edf2fb;
+	--color-blue-100: #d2dff6;
+	--color-blue-200: #a9c2ee;
+	--color-blue-300: #7a9fe2;
+	--color-blue-400: #4170cb;
+	--color-blue-500: #1d5fc9;
+	--color-blue-600: #034fbc;
+	--color-blue-700: #03419b;
+	--color-blue-800: #06327a;
+	--color-blue-900: #0a1f54;
+	--color-blue-950: #071539;
 }
 
 @theme inline {

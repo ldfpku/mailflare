@@ -29,6 +29,7 @@ export async function POST(request: Request) {
 	const user = await getCurrentUser(env, request);
 	if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 	if (!hasValidSessionMutationOrigin(request)) return Response.json({ error: "Invalid origin" }, { status: 403 });
+	if (!user.mcpEnabled) return Response.json({ error: "MCP is not turned on for your account" }, { status: 403 });
 	const parsed = createSchema.safeParse(await request.json().catch(() => null));
 	if (!parsed.success) return Response.json({ error: "Invalid key request" }, { status: 400 });
 	const db = getDb(env);

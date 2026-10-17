@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { useSelectedMailbox } from "@/components/mailbox-provider";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +23,7 @@ import { createManagedApiKey, keyPermissions, loadManagedApiKeys, MCP_KEY_SCOPES
 export function ApiKeysSettings() {
 	const { t } = useLanguage();
 	const { mailboxes, selectedMailbox } = useSelectedMailbox();
+	const mcpEnabled = useCurrentUser()?.mcpEnabled ?? false;
 	const [keys, setKeys] = useState<ManagedApiKey[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [busy, setBusy] = useState(false);
@@ -82,7 +84,7 @@ export function ApiKeysSettings() {
 				<DialogHeader><DialogTitle>{newKey ? t("apiKeys.createdTitle") : t("apiKeys.createTitle")}</DialogTitle><DialogDescription>{newKey ? t("apiKeys.copyNow") : t("apiKeys.nameAndAccess")}</DialogDescription></DialogHeader>
 		{!newKey && <form onSubmit={(event) => void create(event)} className="space-y-4">
 			<div className="space-y-2"><Label htmlFor="managed-key-name">{t("apiKeys.keyName")}</Label><Input id="managed-key-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} placeholder={t("apiKeys.namePlaceholder")} /></div>
-			<label className="flex items-start gap-3 text-sm"><Checkbox checked={mcpAllowed} onChange={(event) => setMcpAllowed(event.target.checked)} /><span><strong>{t("apiKeys.allowMcp")}</strong><span className="mt-1 block text-neutral-500">{t("apiKeys.allowMcpHint")}</span></span></label>
+			<label className={`flex items-start gap-3 text-sm ${mcpEnabled ? "" : "opacity-50"}`}><Checkbox checked={mcpAllowed} disabled={!mcpEnabled} onChange={(event) => setMcpAllowed(event.target.checked)} /><span><strong>{t("apiKeys.allowMcp")}</strong><span className="mt-1 block text-neutral-500">{mcpEnabled ? t("apiKeys.allowMcpHint") : t("apiKeys.mcpNotEnabled")}</span></span></label>
 			<label className={`flex items-start gap-3 text-sm ${mcpAllowed ? "opacity-50" : ""}`}><Checkbox checked={!mcpAllowed && standardScopes.includes("jmap")} disabled={mcpAllowed} onChange={(event) => setStandardScopes((current) => event.target.checked ? [...current, "jmap"] : current.filter((scope) => scope !== "jmap"))} /><span><strong>{t("apiKeys.allowJmap")}</strong><span className="mt-1 block text-neutral-500">{mcpAllowed ? t("apiKeys.jmapNeedsStandard") : t("apiKeys.jmapHint")}</span></span></label>
 			<fieldset className="space-y-2"><legend className="text-sm font-medium">{t("apiKeys.permissions")}</legend>{(mcpAllowed ? MCP_KEY_SCOPES : STANDARD_KEY_SCOPES).map((scope) => <label key={scope.value} className="flex items-start gap-3 py-2 text-sm"><Checkbox checked={mcpAllowed ? mcpScopes.includes(scope.value as McpKeyScope) : standardScopes.includes(scope.value as ApiKeyScope)} onChange={(event) => { if (mcpAllowed) setMcpScopes((current) => event.target.checked ? [...current, scope.value as McpKeyScope] : current.filter((item) => item !== scope.value)); else setStandardScopes((current) => event.target.checked ? [...current, scope.value as ApiKeyScope] : current.filter((item) => item !== scope.value)); }} /><span><strong>{t(scope.labelKey)}</strong><span className="block text-neutral-500">{t(scope.descriptionKey)}</span></span></label>)}</fieldset>
 			<fieldset className="space-y-2"><legend className="text-sm font-medium">{t("apiKeys.allowedMailboxes")}</legend>{mailboxes.length === 0 ? <p className="text-sm text-neutral-500">{t("apiKeys.noMailboxes")}</p> : mailboxes.map((mailbox) => <label key={mailbox.id} className="flex items-center gap-3 text-sm"><Checkbox checked={mailboxIds.includes(mailbox.id)} onChange={(event) => setMailboxIds((current) => event.target.checked ? [...current, mailbox.id] : current.filter((id) => id !== mailbox.id))} />{mailbox.localPart}@{mailbox.hostname}</label>)}<p className="text-xs text-neutral-500">{t("apiKeys.aliasHint")}</p></fieldset>

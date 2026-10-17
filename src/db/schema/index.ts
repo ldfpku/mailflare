@@ -21,6 +21,8 @@ export const users = sqliteTable("users", {
 	// Capabilities the primary admin grants to other admins.
 	canManageDomains: integer("can_manage_domains", { mode: "boolean" }).notNull().default(false),
 	canManageUsers: integer("can_manage_users", { mode: "boolean" }).notNull().default(false),
+	/** MCP is limited to people an admin has designated. */
+	mcpEnabled: integer("mcp_enabled", { mode: "boolean" }).notNull().default(false),
 	keyboardShortcutsEnabled: integer("keyboard_shortcuts_enabled", { mode: "boolean" }).notNull().default(true),
 	spamProtectionEnabled: integer("spam_protection_enabled", { mode: "boolean" }).notNull().default(true),
 	/** Days a message may stay in Trash or Spam before the scheduled purge deletes it; null keeps it forever. */
@@ -734,7 +736,7 @@ export const backupSettings = sqliteTable("backup_settings", {
 
 export const appSettings = sqliteTable("app_settings", {
 	id: text("id").primaryKey(),
-	appName: text("app_name").notNull().default("Mailflare"),
+	appName: text("app_name").notNull().default("斯米伽邮箱"),
 	outboundAttachmentMaxMb: integer("outbound_attachment_max_mb").notNull().default(25),
 	/** Per-user Drive storage cap in bytes; null means unlimited. */
 	driveStorageLimitBytes: integer("drive_storage_limit_bytes"),
