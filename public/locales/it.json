@@ -184,6 +184,7 @@
 	"compose.error.createReview": "Impossibile creare la revisione",
 	"compose.error.reviewDraft": "Impossibile rivedere la bozza",
 	"compose.error.sendFailed": "Invio non riuscito",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Impossibile eliminare la bozza",
 	"compose.error.removeAttachment": "Impossibile rimuovere l'allegato",
 	"compose.error.maxAttachments": "Un messaggio può contenere al massimo 10 allegati",

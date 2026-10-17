@@ -180,6 +180,7 @@
 	"compose.error.createReview": "അവലോകനം സൃഷ്ടിക്കാൻ കഴിഞ്ഞില്ല",
 	"compose.error.reviewDraft": "കരട് അവലോകനം ചെയ്യാൻ കഴിഞ്ഞില്ല",
 	"compose.error.sendFailed": "അയയ്ക്കൽ പരാജയപ്പെട്ടു",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "കരട് ഇല്ലാതാക്കാൻ കഴിഞ്ഞില്ല",
 	"compose.error.removeAttachment": "അറ്റാച്ച്‌മെന്റ് നീക്കാൻ കഴിഞ്ഞില്ല",
 	"compose.error.maxAttachments": "ഒരു സന്ദേശത്തിൽ പരമാവധി 10 അറ്റാച്ച്‌മെന്റുകൾ ഉൾപ്പെടുത്താം",

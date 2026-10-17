@@ -176,6 +176,7 @@
 	"compose.error.createReview": "確認を作成できませんでした",
 	"compose.error.reviewDraft": "下書きを確認できませんでした",
 	"compose.error.sendFailed": "送信に失敗しました",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "下書きを削除できませんでした",
 	"compose.error.removeAttachment": "添付ファイルを削除できませんでした",
 	"compose.error.maxAttachments": "1 通のメールに添付できるファイルは最大 10 件です",

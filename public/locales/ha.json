@@ -180,6 +180,7 @@
 	"compose.error.createReview": "Ba a iya ƙirƙirar dubawa ba",
 	"compose.error.reviewDraft": "Ba a iya duba daftari ba",
 	"compose.error.sendFailed": "Aikawa ya gaza",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Ba a iya share daftari ba",
 	"compose.error.removeAttachment": "Ba a iya cire haɗe-haɗe ba",
 	"compose.error.maxAttachments": "Saƙo na iya ƙunsar haɗe-haɗe 10 a mafi yawa",

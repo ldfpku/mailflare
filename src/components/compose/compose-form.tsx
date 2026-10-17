@@ -412,7 +412,7 @@ export function ComposeForm({
 		setLoading(false);
 
 		if (!res.ok) {
-			setToast({ type: "error", message: data.error ?? t("compose.error.sendFailed") });
+			setToast({ type: "error", message: data.error?.startsWith("Sending is not set up") ? t("compose.error.sendingNotSet") : data.error ?? t("compose.error.sendFailed") });
 			return;
 		}
 

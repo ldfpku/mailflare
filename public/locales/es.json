@@ -184,6 +184,7 @@
 	"compose.error.createReview": "No se pudo crear la revisión",
 	"compose.error.reviewDraft": "No se pudo revisar el borrador",
 	"compose.error.sendFailed": "Error al enviar",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "No se pudo eliminar el borrador",
 	"compose.error.removeAttachment": "No se pudo quitar el archivo adjunto",
 	"compose.error.maxAttachments": "Un mensaje puede incluir como máximo 10 archivos adjuntos",

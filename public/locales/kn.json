@@ -180,6 +180,7 @@
 	"compose.error.createReview": "ಪರಿಶೀಲನೆಯನ್ನು ರಚಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ",
 	"compose.error.reviewDraft": "ಕರಡನ್ನು ಪರಿಶೀಲಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ",
 	"compose.error.sendFailed": "ಕಳುಹಿಸುವಿಕೆ ವಿಫಲವಾಗಿದೆ",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "ಕರಡನ್ನು ಅಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ",
 	"compose.error.removeAttachment": "ಲಗತ್ತನ್ನು ತೆಗೆಯಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ",
 	"compose.error.maxAttachments": "ಒಂದು ಸಂದೇಶದಲ್ಲಿ ಗರಿಷ್ಠ 10 ಲಗತ್ತುಗಳಿರಬಹುದು",

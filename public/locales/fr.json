@@ -184,6 +184,7 @@
 	"compose.error.createReview": "Impossible de créer la révision",
 	"compose.error.reviewDraft": "Impossible de réviser le brouillon",
 	"compose.error.sendFailed": "Échec de l'envoi",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Impossible de supprimer le brouillon",
 	"compose.error.removeAttachment": "Impossible de retirer la pièce jointe",
 	"compose.error.maxAttachments": "Un message peut contenir au maximum 10 pièces jointes",

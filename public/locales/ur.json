@@ -180,6 +180,7 @@
 	"compose.error.createReview": "جائزہ نہیں بن سکا",
 	"compose.error.reviewDraft": "مسودے کا جائزہ نہیں لیا جا سکا",
 	"compose.error.sendFailed": "بھیجنا ناکام رہا",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "مسودہ حذف نہیں ہو سکا",
 	"compose.error.removeAttachment": "منسلکہ ہٹایا نہیں جا سکا",
 	"compose.error.maxAttachments": "ایک پیغام میں زیادہ سے زیادہ 10 منسلکات ہو سکتے ہیں",

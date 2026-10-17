@@ -180,6 +180,7 @@
 	"compose.error.createReview": "পর্যালোচনা তৈরি করা যায়নি",
 	"compose.error.reviewDraft": "ড্রাফট পর্যালোচনা করা যায়নি",
 	"compose.error.sendFailed": "পাঠানো ব্যর্থ হয়েছে",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "ড্রাফট মুছে ফেলা যায়নি",
 	"compose.error.removeAttachment": "সংযুক্তি সরানো যায়নি",
 	"compose.error.maxAttachments": "একটি বার্তায় সর্বোচ্চ ১০টি সংযুক্তি থাকতে পারে",

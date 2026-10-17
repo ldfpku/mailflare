@@ -180,6 +180,7 @@
 	"compose.error.createReview": "Die Prüfung konnte nicht erstellt werden",
 	"compose.error.reviewDraft": "Der Entwurf konnte nicht geprüft werden",
 	"compose.error.sendFailed": "Senden fehlgeschlagen",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Der Entwurf konnte nicht gelöscht werden",
 	"compose.error.removeAttachment": "Der Anhang konnte nicht entfernt werden",
 	"compose.error.maxAttachments": "Eine Nachricht kann höchstens 10 Anhänge enthalten",

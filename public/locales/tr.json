@@ -178,6 +178,7 @@
 	"compose.error.createReview": "İnceleme oluşturulamadı",
 	"compose.error.reviewDraft": "Taslak incelenemedi",
 	"compose.error.sendFailed": "Gönderim başarısız oldu",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Taslak silinemedi",
 	"compose.error.removeAttachment": "Ek kaldırılamadı",
 	"compose.error.maxAttachments": "Bir iletide en fazla 10 ek bulunabilir",

@@ -180,6 +180,7 @@
 	"compose.error.createReview": "மதிப்பாய்வை உருவாக்க இயலவில்லை",
 	"compose.error.reviewDraft": "வரைவை மதிப்பாய்வு செய்ய இயலவில்லை",
 	"compose.error.sendFailed": "அனுப்புதல் தோல்வி",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "வரைவை நீக்க இயலவில்லை",
 	"compose.error.removeAttachment": "இணைப்பை அகற்ற இயலவில்லை",
 	"compose.error.maxAttachments": "ஒரு செய்தியில் அதிகபட்சம் 10 இணைப்புகள் இருக்கலாம்",

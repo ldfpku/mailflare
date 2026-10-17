@@ -180,6 +180,7 @@
 	"compose.error.createReview": "पुनरावलोकन तयार करता आले नाही",
 	"compose.error.reviewDraft": "मसुद्याचे पुनरावलोकन करता आले नाही",
 	"compose.error.sendFailed": "पाठवणे अयशस्वी झाले",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "मसुदा हटवता आला नाही",
 	"compose.error.removeAttachment": "संलग्नक काढता आले नाही",
 	"compose.error.maxAttachments": "एका संदेशात जास्तीत जास्त 10 संलग्नके असू शकतात",

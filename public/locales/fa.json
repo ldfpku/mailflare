@@ -180,6 +180,7 @@
 	"compose.error.createReview": "ایجاد بازبینی ممکن نشد",
 	"compose.error.reviewDraft": "بازبینی پیش‌نویس ممکن نشد",
 	"compose.error.sendFailed": "ارسال ناموفق بود",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "حذف پیش‌نویس ممکن نشد",
 	"compose.error.removeAttachment": "حذف پیوست ممکن نشد",
 	"compose.error.maxAttachments": "یک پیام حداکثر می‌تواند ۱۰ پیوست داشته باشد",

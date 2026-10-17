@@ -180,6 +180,7 @@
 	"compose.error.createReview": "समीक्षा नहीं बनाई जा सकी",
 	"compose.error.reviewDraft": "ड्राफ़्ट की समीक्षा नहीं की जा सकी",
 	"compose.error.sendFailed": "भेजना विफल रहा",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "ड्राफ़्ट हटाया नहीं जा सका",
 	"compose.error.removeAttachment": "अटैचमेंट हटाया नहीं जा सका",
 	"compose.error.maxAttachments": "एक संदेश में अधिकतम 10 अटैचमेंट हो सकते हैं",

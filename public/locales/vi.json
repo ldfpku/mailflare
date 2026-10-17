@@ -176,6 +176,7 @@
 	"compose.error.createReview": "Không thể tạo bản xem xét",
 	"compose.error.reviewDraft": "Không thể xem xét thư nháp",
 	"compose.error.sendFailed": "Gửi thất bại",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Không thể xóa thư nháp",
 	"compose.error.removeAttachment": "Không thể gỡ tệp đính kèm",
 	"compose.error.maxAttachments": "Một thư có thể có tối đa 10 tệp đính kèm",

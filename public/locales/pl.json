@@ -188,6 +188,7 @@
 	"compose.error.createReview": "Nie można utworzyć sprawdzenia",
 	"compose.error.reviewDraft": "Nie można sprawdzić wersji roboczej",
 	"compose.error.sendFailed": "Wysyłanie nie powiodło się",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Nie można usunąć wersji roboczej",
 	"compose.error.removeAttachment": "Nie można usunąć załącznika",
 	"compose.error.maxAttachments": "Wiadomość może zawierać maksymalnie 10 załączników",

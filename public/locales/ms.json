@@ -180,6 +180,7 @@
 	"compose.error.createReview": "Tidak dapat mencipta semakan",
 	"compose.error.reviewDraft": "Tidak dapat menyemak draf",
 	"compose.error.sendFailed": "Penghantaran gagal",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Tidak dapat memadam draf",
 	"compose.error.removeAttachment": "Tidak dapat mengalih keluar lampiran",
 	"compose.error.maxAttachments": "Satu mesej boleh mengandungi paling banyak 10 lampiran",

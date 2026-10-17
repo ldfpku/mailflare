@@ -180,6 +180,7 @@
 	"compose.error.createReview": "Imeshindwa kuunda mapitio",
 	"compose.error.reviewDraft": "Imeshindwa kupitia rasimu",
 	"compose.error.sendFailed": "Kutuma kumeshindwa",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Imeshindwa kufuta rasimu",
 	"compose.error.removeAttachment": "Imeshindwa kuondoa kiambatisho",
 	"compose.error.maxAttachments": "Ujumbe unaweza kuwa na viambatisho visivyozidi 10",

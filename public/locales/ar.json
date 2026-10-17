@@ -196,6 +196,7 @@
 	"compose.error.createReview": "تعذّر إنشاء المراجعة",
 	"compose.error.reviewDraft": "تعذّرت مراجعة المسودة",
 	"compose.error.sendFailed": "فشل الإرسال",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "تعذّر حذف المسودة",
 	"compose.error.removeAttachment": "تعذّرت إزالة المرفق",
 	"compose.error.maxAttachments": "يمكن أن تتضمن الرسالة 10 مرفقات كحد أقصى",

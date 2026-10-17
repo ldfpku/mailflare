@@ -188,6 +188,7 @@
 	"compose.error.createReview": "Не удалось создать проверку",
 	"compose.error.reviewDraft": "Не удалось проверить черновик",
 	"compose.error.sendFailed": "Не удалось отправить",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Не удалось удалить черновик",
 	"compose.error.removeAttachment": "Не удалось удалить вложение",
 	"compose.error.maxAttachments": "В сообщение можно добавить не более 10 вложений",

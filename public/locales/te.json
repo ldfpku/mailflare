@@ -180,6 +180,7 @@
 	"compose.error.createReview": "సమీక్షను సృష్టించలేకపోయాం",
 	"compose.error.reviewDraft": "డ్రాఫ్ట్‌ను సమీక్షించలేకపోయాం",
 	"compose.error.sendFailed": "పంపడం విఫలమైంది",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "డ్రాఫ్ట్‌ను తొలగించలేకపోయాం",
 	"compose.error.removeAttachment": "అటాచ్‌మెంట్‌ను తీసివేయలేకపోయాం",
 	"compose.error.maxAttachments": "ఒక సందేశంలో గరిష్టంగా 10 అటాచ్‌మెంట్‌లు ఉండవచ్చు",

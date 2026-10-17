@@ -180,6 +180,7 @@
 	"compose.error.createReview": "Beoordeling kon niet worden gemaakt",
 	"compose.error.reviewDraft": "Concept kon niet worden beoordeeld",
 	"compose.error.sendFailed": "Verzenden mislukt",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "Concept kan niet worden verwijderd",
 	"compose.error.removeAttachment": "Bijlage kan niet worden verwijderd",
 	"compose.error.maxAttachments": "Een bericht kan maximaal 10 bijlagen bevatten",

@@ -180,6 +180,7 @@
 	"compose.error.createReview": "સમીક્ષા બનાવી શકાઈ નથી",
 	"compose.error.reviewDraft": "ડ્રાફ્ટની સમીક્ષા કરી શકાઈ નથી",
 	"compose.error.sendFailed": "મોકલવામાં નિષ્ફળ",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "ડ્રાફ્ટ કાઢી શકાયો નથી",
 	"compose.error.removeAttachment": "જોડાણ દૂર કરી શકાયું નથી",
 	"compose.error.maxAttachments": "એક સંદેશામાં વધુમાં વધુ 10 જોડાણો હોઈ શકે",

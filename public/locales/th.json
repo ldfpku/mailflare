@@ -180,6 +180,7 @@
 	"compose.error.createReview": "ไม่สามารถสร้างการตรวจทานได้",
 	"compose.error.reviewDraft": "ไม่สามารถตรวจทานแบบร่างได้",
 	"compose.error.sendFailed": "ส่งไม่สำเร็จ",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "ไม่สามารถลบแบบร่างได้",
 	"compose.error.removeAttachment": "ไม่สามารถลบไฟล์แนบได้",
 	"compose.error.maxAttachments": "ข้อความหนึ่งมีไฟล์แนบได้สูงสุด 10 ไฟล์",

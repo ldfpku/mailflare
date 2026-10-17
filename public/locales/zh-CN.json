@@ -176,6 +176,7 @@
 	"compose.error.createReview": "无法创建审阅",
 	"compose.error.reviewDraft": "无法审阅草稿",
 	"compose.error.sendFailed": "发送失败",
+	"compose.error.sendingNotSet": "这个域名还没开通发信。请管理员到 管理 → 域名 → 邮件发送 中开启。",
 	"compose.error.deleteDraft": "无法删除草稿",
 	"compose.error.removeAttachment": "无法移除附件",
 	"compose.error.maxAttachments": "一封邮件最多可包含 10 个附件",

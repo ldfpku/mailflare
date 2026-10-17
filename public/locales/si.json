@@ -180,6 +180,7 @@
 	"compose.error.createReview": "සමාලෝචනය සෑදිය නොහැකි විය",
 	"compose.error.reviewDraft": "කෙටුම්පත සමාලෝචනය කළ නොහැකි විය",
 	"compose.error.sendFailed": "යැවීම අසාර්ථකයි",
+	"compose.error.sendingNotSet": "Sending is not set up for this domain yet. An admin can turn it on under Admin → Domains → Email sending.",
 	"compose.error.deleteDraft": "කෙටුම්පත මැකිය නොහැකි විය",
 	"compose.error.removeAttachment": "ඇමුණුම ඉවත් කළ නොහැකි විය",
 	"compose.error.maxAttachments": "පණිවිඩයකට ඇතුළත් කළ හැක්කේ උපරිම වශයෙන් ඇමුණුම් 10ක් පමණි",
