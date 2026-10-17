@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { isNodeRuntime } from "@/lib/runtime";
 import { LanguageProvider } from "@/components/language-provider";
-import { DEFAULT_LOCALE, getDirection } from "@/lib/i18n/utils";
+import { BUNDLED_LOCALE, getDirection } from "@/lib/i18n/utils";
 import { getRequestLocale, loadServerMessages } from "@/lib/i18n/server";
 import { sidebarBootstrapScript } from "@/components/sidebar-state-utils";
 import { themeBootstrapScript } from "@/components/theme-utils";
@@ -50,7 +50,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
 	const locale = await getRequestLocale();
-	const messages = locale === DEFAULT_LOCALE ? undefined : await loadServerMessages(locale);
+	const messages = locale === BUNDLED_LOCALE ? undefined : await loadServerMessages(locale);
 	const branding = await getHomeBranding();
 	return (
 		<html lang={locale} dir={getDirection(locale)} data-remote-image-proxy={isNodeRuntime() ? "disabled" : "enabled"} suppressHydrationWarning>
