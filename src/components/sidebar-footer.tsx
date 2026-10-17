@@ -1,6 +1,5 @@
 "use client";
 
-import packageJson from "../../package.json";
 import { useSidebar } from "./sidebar-state";
 import { useShortcuts } from "./shortcuts";
 import { Keyboard } from "lucide-react";
@@ -29,25 +28,6 @@ export function SidebarFooter() {
           </kbd>
         </button>
       )}
-      <PoweredBy />
     </div>
   );
-}
-
-/** The "Powered by Mailflare vX" credit, shared by the mail and Drive sidebars. */
-export function PoweredBy({ className = "px-1" }: { className?: string }) {
-	const { t } = useLanguage();
-	return (
-      <p className={`${className} text-[11px] text-neutral-500`}>
-        {t("navigation.poweredBy")}{" "}
-        <a
-          href={`https://mailflare.co/?ref=${typeof window !== "undefined" ? location.hostname : ""}&v=${packageJson.version}`}
-          target="_blank"
-          className="hover:underline text-neutral-500"
-          rel="noreferrer"
-        >
-          Mailflare v{packageJson.version}
-        </a>
-      </p>
-	);
 }
