@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "ਅਟੈਚਮੈਂਟ: {list}",
 	"agent.review.deliveryNeedsReview": "ਡਿਲੀਵਰੀ ਨੂੰ ਸਮੀਖਿਆ ਦੀ ਲੋੜ ਹੈ",
 	"agent.review.couldNotSend": "ਭੇਜਿਆ ਨਹੀਂ ਜਾ ਸਕਿਆ",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "ਨਿਯਤ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ…",
 	"agent.review.sending": "ਭੇਜਿਆ ਜਾ ਰਿਹਾ ਹੈ…",
 	"agent.review.confirmSchedule": "ਪੁਸ਼ਟੀ ਕਰੋ ਅਤੇ ਨਿਯਤ ਕਰੋ",

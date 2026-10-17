@@ -1836,6 +1836,7 @@
 	"agent.review.attachments": "संलग्नके: {list}",
 	"agent.review.deliveryNeedsReview": "वितरणाचे पुनरावलोकन आवश्यक आहे",
 	"agent.review.couldNotSend": "पाठवता आले नाही",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "शेड्यूल होत आहे…",
 	"agent.review.sending": "पाठवले जात आहे…",
 	"agent.review.confirmSchedule": "निश्चित करा आणि शेड्यूल करा",

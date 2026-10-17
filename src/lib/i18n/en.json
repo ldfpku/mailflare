@@ -1877,6 +1877,7 @@
 	"agent.review.attachments": "Attachments: {list}",
 	"agent.review.deliveryNeedsReview": "Delivery needs review",
 	"agent.review.couldNotSend": "Could not send",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Scheduling…",
 	"agent.review.sending": "Sending…",
 	"agent.review.confirmSchedule": "Confirm and schedule",

@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "پیوست‌ها: {list}",
 	"agent.review.deliveryNeedsReview": "تحویل نیازمند بازبینی است",
 	"agent.review.couldNotSend": "ارسال ممکن نشد",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "در حال زمان‌بندی…",
 	"agent.review.sending": "در حال ارسال…",
 	"agent.review.confirmSchedule": "تأیید و زمان‌بندی",

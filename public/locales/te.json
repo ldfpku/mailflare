@@ -1836,6 +1836,7 @@
 	"agent.review.attachments": "అటాచ్‌మెంట్‌లు: {list}",
 	"agent.review.deliveryNeedsReview": "డెలివరీకి సమీక్ష అవసరం",
 	"agent.review.couldNotSend": "పంపలేకపోయాం",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "షెడ్యూల్ చేస్తోంది…",
 	"agent.review.sending": "పంపుతోంది…",
 	"agent.review.confirmSchedule": "నిర్ధారించి షెడ్యూల్ చేయండి",

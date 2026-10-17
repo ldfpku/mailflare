@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "Anhänge: {list}",
 	"agent.review.deliveryNeedsReview": "Die Zustellung muss geprüft werden",
 	"agent.review.couldNotSend": "Senden nicht möglich",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Wird geplant…",
 	"agent.review.sending": "Wird gesendet…",
 	"agent.review.confirmSchedule": "Bestätigen und planen",

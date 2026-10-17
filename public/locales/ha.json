@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "Haɗe-haɗe: {list}",
 	"agent.review.deliveryNeedsReview": "Isarwa na buƙatar dubawa",
 	"agent.review.couldNotSend": "Ba a iya aikawa ba",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Ana tsarawa…",
 	"agent.review.sending": "Ana aikawa…",
 	"agent.review.confirmSchedule": "Tabbatar kuma tsara",

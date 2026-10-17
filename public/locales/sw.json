@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "Viambatisho: {list}",
 	"agent.review.deliveryNeedsReview": "Uwasilishaji unahitaji mapitio",
 	"agent.review.couldNotSend": "Imeshindwa kutuma",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Inapanga…",
 	"agent.review.sending": "Inatuma…",
 	"agent.review.confirmSchedule": "Thibitisha na upange",

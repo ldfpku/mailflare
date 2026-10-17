@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "இணைப்புகள்: {list}",
 	"agent.review.deliveryNeedsReview": "வழங்கலுக்கு மதிப்பாய்வு தேவை",
 	"agent.review.couldNotSend": "அனுப்ப இயலவில்லை",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "திட்டமிடப்படுகிறது…",
 	"agent.review.sending": "அனுப்பப்படுகிறது…",
 	"agent.review.confirmSchedule": "உறுதிசெய்து திட்டமிடு",

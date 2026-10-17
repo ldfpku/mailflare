@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "ඇමුණුම්: {list}",
 	"agent.review.deliveryNeedsReview": "බෙදාහැරීම සමාලෝචනය කළ යුතුයි",
 	"agent.review.couldNotSend": "යැවීමට නොහැකි විය",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "කාලසටහන්ගත කරමින්…",
 	"agent.review.sending": "යවමින්…",
 	"agent.review.confirmSchedule": "තහවුරු කර කාලසටහන්ගත කරන්න",

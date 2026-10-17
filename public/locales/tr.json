@@ -1818,6 +1818,7 @@
 	"agent.review.attachments": "Ekler: {list}",
 	"agent.review.deliveryNeedsReview": "Gönderimin incelenmesi gerekiyor",
 	"agent.review.couldNotSend": "Gönderilemedi",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Zamanlanıyor…",
 	"agent.review.sending": "Gönderiliyor…",
 	"agent.review.confirmSchedule": "Onayla ve zamanla",

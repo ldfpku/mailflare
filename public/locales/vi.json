@@ -1823,6 +1823,7 @@
 	"agent.review.attachments": "Tệp đính kèm: {list}",
 	"agent.review.deliveryNeedsReview": "Việc gửi cần được xem xét",
 	"agent.review.couldNotSend": "Không thể gửi",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Đang lên lịch…",
 	"agent.review.sending": "Đang gửi…",
 	"agent.review.confirmSchedule": "Xác nhận và lên lịch",

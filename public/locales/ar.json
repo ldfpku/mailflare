@@ -1898,6 +1898,7 @@
 	"agent.review.attachments": "المرفقات: {list}",
 	"agent.review.deliveryNeedsReview": "يحتاج التسليم إلى مراجعة",
 	"agent.review.couldNotSend": "تعذّر الإرسال",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "جارٍ الجدولة…",
 	"agent.review.sending": "جارٍ الإرسال…",
 	"agent.review.confirmSchedule": "تأكيد وجدولة",

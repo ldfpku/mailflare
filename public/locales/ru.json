@@ -1868,6 +1868,7 @@
 	"agent.review.attachments": "Вложения: {list}",
 	"agent.review.deliveryNeedsReview": "Доставка требует проверки",
 	"agent.review.couldNotSend": "Не удалось отправить",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Планирование…",
 	"agent.review.sending": "Отправка…",
 	"agent.review.confirmSchedule": "Подтвердить и запланировать",

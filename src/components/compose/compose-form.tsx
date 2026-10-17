@@ -54,6 +54,10 @@ export function ComposeForm({
 	const [draftId, setDraftId] = useState<string | null>(null);
 	const [agentRevision, setAgentRevision] = useState<number | null>(null);
 	const [agentReview, setAgentReview] = useState<{ approvalId: string; snapshot: ReviewSnapshot } | null>(null);
+	const isAgentDraft = agentRevision !== null;
+	// Set while an AI draft is being saved for review or its review is open, so autosave cannot change it underneath the approval.
+	const holdAutosave = useRef(false);
+	const agentSavedPayload = useRef<string | null>(null);
 	const [to, setTo] = useState<string[]>([]);
 	const [cc, setCc] = useState<string[]>([]);
 	const [bcc, setBcc] = useState<string[]>([]);
@@ -174,6 +178,7 @@ export function ComposeForm({
 				draftIdRef.current = draft.id;
 				setDraftId(draft.id);
 				setAgentRevision(draft.agent?.revision ?? null);
+				agentSavedPayload.current = null;
 				setScheduledAt(draft.agent?.scheduledAt ? new Date(draft.agent.scheduledAt) : null);
 				setTo(headerToRecipients(draft.toAddr));
 				const draftCc = headerToRecipients(draft.ccAddr);
@@ -239,6 +244,7 @@ export function ComposeForm({
 
 	useEffect(() => {
 		pendingSave.current = null;
+		if (holdAutosave.current) return;
 		const bodyContent = htmlToPlainText(html).trim();
 		const signatureOnly = bodyContent === (selectedMailbox?.signature?.trim() ?? "");
 		const hasContent =
@@ -263,6 +269,14 @@ export function ComposeForm({
 					references: threading?.references ?? null,
 					threadId: threading?.threadId ?? null,
 				};
+				// Saving an AI draft bumps its revision and marks it human-edited, so skip saves that change nothing:
+				// the first pass after loading only records the baseline.
+				const payloadKey = JSON.stringify(payload);
+				if (isAgentDraft) {
+					const baseline = agentSavedPayload.current;
+					agentSavedPayload.current = payloadKey;
+					if (baseline === null || baseline === payloadKey) return;
+				}
 				const existingId = draftIdRef.current;
 				const res = await authFetch(existingId ? `/api/drafts/${existingId}` : "/api/drafts", {
 					method: existingId ? "PATCH" : "POST",
@@ -278,7 +292,7 @@ export function ComposeForm({
 				draftIdRef.current = data.draft.id;
 				setDraftId(data.draft.id);
 				const pending = attachments.filter((attachment) => !uploadedFiles.current.has(attachment.file) && !rejectedFiles.current.has(attachment.file));
-				if (agentRevision !== null || pending.length === 0) return;
+				if (isAgentDraft || pending.length === 0) return;
 				const form = new FormData();
 				for (const attachment of pending) form.append("attachments", attachment.file);
 				const uploaded = await authFetch(`/api/drafts/${data.draft.id}/attachments`, { method: "POST", body: form });
@@ -304,7 +318,9 @@ export function ComposeForm({
 		return () => {
 			if (saveTimer.current) clearTimeout(saveTimer.current);
 		};
-	}, [agentRevision, attachments, bcc, cc, fromAddr, html, loadingDraft, quotedHtml, selectedMailbox?.id, selectedMailbox?.signature, subject, threading, to]);
+	// Depend on whether this is an AI draft, not its revision: refreshing the revision when review opens
+	// must not schedule an autosave, which would bump the revision and invalidate the pending approval.
+	}, [isAgentDraft, attachments, bcc, cc, fromAddr, html, loadingDraft, quotedHtml, selectedMailbox?.id, selectedMailbox?.signature, subject, threading, to]);
 
 	useEffect(() => {
 		if (!draftIdToLoad || loadingDraft) return;
@@ -338,6 +354,7 @@ export function ComposeForm({
 		const unsentAttachments = attachments.filter((attachment) => !uploadedFiles.current.has(attachment.file));
 		const fullHtml = joinQuotedHtml(html, quotedHtml);
 		if (draftId && agentRevision !== null) {
+			holdAutosave.current = true;
 			try {
 				if (saveTimer.current) clearTimeout(saveTimer.current);
 				if (attachments.length > 0) {
@@ -358,7 +375,11 @@ export function ComposeForm({
 				const result = await response.json() as { approvalId?: string; snapshot?: ReviewSnapshot; error?: string };
 				if (!response.ok || !result.approvalId || !result.snapshot) throw new Error(result.error || t("compose.error.createReview"));
 				setAgentReview({ approvalId: result.approvalId, snapshot: result.snapshot });
-			} catch (cause) { setToast({ type: "error", message: cause instanceof Error ? cause.message : t("compose.error.reviewDraft") }); }
+			} catch (cause) {
+				holdAutosave.current = false;
+				const message = cause instanceof Error ? cause.message : "";
+				setToast({ type: "error", message: message.startsWith("Draft changed") ? t("agent.review.draftChanged") : message || t("compose.error.reviewDraft") });
+			}
 			finally { setLoading(false); }
 			return;
 		}
@@ -610,7 +631,7 @@ export function ComposeForm({
 
 	return (
 		<>
-			{agentReview && <SendReview approvalId={agentReview.approvalId} snapshot={agentReview.snapshot} onClose={() => setAgentReview(null)} onSent={() => { setAgentReview(null); if (onClose) dismiss(); else router.push("/sent"); }} />}
+			{agentReview && <SendReview approvalId={agentReview.approvalId} snapshot={agentReview.snapshot} onClose={() => { holdAutosave.current = false; setAgentReview(null); }} onSent={() => { setAgentReview(null); if (onClose) dismiss(); else router.push("/sent"); }} />}
 			{mode === "popup" && modalMode && !minimized && <div className="fixed inset-0 z-40 bg-neutral-950/65" aria-hidden="true" />}
 			{toast && (
 				<div

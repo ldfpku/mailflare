@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "അറ്റാച്ച്‌മെന്റുകൾ: {list}",
 	"agent.review.deliveryNeedsReview": "ഡെലിവറിക്ക് അവലോകനം ആവശ്യമാണ്",
 	"agent.review.couldNotSend": "അയയ്ക്കാൻ കഴിഞ്ഞില്ല",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "ഷെഡ്യൂൾ ചെയ്യുന്നു…",
 	"agent.review.sending": "അയയ്ക്കുന്നു…",
 	"agent.review.confirmSchedule": "സ്ഥിരീകരിച്ച് ഷെഡ്യൂൾ ചെയ്യുക",

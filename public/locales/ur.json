@@ -1836,6 +1836,7 @@
 	"agent.review.attachments": "منسلکات: {list}",
 	"agent.review.deliveryNeedsReview": "ترسیل کا جائزہ درکار ہے",
 	"agent.review.couldNotSend": "بھیجا نہیں جا سکا",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "شیڈول ہو رہا ہے…",
 	"agent.review.sending": "بھیجا جا رہا ہے…",
 	"agent.review.confirmSchedule": "تصدیق کریں اور شیڈول کریں",

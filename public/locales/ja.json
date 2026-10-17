@@ -1823,6 +1823,7 @@
 	"agent.review.attachments": "添付ファイル：{list}",
 	"agent.review.deliveryNeedsReview": "配信には確認が必要です",
 	"agent.review.couldNotSend": "送信できませんでした",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "予約中…",
 	"agent.review.sending": "送信中…",
 	"agent.review.confirmSchedule": "確認して予約",

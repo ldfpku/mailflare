@@ -20,7 +20,10 @@ export function SendReview({ approvalId, snapshot, onClose, onSent }: SendReview
 			if (!response.ok || result.status !== "sent" || !result.messageId) throw new Error(result.error || t("agent.review.deliveryNeedsReview"));
 			window.dispatchEvent(new Event("mailflare:messages-changed"));
 			onSent?.(result.messageId);
-		} catch (cause) { setError(cause instanceof Error ? cause.message : t("agent.review.couldNotSend")); }
+		} catch (cause) {
+			const message = cause instanceof Error ? cause.message : "";
+			setError(message.startsWith("Draft changed") ? t("agent.review.draftChanged") : message || t("agent.review.couldNotSend"));
+		}
 		finally { setBusy(false); }
 	}
 	return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-neutral-950/60 p-4" role="dialog" aria-modal="true" aria-label={t("agent.review.dialog")}>

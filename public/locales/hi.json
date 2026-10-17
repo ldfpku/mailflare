@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "अटैचमेंट: {list}",
 	"agent.review.deliveryNeedsReview": "डिलीवरी की समीक्षा आवश्यक है",
 	"agent.review.couldNotSend": "भेजा नहीं जा सका",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "शेड्यूल हो रहा है…",
 	"agent.review.sending": "भेजा जा रहा है…",
 	"agent.review.confirmSchedule": "पुष्टि करें और शेड्यूल करें",

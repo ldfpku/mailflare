@@ -1853,6 +1853,7 @@
 	"agent.review.attachments": "Pièces jointes : {list}",
 	"agent.review.deliveryNeedsReview": "La distribution nécessite une vérification",
 	"agent.review.couldNotSend": "Impossible d'envoyer",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Programmation…",
 	"agent.review.sending": "Envoi…",
 	"agent.review.confirmSchedule": "Confirmer et programmer",

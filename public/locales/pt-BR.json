@@ -1853,6 +1853,7 @@
 	"agent.review.attachments": "Anexos: {list}",
 	"agent.review.deliveryNeedsReview": "A entrega precisa de revisão",
 	"agent.review.couldNotSend": "Não foi possível enviar",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Agendando…",
 	"agent.review.sending": "Enviando…",
 	"agent.review.confirmSchedule": "Confirmar e agendar",

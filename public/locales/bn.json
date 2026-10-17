@@ -1836,6 +1836,7 @@
 	"agent.review.attachments": "সংযুক্তি: {list}",
 	"agent.review.deliveryNeedsReview": "ডেলিভারির জন্য পর্যালোচনা প্রয়োজন",
 	"agent.review.couldNotSend": "পাঠানো যায়নি",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "নির্ধারণ করা হচ্ছে…",
 	"agent.review.sending": "পাঠানো হচ্ছে…",
 	"agent.review.confirmSchedule": "নিশ্চিত করে নির্ধারণ করুন",

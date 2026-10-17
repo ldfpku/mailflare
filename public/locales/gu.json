@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "જોડાણો: {list}",
 	"agent.review.deliveryNeedsReview": "ડિલિવરીને સમીક્ષાની જરૂર છે",
 	"agent.review.couldNotSend": "મોકલી શકાયું નથી",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "શેડ્યૂલ કરી રહ્યા છીએ…",
 	"agent.review.sending": "મોકલી રહ્યા છીએ…",
 	"agent.review.confirmSchedule": "પુષ્ટિ કરો અને શેડ્યૂલ કરો",

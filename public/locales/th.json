@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "ไฟล์แนบ: {list}",
 	"agent.review.deliveryNeedsReview": "การส่งถึงต้องได้รับการตรวจทาน",
 	"agent.review.couldNotSend": "ไม่สามารถส่งได้",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "กำลังตั้งเวลา…",
 	"agent.review.sending": "กำลังส่ง…",
 	"agent.review.confirmSchedule": "ยืนยันและตั้งเวลา",

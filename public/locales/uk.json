@@ -1868,6 +1868,7 @@
 	"agent.review.attachments": "Вкладення: {list}",
 	"agent.review.deliveryNeedsReview": "Доставка потребує перевірки",
 	"agent.review.couldNotSend": "Не вдалося надіслати",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Планування…",
 	"agent.review.sending": "Надсилання…",
 	"agent.review.confirmSchedule": "Підтвердити й запланувати",

@@ -1823,6 +1823,7 @@
 	"agent.review.attachments": "Lampiran: {list}",
 	"agent.review.deliveryNeedsReview": "Pengiriman perlu ditinjau",
 	"agent.review.couldNotSend": "Tidak dapat mengirim",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Menjadwalkan…",
 	"agent.review.sending": "Mengirim…",
 	"agent.review.confirmSchedule": "Konfirmasi dan jadwalkan",

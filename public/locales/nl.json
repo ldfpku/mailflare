@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "Bijlagen: {list}",
 	"agent.review.deliveryNeedsReview": "Bezorging moet worden beoordeeld",
 	"agent.review.couldNotSend": "Verzenden mislukt",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "Inplannen…",
 	"agent.review.sending": "Verzenden…",
 	"agent.review.confirmSchedule": "Bevestigen en inplannen",

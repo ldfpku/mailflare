@@ -1823,6 +1823,7 @@
 	"agent.review.attachments": "附件：{list}",
 	"agent.review.deliveryNeedsReview": "投递需要审阅",
 	"agent.review.couldNotSend": "无法发送",
+	"agent.review.draftChanged": "草稿在打开审阅后被修改过，请关闭此窗口后重新审阅。",
 	"agent.review.scheduling": "正在定时…",
 	"agent.review.sending": "正在发送…",
 	"agent.review.confirmSchedule": "确认并定时发送",

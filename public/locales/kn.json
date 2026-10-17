@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "ಲಗತ್ತುಗಳು: {list}",
 	"agent.review.deliveryNeedsReview": "ತಲುಪಿಸುವಿಕೆಗೆ ಪರಿಶೀಲನೆ ಅಗತ್ಯ",
 	"agent.review.couldNotSend": "ಕಳುಹಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "ನಿಗದಿಪಡಿಸಲಾಗುತ್ತಿದೆ…",
 	"agent.review.sending": "ಕಳುಹಿಸಲಾಗುತ್ತಿದೆ…",
 	"agent.review.confirmSchedule": "ದೃಢೀಕರಿಸಿ ಮತ್ತು ನಿಗದಿಪಡಿಸಿ",

@@ -1838,6 +1838,7 @@
 	"agent.review.attachments": "첨부파일: {list}",
 	"agent.review.deliveryNeedsReview": "전달 검토 필요",
 	"agent.review.couldNotSend": "보낼 수 없습니다",
+	"agent.review.draftChanged": "This draft changed after the review opened. Close this window and review it again.",
 	"agent.review.scheduling": "예약하는 중…",
 	"agent.review.sending": "보내는 중…",
 	"agent.review.confirmSchedule": "확인 및 예약",
