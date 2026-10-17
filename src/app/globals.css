@@ -251,7 +251,7 @@ button {
 	--card: #292a2d;
 	--muted: #303134;
 	--border: #3c4043;
-	--primary: #8ab4f8;
+	--primary: #7a9fe2;
 	--primary-foreground: #202124;
 	--color-white: #292a2d;
 	--color-black: #000;
@@ -312,12 +312,13 @@ button {
 	--color-slate-950: #ffffff;
 	--color-blue-50: #2c3d57;
 	--color-blue-100: #33486a;
-	--color-blue-200: oklch(42.4% 0.199 265.638);
-	--color-blue-300: oklch(48.8% 0.243 264.376);
-	--color-blue-400: oklch(54.6% 0.245 262.881);
-	--color-blue-500: oklch(62.3% 0.214 259.815);
-	--color-blue-600: oklch(70.7% 0.165 254.624);
-	--color-blue-700: oklch(80.9% 0.105 251.813);
+	/* SMJ blues, inverted for dark surfaces */
+	--color-blue-200: #03419b;
+	--color-blue-300: #034fbc;
+	--color-blue-400: #1d5fc9;
+	--color-blue-500: #4170cb;
+	--color-blue-600: #7a9fe2;
+	--color-blue-700: #a9c2ee;
 	--color-blue-800: oklch(88.2% 0.059 254.128);
 	--color-blue-900: oklch(93.2% 0.032 255.585);
 	--color-blue-950: oklch(97% 0.014 254.604);
@@ -494,8 +495,8 @@ button {
 /* Dark chips with white text (tooltip, compose header): the chip turns light, the text turns dark */
 .dark .bg-neutral-900.text-white, .dark .bg-neutral-800.text-white, .dark .bg-neutral-950.text-white { color: var(--color-neutral-50); }
 /* Buttons and highlights with white text keep their original saturated background, not the inverted one */
-.dark .bg-blue-600 { background-color: oklch(54.6% 0.245 262.881); }
-.dark .bg-blue-700, .dark .hover\:bg-blue-700:hover { background-color: oklch(48.8% 0.243 264.376); }
+.dark .bg-blue-600 { background-color: #034fbc; }
+.dark .bg-blue-700, .dark .hover\:bg-blue-700:hover { background-color: #03419b; }
 .dark .bg-red-600 { background-color: oklch(57.7% 0.245 27.325); }
 .dark .bg-red-700, .dark .hover\:bg-red-700:hover { background-color: oklch(50.5% 0.213 27.518); }
 .dark .bg-green-600 { background-color: oklch(62.7% 0.194 149.214); }

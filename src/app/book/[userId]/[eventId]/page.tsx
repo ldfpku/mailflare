@@ -9,6 +9,7 @@ import { LanguageSelector } from "@/components/language-selector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { BrandIcon } from "@/components/brand-icon";
 import { useBranding } from "@/components/branding-provider";
 import { RouteLoadingBar } from "@/components/route-loading-bar";
 import { getDisplayLocale, getUserTimeZone } from "@/lib/time/utils";
@@ -128,7 +129,7 @@ export default function PublicBookingEventPage() {
 						<div className="mb-4 max-w-48"><LanguageSelector /></div>
 						<div className="flex min-w-0 items-center gap-3 max-sm:order-first max-sm:mb-5">
 
-							<img src={branding.iconUrl} width={24} height={24} alt={branding.appName || "斯米伽邮箱"} />
+							<BrandIcon className="h-6 w-6" alt={branding.appName} />
 
 							<span className="truncate font-semibold">{branding.appName}</span>
 						</div>

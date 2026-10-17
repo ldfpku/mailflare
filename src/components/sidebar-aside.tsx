@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { useSidebar } from "./sidebar-state";
 import { useLanguage } from "./language-provider";
-import { useBranding } from "./branding-provider";
+import { BrandIcon } from "./brand-icon";
 
 export function SidebarAside({ children, className }: { children: ReactNode; className?: string }) {
 	const { mobile, mobileOpen, toggle } = useSidebar();
@@ -49,7 +49,6 @@ export function SidebarAside({ children, className }: { children: ReactNode; cla
 
 export function MobileMenuButton({ className }: { className?: string }) {
 	const { t } = useLanguage();
-	const branding = useBranding();
 	const { mobile, mobileOpen, toggle } = useSidebar();
 	if (!mobile) return null;
 	return (
@@ -58,7 +57,7 @@ export function MobileMenuButton({ className }: { className?: string }) {
 				<Menu size={20} />
 			</button>
 			<Link href="/inbox" aria-label={t("navigation.inbox")} className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-neutral-200 md:hidden">
-				<img src={branding.iconUrl} height={28} width={28} alt="" />
+				<BrandIcon className="h-7 w-7" />
 			</Link>
 		</>
 	);
