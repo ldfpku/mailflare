@@ -2,9 +2,9 @@ import type { AgentModelOption, AgentModelRates, AgentProviderPreset } from "./p
 import { getAgentProviderConfig, resolveAgentBaseUrl } from "./provider";
 
 export const CLOUDFLARE_TOOL_MODELS: AgentModelOption[] = [
-	{ id: "@cf/moonshotai/kimi-k2.5", name: "Kimi K2.5" },
-	{ id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B" },
-	{ id: "@cf/qwen/qwen3-30b-a3b-fp8", name: "Qwen3 30B" },
+	{ id: "@cf/deepseek-ai/deepseek-v4-pro-0813", name: "DeepSeek V4 Pro" },
+	{ id: "@cf/zai-org/glm-5.3", name: "GLM 5.3" },
+	{ id: "@cf/moonshotai/kimi-k2.6", name: "Kimi K2.6" },
 ];
 
 function perMillion(value: unknown, perToken: boolean): number | null {
