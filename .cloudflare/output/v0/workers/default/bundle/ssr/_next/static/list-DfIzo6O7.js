@@ -1,2 +1,0 @@
-import{t as e}from"./react-DJibUF-Z.js";import{t}from"./jsx-runtime-7_pICZxP.js";import{n}from"./button-pY19K32h.js";import{t as r}from"./utils-bNONNbc6.js";e();var i=t();function a({className:e,...t}){return(0,i.jsx)(`div`,{className:r(`grid gap-1 [&>*:first-child]:rounded-t-3xl [&>*:last-child]:rounded-b-3xl`,e),...t})}function o({className:e,asChild:t=!1,...a}){return(0,i.jsx)(t?n:`div`,{className:r(`flex items-center gap-4 rounded-lg bg-white p-5`,e),...a})}export{o as n,a as t};
-//# sourceMappingURL=list-DfIzo6O7.js.map

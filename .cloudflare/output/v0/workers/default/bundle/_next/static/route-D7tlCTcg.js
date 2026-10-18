@@ -1,2 +1,0 @@
-import{t as e}from"./cloudflare-BzdYcC7R.js";import{t}from"./server-CqcWQZp3.js";import{n}from"./server-Cb0y_iLs.js";import{r}from"./auth-BshERKRB.js";async function i(i){let a=e(),o=await r(a,i);if(o.error)return o.error;let s=t(a);return n.json({enabled:!!s,publicKey:s})}export{i as GET};
-//# sourceMappingURL=route-D7tlCTcg.js.map

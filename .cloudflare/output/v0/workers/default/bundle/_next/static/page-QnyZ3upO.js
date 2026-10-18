@@ -1,2 +1,0 @@
-import{t as e}from"./server-BmQ_CSsA.js";import{t}from"./framework~index~layout~loading~page~page~page~page~page~page~page~page~page~layout~page~pag~ogndk7ov-DMLgQTKt.js";var n=e(()=>{throw Error(`Unexpectedly client reference export 'AccountSettings' is called on server`)},`bb2e0d551d3b`,`AccountSettings`),r=t();function i(){return(0,r.jsx)(n,{})}export{i as default};
-//# sourceMappingURL=page-QnyZ3upO.js.map

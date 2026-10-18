@@ -1,2 +1,0 @@
-import"./utils-DoO44aY5.js";var e=864e5;function t(t,n){return new Date(t.getTime()-n*e)}function n(e){return typeof e!=`number`||!Number.isInteger(e)||e<1||e>365?null:e}export{n,t};
-//# sourceMappingURL=trash-retention-utils-DqU-kdmN.js.map

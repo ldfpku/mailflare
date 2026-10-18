@@ -1,2 +1,0 @@
-import{r as e}from"./react-DJibUF-Z.js";import{t}from"./jsx-runtime-7_pICZxP.js";import{n}from"./language-provider-BnyJ_005.js";var r=e({RouteLoadingBar:()=>a}),i=t();function a(){let{t:e}=n();return(0,i.jsx)(`div`,{className:`fixed inset-x-0 top-0 z-[120] h-1 overflow-hidden bg-blue-100`,role:`progressbar`,"aria-label":e(`nav.loadingPage`),children:(0,i.jsx)(`div`,{className:`route-loading-bar h-full w-2/5 bg-blue-600`})})}export{r as n,a as t};
-//# sourceMappingURL=route-loading-bar-CiU_FmRE.js.map

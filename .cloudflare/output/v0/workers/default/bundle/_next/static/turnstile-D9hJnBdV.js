@@ -1,2 +1,0 @@
-import{t as e}from"./ids-Wr4FyoCD.js";async function t(t,n,r){let i=t.TURNSTILE_SECRET_KEY?.trim();if(!i)return!0;if(typeof r!=`string`||!r.trim()||r.length>2048)return!1;let a;try{a=await fetch(`https://challenges.cloudflare.com/turnstile/v0/siteverify`,{method:`POST`,headers:{"Content-Type":`application/json`},signal:AbortSignal.timeout(1e4),body:JSON.stringify({secret:i,response:r,remoteip:n.headers.get(`cf-connecting-ip`)??void 0,idempotency_key:e(`ts`)})})}catch{return!1}return a.ok?(await a.json()).success:!1}export{t};
-//# sourceMappingURL=turnstile-D9hJnBdV.js.map

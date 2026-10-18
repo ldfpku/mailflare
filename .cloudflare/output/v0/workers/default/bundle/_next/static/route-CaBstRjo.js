@@ -1,2 +1,0 @@
-import"./cloudflare-BzdYcC7R.js";import"./db-BMvxAiwD.js";import"./parse-DQiB-wGN.js";import"./service-DJSaZGUJ.js";import{n as e}from"./server-Cb0y_iLs.js";import"./password-C114VD1v.js";import"./username-CEq1yO9z.js";var t=`example.com`;`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`,`${t}`;async function n(){return e.json({error:`Not available in production`},{status:403})}export{n as POST};
-//# sourceMappingURL=route-CaBstRjo.js.map

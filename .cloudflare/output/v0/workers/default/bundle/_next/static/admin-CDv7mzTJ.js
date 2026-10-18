@@ -1,2 +1,0 @@
-function e(e){return e.role===`admin`}function t(t){if(!e(t))throw Error(`Forbidden`)}function n(e){return e.role===`admin`&&e.isPrimaryAdmin}function r(e){if(!n(e))throw Error(`Forbidden`)}function i(e){return n(e)||e.role===`admin`&&e.canManageDomains}function a(e){return n(e)||e.role===`admin`&&e.canManageUsers}export{n as a,a as i,r as n,i as r,t};
-//# sourceMappingURL=admin-CDv7mzTJ.js.map

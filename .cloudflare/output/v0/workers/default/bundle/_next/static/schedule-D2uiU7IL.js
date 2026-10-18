@@ -1,2 +1,0 @@
-function e(e){if(e===null)return null;if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(e))throw Error(`Use a date and time with a timezone offset`);let t=new Date(e);if(!Number.isFinite(t.getTime())||t.getTime()<=Date.now())throw Error(`Scheduled time must be in the future`);return t}export{e as t};
-//# sourceMappingURL=schedule-D2uiU7IL.js.map

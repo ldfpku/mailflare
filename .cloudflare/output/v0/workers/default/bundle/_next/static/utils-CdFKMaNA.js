@@ -1,2 +1,0 @@
-var e=new Set([`archive`,`trash`,`spam`,`read`,`unread`,`inbox`,`folder`,`delete`]);function t(t){return typeof t==`string`&&e.has(t)}function n(e){return e===`archive`?`archived`:e===`trash`?`trash`:e===`spam`?`spam`:e===`inbox`||e===`folder`?`received`:null}function r(e){return e===`read`||e!==`unread`&&null}function i(e){return e===`trash`||e===`spam`}function a(e){return e===`trash`||e===`spam`}export{i as a,a as i,n,t as r,r as t};
-//# sourceMappingURL=utils-CdFKMaNA.js.map

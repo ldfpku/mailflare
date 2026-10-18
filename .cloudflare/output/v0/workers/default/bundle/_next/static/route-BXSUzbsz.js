@@ -1,2 +1,0 @@
-import{t as e}from"./cloudflare-BzdYcC7R.js";import{n as t,t as n}from"./attachment-policy-C3TqztqT.js";import{r}from"./auth-BshERKRB.js";async function i(i){let a=e(),o=await r(a,i);return o.error?o.error:Response.json({maxMb:await t(a),cloudThresholdBytes:n},{headers:{"Cache-Control":`no-store`}})}export{i as GET};
-//# sourceMappingURL=route-BXSUzbsz.js.map

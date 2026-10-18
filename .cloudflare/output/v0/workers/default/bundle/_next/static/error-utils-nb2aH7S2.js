@@ -1,2 +1,0 @@
-function e(e){return e===`Mailbox is required`||e.startsWith(`Attachments exceed`)||e.startsWith(`Subject exceeds`)||e.startsWith(`Headers exceed`)||e.startsWith(`Message exceeds Cloudflare`)||e.startsWith(`A message can include at most`)||e.includes(`exceeds the 25 MB attachment limit`)?400:e===`Mailbox not found`||e===`Sender account not found`||e===`You do not have permission to send from this mailbox`||e===`Sender address does not match the selected mailbox`?403:500}export{e as t};
-//# sourceMappingURL=error-utils-nb2aH7S2.js.map

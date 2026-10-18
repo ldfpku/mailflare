@@ -1,2 +1,0 @@
-import{t as e}from"./jsx-runtime-7_pICZxP.js";import{t}from"./file-text-8_DUtJdN.js";import{t as n}from"./message-folder-page-DuklGSJG.js";var r=e();function i(){return(0,r.jsx)(n,{config:{folder:`drafts`,title:`Drafts`,titleKey:`navigation.drafts`,emptyText:`No drafts`,emptyTextKey:`folder.drafts.empty`,hrefPrefix:`/drafts`,icon:t,badgeVariant:`outline`}})}export{i as default};
-//# sourceMappingURL=page-xYQQo7pE.js.map

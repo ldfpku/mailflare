@@ -1,2 +1,0 @@
-import{t as e}from"./cloudflare-BzdYcC7R.js";import{a as t}from"./headers-bgcDfe9F.js";import{o as n}from"./session-eiYECY_R.js";import{n as r}from"./server-Cb0y_iLs.js";import{i,o as a,t as o}from"./accounts-CHI69obS.js";async function s(s){let c=e(),l=await t(),u=n(s),d=await a(c,Array.from(new Set(i(l.get(o)?.value).concat(u??[])))),f=r.json({accounts:d.map(({token:e,avatarKey:t,...n})=>({...n,active:e===u}))});return f.headers.set(`Cache-Control`,`no-store`),f}export{s as GET};
-//# sourceMappingURL=route-BoKIyljl.js.map

@@ -1,2 +1,0 @@
-import{r as e}from"./rolldown-runtime-hePW80VL.js";import{t}from"./cloudflare-BzdYcC7R.js";import{t as n}from"./framework~index~layout~page~page~page~page~page~page~page~page~page~page~page~page~page~pag~xpk06cbx-DuqsB0SW.js";import{n as r}from"./service-DBykxwxs.js";var i=e(n(),1),a={appName:`斯米伽邮箱`,hasCustomIcon:!1},o=(0,i.cache)(async()=>{try{return await r(t())}catch{return a}});export{o as t};
-//# sourceMappingURL=home-server-utils-BAVM8wT7.js.map

@@ -1,2 +1,0 @@
-import{t as e}from"./cloudflare-BzdYcC7R.js";import{a as t}from"./headers-bgcDfe9F.js";import{a as n,i as r,n as i,t as a}from"./utils-DoO44aY5.js";async function o(){return n((await t()).get(a)?.value)}async function s(t){try{let n=e().ASSETS;return await r(t,e=>n.fetch(new URL(e,`https://mailflare.local`)))}catch(e){console.warn(`Falling back to English: ${e instanceof Error?e.message:e}`);return}}async function c(){let e=await o();return i(e,await s(e))}export{c as n,s as r,o as t};
-//# sourceMappingURL=server-85uK6q8r.js.map

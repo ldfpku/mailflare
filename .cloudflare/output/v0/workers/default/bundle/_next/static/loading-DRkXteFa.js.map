@@ -1,1 +1,0 @@
-{"version":3,"file":"loading-DRkXteFa.js","names":["RouteLoadingBar","loading_default"],"sources":["../../../../../../../../src/app/(dashboard)/loading.tsx"],"sourcesContent":["import { RouteLoadingBar } from \"@/components/route-loading-bar\";\n\nexport default RouteLoadingBar;\n"],"mappings":"oDAEA,IAAAC,EAAeD"}

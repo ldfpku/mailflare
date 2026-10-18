@@ -1,2 +1,0 @@
-import{t as e}from"./cloudflare-BzdYcC7R.js";import{t}from"./user-I8pSF3w8.js";import{n}from"./server-Cb0y_iLs.js";import{t as r}from"./setup-BgjgwU3i.js";async function i(){let i=e();try{let[e,a]=await Promise.all([r(i),t(i)]);return n.json({hasAdminAccount:e,hasPrimaryDomain:!!a,primaryDomain:a?{hostname:a.hostname,sendingRequested:a.sendingRequested}:null},{headers:{"Cache-Control":`no-store`}})}catch(e){let t=e instanceof Error?e.message:`Could not load setup status`;return n.json({error:t},{status:500})}}export{i as GET};
-//# sourceMappingURL=route-DpZKB0yy.js.map

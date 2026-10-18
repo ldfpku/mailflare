@@ -1,2 +1,0 @@
-import{t as e}from"./auth-BshERKRB.js";async function t(t,n,r){let i=await e(t,n.headers.get(`authorization`));return i?.user.role===`admin`&&i.scopes.includes(r)?i:null}export{t};
-//# sourceMappingURL=admin-auth-Cr6zkvYm.js.map

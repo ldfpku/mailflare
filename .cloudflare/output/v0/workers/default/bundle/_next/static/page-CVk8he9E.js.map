@@ -1,1 +1,0 @@
-{"version":3,"file":"page-CVk8he9E.js","names":["redirect","RulesPage"],"sources":["../../../../../../../../src/app/(dashboard)/rules/page.tsx"],"sourcesContent":["import { redirect } from \"next/navigation\";\n\nexport default function RulesPage() {\n\tredirect(\"/settings/account\");\n}\n"],"mappings":"0DAEA,SAAwBC,GAAY,CACnCD,EAAS,mBAAmB,CAC7B"}

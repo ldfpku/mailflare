@@ -1,1 +1,0 @@
-import{r as e}from"./framework-2k-VFE-j.js";import{Q as t}from"./vinext-Cvu9ofDC.js";import{t as n}from"./message-split-layout-3Q2fs6FS.js";import{t as r}from"./use-custom-folder-config-CKaqz0MD.js";var i=e();function a({children:e}){let a=t(),o=r(a.folderId);return(0,i.jsx)(n,{config:o,children:e})}export{a as default};

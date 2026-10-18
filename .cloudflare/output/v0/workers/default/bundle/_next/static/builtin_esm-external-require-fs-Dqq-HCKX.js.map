@@ -1,1 +1,0 @@
-{"version":3,"file":"builtin_esm-external-require-fs-Dqq-HCKX.js","names":["__commonJSMin","m","require_builtin_esm_external_require_fs"],"sources":["../../../../../../../../builtin:esm-external-require-fs"],"sourcesContent":["import * as m from 'fs';module.exports = m.default;"],"mappings":"yFAAwB,EAAO,QAAUC,EAAE"}

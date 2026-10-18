@@ -1,2 +1,0 @@
-import{Y as e,dt as t,l as n,t as r,v as i}from"./db-BMvxAiwD.js";async function a(t){let[i]=await r(t).select({limit:n.driveStorageLimitBytes}).from(n).where(e(n.id,`default`)).limit(1);return i?.limit&&i.limit>0?i.limit:null}async function o(n,r){let[a]=await n.select({total:t`coalesce(sum(${i.size}), 0)`}).from(i).where(e(i.ownerId,r));return Number(a?.total??0)}export{o as n,a as t};
-//# sourceMappingURL=storage-ZJJ8PxEH.js.map
