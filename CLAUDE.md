@@ -10,21 +10,20 @@ npm run lint                   # eslint (next/core-web-vitals + next/typescript)
 npm run build                  # vinext build, including the complete Worker
 
 npm run db:generate            # drizzle-kit generate from src/db/schema/index.ts
-npm run db:migrate:local       # wrangler d1 migrations apply DB --local
-npm run db:migrate:remote      # --remote (needs a concrete database_id in wrangler.jsonc)
+npm run db:migrate:local -- <d1-id>   # cf d1 migrations apply --local --dir drizzle/migrations
+npm run db:migrate:remote -- <d1-id>  # remote; or migrate later from Admin settings
 npm run db:seed                # POST /api/seed against localhost:3000
 
-npm run deploy                 # vinext build + wrangler deploy
-npm run deploy                 # build and deploy; migrate later from Admin settings
+npm run deploy                 # vp build, then cf deploy --prebuilt; migrate later from Admin settings
 npm run preview                # build and preview the vinext Worker locally
-npm run cf-typegen             # regenerate cloudflare-env.d.ts from wrangler.jsonc
+npm run cf-typegen             # cf workers types (cloudflare-env.d.ts is the checked-in CloudflareEnv)
 ```
 
 There is no test script in `package.json`; the checks under `tests/` are `node:test` files run with `node --test tests/*.test.mjs` (pass the glob — on Node 24 a bare `tests/` is read as a module path). They must not need Workers bindings, so anything that reaches D1 or R2 belongs in a script under `scripts/` run against `npm run dev` instead.
 
 `next.config.ts` sets `typescript.ignoreBuildErrors: true` and `tsconfig.json` sets `noImplicitAny: false`, so the build will not catch type errors. Run `npx tsc --noEmit` if you want real type checking.
 
-`npm run deploy` builds with vinext and uploads with Wrangler. The Cloudflare Vite plugin generates `dist/server/wrangler.json` and redirects Wrangler to it, preserving the custom `worker.ts` entrypoint.
+Deployment uses the Cloudflare CLI `cf` (beta), not Wrangler. The Worker is configured in `cloudflare.config.ts` (there is no `wrangler.jsonc`); `vp build` with the beta `@cloudflare/vite-plugin` writes Build Output to `.cloudflare/output`, and `cf deploy --prebuilt` uploads it. Building needs Node 24: on Node 22 the module loader hook from `@cloudflare/config` breaks the Tailwind PostCSS load. Durable Object classes are declared in `worker.exports` (sqlite); once deployed this way the Worker cannot go back to a Wrangler `migrations` array. The config has no `keep_vars`, so Worker settings must be secrets, not plaintext variables set in the dashboard, or a deploy removes them.
 
 ## Architecture
 
@@ -77,7 +76,7 @@ Both queries filter on `scope`, so any new rule must set it explicitly. `forward
 
 Domain and mailbox management call the Cloudflare API at runtime (`src/lib/cloudflare-api.ts`, `src/lib/domains/`). Adding a domain enables Email Routing DNS and sending subdomains on the zone; creating a mailbox creates a Cloudflare Email Routing rule targeting `CF_EMAIL_WORKER_NAME`; removing a domain cleans those up (`src/lib/domains/cloudflare-cleanup.ts`).
 
-Consequence: `CF_EMAIL_WORKER_NAME`, the deployed Worker `name`, and `services[].service` for `WORKER_SELF_REFERENCE` in `wrangler.jsonc` must all agree. Cloudflare service bindings need a literal name and cannot reference the top-level `name`.
+Consequence: `CF_EMAIL_WORKER_NAME`, the deployed Worker `name`, and the `WORKER_SELF_REFERENCE` binding's `worker` in `cloudflare.config.ts` must all agree. Cloudflare service bindings need a literal name and cannot reference the top-level `name`.
 
 Auth is `CF_TOKEN` (preferred) or the legacy `CF_EMAIL` + `CF_API_KEY` pair.
 
