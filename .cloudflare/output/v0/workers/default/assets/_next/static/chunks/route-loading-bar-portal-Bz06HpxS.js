@@ -1,0 +1,1 @@
+import{r as e}from"./rolldown-runtime-hePW80VL.js";import{i as t,n,r}from"./framework-2k-VFE-j.js";import{t as i}from"./route-loading-bar-Ch3Aexca.js";var a=e(t(),1),o=e(n(),1),s=r();function c(){let[e,t]=(0,a.useState)(!1);return(0,a.useEffect)(()=>t(!0),[]),e?(0,o.createPortal)((0,s.jsx)(i,{}),document.body):(0,s.jsx)(i,{})}export{c as t};

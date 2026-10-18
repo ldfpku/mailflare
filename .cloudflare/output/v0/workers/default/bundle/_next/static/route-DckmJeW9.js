@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{t}from"./inbound-C2T7Ao-H.js";import{n}from"./server-Cb0y_iLs.js";import{t as r}from"./cookies-BHe6t_9m.js";async function i(i,{params:a}){let o=e(),s=await r(o,i);if(!s)return n.json({error:`Unauthorized`},{status:401});let{messageId:c}=await a,l=await t(o,s,c);return l?n.json(l):n.json({error:`Not found`},{status:404})}export{i as GET};
+//# sourceMappingURL=route-DckmJeW9.js.map

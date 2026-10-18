@@ -1,0 +1,2 @@
+import{$ as e,J as t,U as n,Y as r}from"./db-BMvxAiwD.js";function i(e,t){try{let n=JSON.parse(e);if(Array.isArray(n)&&n.length&&n.every(e=>typeof e==`string`&&e.length>0)&&new Set(n).size===n.length)return[t,...n.filter(e=>e!==t)]}catch{}return[t]}async function a(i,a,o,s){let c=[a,...o.filter(e=>e!==a)];return c.length>20||!s&&c.length>1?null:(await i.select({id:n.id}).from(n).where(t(e(n.id,c),r(n.disabled,!1)))).length===c.length?c:null}export{a as n,i as t};
+//# sourceMappingURL=hosts-Dz4MXTZC.js.map

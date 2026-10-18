@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{d as t}from"./session-eiYECY_R.js";import{t as n}from"./origin-BMLom-10.js";import{n as r}from"./server-Cb0y_iLs.js";import{r as i}from"./auth-BshERKRB.js";async function a(a,{params:o}){let s=e(),{user:c,error:l}=await i(s,a);if(l)return l;if(!n(a))return r.json({error:`Invalid origin`},{status:403});let{id:u}=await o;return await t(s,c.id,u)?r.json({ok:!0}):r.json({error:`Device not found`},{status:404})}export{a as DELETE};
+//# sourceMappingURL=route-C5BVXBBA.js.map

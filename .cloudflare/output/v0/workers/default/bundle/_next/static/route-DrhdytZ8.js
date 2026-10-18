@@ -1,0 +1,2 @@
+import{i as e,r as t}from"./access-BRSv0MQ4.js";import{t as n}from"./content-BXpbevt9.js";import{t as r}from"./auth-CWikPLsX.js";async function i(i,{params:a}){let{id:o}=await a,s=await r(i);if(s.error)return s.error;let{env:c,db:l,user:u}=s,d=await t(l,o);return!d||!await e(l,u.id,d)?new Response(`Not found`,{status:404}):n(c,i,d,new URL(i.url).searchParams.get(`download`)===`1`)}export{i as GET};
+//# sourceMappingURL=route-DrhdytZ8.js.map

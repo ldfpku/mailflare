@@ -1,0 +1,2 @@
+import{n as e,t}from"./colors-DMxt0yoL.js";var n={blue:`#2563eb`,violet:`#7c3aed`,rose:`#db2777`,orange:`#ea580c`,emerald:`#16a34a`};function r(r){return e.find(e=>e===r)??n[r??``]??t}export{r as t};
+//# sourceMappingURL=colors-DYAdl2fU.js.map

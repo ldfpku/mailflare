@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{r as t}from"./service-FrqW7nMG.js";import{n}from"./admin-CDv7mzTJ.js";import{n as r}from"./server-Cb0y_iLs.js";import{n as i}from"./cookies-BHe6t_9m.js";async function a(a,{params:o}){let s=e();try{let e=await i(s,a);n(e);let{id:c}=await o;return await t(s,c)?r.json({ok:!0}):r.json({error:`Backup not found`},{status:404})}catch{return r.json({error:`Forbidden`},{status:403})}}export{a as DELETE};
+//# sourceMappingURL=route-kCmdeQWV.js.map

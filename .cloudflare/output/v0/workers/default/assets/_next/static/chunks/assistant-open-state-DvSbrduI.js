@@ -1,0 +1,1 @@
+import{r as e}from"./rolldown-runtime-hePW80VL.js";import{i as t}from"./framework-2k-VFE-j.js";var n=e(t(),1),r=(0,n.createContext)(!1);function i(){return(0,n.useContext)(r)}export{i as n,r as t};

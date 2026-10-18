@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{t}from"./provider-87MMThxq.js";import{t as n}from"./cookies-BHe6t_9m.js";async function r(r){let i=e();return await n(i,r)?Response.json({enabled:await t(i)},{headers:{"Cache-Control":`no-store`}}):Response.json({error:`Unauthorized`},{status:401})}export{r as GET};
+//# sourceMappingURL=route-C4x9DjrI.js.map

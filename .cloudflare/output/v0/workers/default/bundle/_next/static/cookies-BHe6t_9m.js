@@ -1,0 +1,2 @@
+import{a as e}from"./headers-bgcDfe9F.js";import{s as t,t as n}from"./session-eiYECY_R.js";function r(e){let t=e?.headers.get(`Authorization`);if(t?.startsWith(`Bearer `))return t.slice(7).trim()||void 0}async function i(i,a){let o=r(a);if(o){let e=await t(i,o);return e?.disabled?null:e}let s=(await e()).get(n)?.value,c=await t(i,s);return c?.disabled?null:c}async function a(e,t){let n=await i(e,t);if(!n)throw Error(`Unauthorized`);return n}export{a as n,i as t};
+//# sourceMappingURL=cookies-BHe6t_9m.js.map

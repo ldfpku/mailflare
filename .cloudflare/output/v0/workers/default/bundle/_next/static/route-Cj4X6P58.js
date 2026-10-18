@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{a as t}from"./headers-bgcDfe9F.js";import{r as n}from"./avatar-images-Dc9N8ZwY.js";import{o as r}from"./session-eiYECY_R.js";import{i,o as a,t as o}from"./accounts-CHI69obS.js";async function s(s,{params:c}){let{userId:l}=await c,u=e(),d=await t(),f=r(s),p=(await a(u,Array.from(new Set(i(d.get(o)?.value).concat(f??[]))))).find(e=>e.userId===l);return p?.avatarKey?n(s,u.BUCKET,p.avatarKey):new Response(`Not found`,{status:404})}export{s as GET};
+//# sourceMappingURL=route-Cj4X6P58.js.map

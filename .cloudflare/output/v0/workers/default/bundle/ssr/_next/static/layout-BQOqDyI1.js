@@ -1,0 +1,2 @@
+import{t as e}from"./jsx-runtime-7_pICZxP.js";import{n as t}from"./navigation-s7_f6M3_.js";import{t as n}from"./message-split-layout-B8iqLqPJ.js";import{t as r}from"./use-custom-folder-config-7cCSdh5b.js";var i=e();function a({children:e}){let a=t(),o=r(a.folderId);return(0,i.jsx)(n,{config:o,children:e})}export{a as default};
+//# sourceMappingURL=layout-BQOqDyI1.js.map

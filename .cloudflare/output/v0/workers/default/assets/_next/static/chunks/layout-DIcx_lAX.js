@@ -1,0 +1,1 @@
+import{r as e}from"./framework-2k-VFE-j.js";import{t}from"./message-split-layout-3Q2fs6FS.js";import{c as n}from"./message-folder-configs-DpeLWDS6.js";var r=e();function i({children:e}){return(0,r.jsx)(t,{config:n,children:e})}export{i as default};

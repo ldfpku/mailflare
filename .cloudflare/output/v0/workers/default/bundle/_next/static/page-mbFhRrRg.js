@@ -1,0 +1,2 @@
+import{t as e}from"./server-BmQ_CSsA.js";var t=e(()=>{throw Error(`Unexpectedly client reference export 'default' is called on server`)},`e81ad8c6851a`,`default`);export{t as default};
+//# sourceMappingURL=page-mbFhRrRg.js.map

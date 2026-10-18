@@ -1,0 +1,2 @@
+function e(e){if(e.headers.get(`Authorization`)?.startsWith(`Bearer `))return!0;let t=e.headers.get(`Sec-Fetch-Site`);if(t===`same-origin`)return!0;if(t===`cross-site`||t===`same-site`)return!1;let n=e.headers.get(`Origin`);return n!==null&&n===new URL(e.url).origin}export{e as t};
+//# sourceMappingURL=origin-BMLom-10.js.map

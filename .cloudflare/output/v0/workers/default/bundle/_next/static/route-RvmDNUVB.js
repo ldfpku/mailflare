@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{t}from"./cookies-BHe6t_9m.js";import{r as n}from"./chat-BlKEsAdn.js";async function r(r){let i=e(),a=await t(i,r);if(!a)return Response.json({error:`Unauthorized`},{status:401});let o=new URL(r.url).searchParams.get(`mailboxId`);if(!o)return Response.json({error:`Mailbox required`},{status:400});try{return Response.json({conversations:await n({env:i,user:a,mailboxId:o,origin:`chat`})})}catch{return Response.json({error:`Mailbox not found`},{status:404})}}export{r as GET};
+//# sourceMappingURL=route-RvmDNUVB.js.map

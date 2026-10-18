@@ -53,7 +53,12 @@ const userRoutes: ImRouteTable<ImContext> = {
 	"GET im/chat/contact/list": () => imOk([]),
 	"POST im/chat/msg/list": () => imOk([]),
 	"GET im/room/group/list": groupList,
+	// Contacts come from the organisation directory and there are no friend requests, so both cursor pages are empty.
+	"GET im/user/friend/page": () => imOk(EMPTY_CURSOR_PAGE),
+	"GET im/room/notice/page": () => imOk(EMPTY_CURSOR_PAGE),
 };
+
+const EMPTY_CURSOR_PAGE = { list: [], cursor: "", isLast: true };
 
 export async function handleImRequest(request: Request, env: CloudflareEnv): Promise<Response> {
 	const url = new URL(request.url);

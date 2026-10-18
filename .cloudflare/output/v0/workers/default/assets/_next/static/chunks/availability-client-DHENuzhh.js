@@ -1,0 +1,1 @@
+var e=`mailflare-assistant-enabled`;function t(){try{let t=localStorage.getItem(e);return t===null?null:t===`true`}catch{return null}}function n(t){try{localStorage.setItem(e,String(t))}catch{}}export{n,t};

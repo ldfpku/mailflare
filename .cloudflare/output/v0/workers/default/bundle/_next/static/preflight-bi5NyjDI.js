@@ -1,0 +1,2 @@
+import{l as e}from"./cloudflare-api-B8-tYqME.js";async function t(t,n){let r=n.toLowerCase().trim(),i=await e(t,r);if(!i)throw Error(`Zone not found for "${r}". The domain must use Cloudflare DNS on this account.`);return{hostname:r,zone:i}}export{t};
+//# sourceMappingURL=preflight-bi5NyjDI.js.map
