@@ -1,0 +1,2 @@
+import{U as e,Y as t,t as n}from"./db-BMvxAiwD.js";function r(e){let t=e,n=new Set;for(;t&&!n.has(t);){if(n.add(t),t instanceof Error&&/no such table:\s*users/i.test(t.message))return!0;if(typeof t!=`object`||!(`cause`in t))break;t=t.cause}return!1}async function i(i){if(!i.DB)return!1;try{let[r]=await n(i).select({id:e.id}).from(e).where(t(e.role,`admin`)).limit(1);return!!r}catch(e){if(r(e))return!1;throw e}}export{i as t};
+//# sourceMappingURL=setup-BgjgwU3i.js.map

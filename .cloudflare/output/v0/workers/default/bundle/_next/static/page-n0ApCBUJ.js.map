@@ -1,0 +1,1 @@
+{"version":3,"file":"page-n0ApCBUJ.js","names":["Page","page_default$1","page_default"],"sources":["../../../../../../../../src/app/(dashboard)/snoozed/[messageId]/page.tsx"],"sourcesContent":["import Page from \"@/app/(dashboard)/inbox/[messageId]/page\";\n\nexport default Page;\n"],"mappings":"kCAEA,IAAAE,EAAeF"}

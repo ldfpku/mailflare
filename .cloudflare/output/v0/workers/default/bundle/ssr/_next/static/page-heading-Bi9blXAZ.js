@@ -1,0 +1,2 @@
+import{t as e}from"./jsx-runtime-7_pICZxP.js";import{n as t}from"./language-provider-BnyJ_005.js";var n=e();function r({labelKey:e}){let{t:r}=t();return(0,n.jsx)(`h1`,{className:`sr-only`,children:r(e)})}export{r as PageHeading};
+//# sourceMappingURL=page-heading-Bi9blXAZ.js.map

@@ -1,0 +1,2 @@
+import{n as e}from"./server-Cb0y_iLs.js";import{r as t,t as n}from"./key-auth-7-smXTUY.js";import{t as r}from"./cookies-BHe6t_9m.js";async function i(e,t){return t?.startsWith(`Bearer `)?n(e,t.slice(7)):null}var a=t;async function o(t,n){let i=await r(t,n);return i?{user:i,error:null}:{user:null,error:e.json({error:`Unauthorized`},{status:401})}}export{a as n,o as r,i as t};
+//# sourceMappingURL=auth-BshERKRB.js.map

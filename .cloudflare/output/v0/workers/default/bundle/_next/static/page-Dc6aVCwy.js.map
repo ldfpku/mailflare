@@ -1,0 +1,1 @@
+{"version":3,"file":"page-Dc6aVCwy.js","names":["redirect","OnboardingPage"],"sources":["../../../../../../../../src/app/(auth)/onboarding/page.tsx"],"sourcesContent":["import { redirect } from \"next/navigation\";\n\nexport default function OnboardingPage() {\n\tredirect(\"/setup\");\n}\n"],"mappings":"0DAEA,SAAwBC,GAAiB,CACxCD,EAAS,QAAQ,CAClB"}

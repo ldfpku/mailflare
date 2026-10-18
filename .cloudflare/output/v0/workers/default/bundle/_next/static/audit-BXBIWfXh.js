@@ -1,0 +1,2 @@
+import{t as e,u as t}from"./db-BMvxAiwD.js";import{t as n}from"./ids-Wr4FyoCD.js";async function r(r,i){await e(r).insert(t).values({id:n(`aud`),actorUserId:i.actorUserId??null,targetUserId:i.targetUserId??null,mailboxId:i.mailboxId??null,messageId:i.messageId??null,action:i.action,metadata:i.metadata?JSON.stringify(i.metadata):null})}export{r as t};
+//# sourceMappingURL=audit-BXBIWfXh.js.map

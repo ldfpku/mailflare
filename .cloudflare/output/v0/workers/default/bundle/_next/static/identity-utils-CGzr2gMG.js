@@ -1,0 +1,2 @@
+function e(e){return`${e.localPart}@${e.hostname}`.trim().toLowerCase()}function t(t,n){return n?e(t)===n.trim().toLowerCase():!1}function n(e,n){return e.type===`personal`&&t(e,n)}function r(e,t,r){return n(e,t)?r:e.displayName}export{r as n,n as r,t};
+//# sourceMappingURL=identity-utils-CGzr2gMG.js.map

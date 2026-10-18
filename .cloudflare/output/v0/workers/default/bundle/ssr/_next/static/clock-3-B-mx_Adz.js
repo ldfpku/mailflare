@@ -1,0 +1,2 @@
+import{t as e}from"./createLucideIcon-jN3aADD8.js";var t=e(`clock-3`,[[`circle`,{cx:`12`,cy:`12`,r:`10`,key:`1mglay`}],[`path`,{d:`M12 6v6h4`,key:`135r8i`}]]);export{t};
+//# sourceMappingURL=clock-3-B-mx_Adz.js.map

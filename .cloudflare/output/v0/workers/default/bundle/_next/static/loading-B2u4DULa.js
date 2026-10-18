@@ -1,0 +1,2 @@
+import{t as e}from"./framework~index~layout~loading~page~page~page~page~page~page~page~page~page~layout~page~pag~ogndk7ov-DMLgQTKt.js";import{t}from"./route-loading-bar-Bd9gOyT-.js";var n=e();function r(){return(0,n.jsx)(t,{})}export{r as default};
+//# sourceMappingURL=loading-B2u4DULa.js.map

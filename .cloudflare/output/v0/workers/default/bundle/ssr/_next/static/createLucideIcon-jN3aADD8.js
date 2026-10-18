@@ -1,0 +1,2 @@
+import{i as e,t}from"./react-DJibUF-Z.js";import{r as n,t as r}from"./Icon-CzMWv3Yc.js";var i=e(t(),1),a=e=>e.replace(/([a-z0-9])([A-Z])/g,`$1-$2`).toLowerCase(),o=e=>e.replace(/^([A-Z])|[\s-_]+(\w)/g,(e,t,n)=>n?n.toUpperCase():t.toLowerCase()),s=e=>{let t=o(e);return t.charAt(0).toUpperCase()+t.slice(1)},c=(e,t)=>{let o=(0,i.forwardRef)(({className:o,...c},l)=>(0,i.createElement)(r,{ref:l,iconNode:t,className:n(`lucide-${a(s(e))}`,`lucide-${e}`,o),...c}));return o.displayName=s(e),o};export{c as t};
+//# sourceMappingURL=createLucideIcon-jN3aADD8.js.map

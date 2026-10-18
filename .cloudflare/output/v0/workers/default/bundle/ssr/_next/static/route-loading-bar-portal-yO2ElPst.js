@@ -1,0 +1,2 @@
+import{i as e,t}from"./react-DJibUF-Z.js";import{t as n}from"./jsx-runtime-7_pICZxP.js";import{t as r}from"./react-dom-XTWFYW0t.js";import{t as i}from"./route-loading-bar-CiU_FmRE.js";var a=e(t(),1),o=e(r(),1),s=n();function c(){let[e,t]=(0,a.useState)(!1);return(0,a.useEffect)(()=>t(!0),[]),e?(0,o.createPortal)((0,s.jsx)(i,{}),document.body):(0,s.jsx)(i,{})}export{c as t};
+//# sourceMappingURL=route-loading-bar-portal-yO2ElPst.js.map

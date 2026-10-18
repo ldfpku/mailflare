@@ -1,0 +1,2 @@
+import{t as e}from"./jsx-runtime-7_pICZxP.js";import{o as t}from"./message-folder-configs-eVRBJSRF.js";import{t as n}from"./message-split-layout-B8iqLqPJ.js";var r=e();function i({children:e}){return(0,r.jsx)(n,{config:t,children:e})}export{i as default};
+//# sourceMappingURL=layout-AQXqvMIm.js.map

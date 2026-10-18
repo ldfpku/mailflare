@@ -1,0 +1,2 @@
+import{t as e}from"./sender-C8nhF-QW.js";async function t(t,n,r){try{return await e(t,{userId:n,from:r.from??``,mailboxId:r.mailboxId})}catch(e){return{error:e instanceof Error?e.message:`Mailbox is not authorized`}}}function n(e,t){return!!e&&e.userId===t&&e.status===`draft`}export{n,t};
+//# sourceMappingURL=utils-CV9gV5BI.js.map

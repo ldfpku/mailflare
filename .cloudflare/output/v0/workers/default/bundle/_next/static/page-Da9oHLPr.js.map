@@ -1,0 +1,1 @@
+{"version":3,"file":"page-Da9oHLPr.js","names":["redirect","AuditLogsRedirectPage"],"sources":["../../../../../../../../src/app/(admin)/audit-logs/page.tsx"],"sourcesContent":["import { redirect } from \"next/navigation\";\n\nexport default function AuditLogsRedirectPage() {\n\tredirect(\"/activity\");\n}\n"],"mappings":"0DAEA,SAAwBC,GAAwB,CAC/CD,EAAS,WAAW,CACrB"}

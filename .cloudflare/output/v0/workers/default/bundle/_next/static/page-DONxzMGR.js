@@ -1,0 +1,2 @@
+import{t as e}from"./server-BmQ_CSsA.js";import{t}from"./framework~index~layout~loading~page~page~page~page~page~page~page~page~page~layout~page~pag~ogndk7ov-DMLgQTKt.js";import n from"./page-DmitZoOB.js";var r=e(()=>{throw Error(`Unexpectedly client reference export 'OpenDraftOnRoute' is called on server`)},`51b18099dd18`,`OpenDraftOnRoute`),i=t();async function a({params:e}){let{messageId:t}=await e;return(0,i.jsxs)(i.Fragment,{children:[(0,i.jsx)(n,{}),(0,i.jsx)(r,{draftId:t})]})}export{a as default};
+//# sourceMappingURL=page-DONxzMGR.js.map

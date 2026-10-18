@@ -1,0 +1,1 @@
+import{r as e}from"./framework-2k-VFE-j.js";import{t}from"./message-folder-page-B4rLr7fb.js";import{o as n}from"./message-folder-configs-DpeLWDS6.js";var r=e();function i(){return(0,r.jsx)(t,{config:n})}export{i as default};

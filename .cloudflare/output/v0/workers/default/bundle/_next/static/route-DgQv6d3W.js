@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{u as t}from"./session-eiYECY_R.js";import{n}from"./server-Cb0y_iLs.js";import{r}from"./auth-BshERKRB.js";async function i(i){let a=e(),{user:o,error:s}=await r(a,i);return s||n.json({devices:await t(a,o.id)})}export{i as GET};
+//# sourceMappingURL=route-DgQv6d3W.js.map

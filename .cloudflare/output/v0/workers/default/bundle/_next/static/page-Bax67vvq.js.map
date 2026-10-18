@@ -1,0 +1,1 @@
+{"version":3,"file":"page-Bax67vvq.js","names":["redirect","SettingsPage"],"sources":["../../../../../../../../src/app/(settings)/settings/page.tsx"],"sourcesContent":["import { redirect } from \"next/navigation\";\n\nexport default function SettingsPage() {\n\tredirect(\"/settings/account\");\n}\n"],"mappings":"0DAEA,SAAwBC,GAAe,CACtCD,EAAS,mBAAmB,CAC7B"}

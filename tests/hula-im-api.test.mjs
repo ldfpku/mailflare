@@ -150,6 +150,8 @@ test("startup endpoints answer empty data and unknown endpoints answer 501", asy
 	assert.deepEqual((await call("POST", "im/chat/msg/list", { token, body: { async: true } })).data, []);
 	assert.deepEqual((await call("GET", "im/room/group/list", { token })).data, []);
 	assert.deepEqual((await call("GET", "im/room/group/list", { token, query: { current: "1", size: "50" } })).data, { records: [], total: "0", size: "50" });
+	assert.deepEqual((await call("GET", "im/user/friend/page", { token, query: { pageSize: "100", cursor: "" } })).data, { list: [], cursor: "", isLast: true });
+	assert.deepEqual((await call("GET", "im/room/notice/page", { token, query: { pageNo: "1", pageSize: "30" } })).data, { list: [], cursor: "", isLast: true });
 	assert.equal((await call("GET", "im/user/state/list", { token })).data[0].id, "1");
 	assert.equal((await call("GET", "system/anyTenant/config/init")).code, 200, "config is public like HuLa-Server's anyTenant routes");
 	assert.equal((await call("GET", "im/feed/list", { token })).code, 501);

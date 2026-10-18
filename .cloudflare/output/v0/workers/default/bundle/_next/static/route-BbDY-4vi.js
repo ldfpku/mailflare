@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{t}from"./handler-BKA1S3iB.js";async function n(n){return await t(n,e())??new Response(`Not found`,{status:404})}var r=`force-dynamic`;export{n as GET,r as dynamic};
+//# sourceMappingURL=route-BbDY-4vi.js.map

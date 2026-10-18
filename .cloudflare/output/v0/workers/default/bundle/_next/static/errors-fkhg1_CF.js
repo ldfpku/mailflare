@@ -1,0 +1,2 @@
+import{y as e}from"./cloudflare-api-B8-tYqME.js";import{o as t}from"./provision-BRAtY3B3.js";function n(n,r,i=400){return e(n,2008)?{code:`MX_RECORDS_CONFLICT`,message:`Existing MX records currently deliver mail to another provider. Continue to delete them and replace them with Cloudflare Email Routing.`,status:409}:n instanceof t?{code:`MX_RECORDS_CONFLICT`,message:n.message,status:409}:{message:n instanceof Error?n.message:r,status:i}}export{n as t};
+//# sourceMappingURL=errors-fkhg1_CF.js.map

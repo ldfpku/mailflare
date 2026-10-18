@@ -1,0 +1,2 @@
+import{J as e,Y as t,tt as n,v as r}from"./db-BMvxAiwD.js";import{s as i}from"./access-BRSv0MQ4.js";import{n as a}from"./server-Cb0y_iLs.js";import{t as o}from"./auth-CWikPLsX.js";async function s(s){let c=await o(s);if(c.error)return c.error;let{db:l,user:u}=c,d=await l.select().from(r).where(e(t(r.ownerId,u.id),t(r.kind,`folder`),n(r.trashedAt))).limit(2e3),f=await i(l,d);return a.json({folders:f.map(e=>({id:e.id,name:e.name,parentId:e.parentId}))})}export{s as GET};
+//# sourceMappingURL=route-VjIlMJIn.js.map

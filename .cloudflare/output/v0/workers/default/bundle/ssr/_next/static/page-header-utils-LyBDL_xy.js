@@ -1,0 +1,2 @@
+var e=`max-md:fixed max-md:inset-x-4 max-md:bottom-4 max-md:z-40 max-md:h-12 max-md:rounded-full max-md:shadow-lg`,t=`max-md:fixed max-md:inset-x-4 max-md:bottom-20 max-md:z-40 max-md:h-12 max-md:rounded-full max-md:shadow-lg`;export{e as n,t};
+//# sourceMappingURL=page-header-utils-LyBDL_xy.js.map

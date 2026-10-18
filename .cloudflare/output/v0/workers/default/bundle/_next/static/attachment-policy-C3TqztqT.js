@@ -1,0 +1,2 @@
+import{Y as e,l as t,t as n}from"./db-BMvxAiwD.js";var r=3e6;async function i(r){let[i]=await n(r).select({maxMb:t.outboundAttachmentMaxMb}).from(t).where(e(t.id,`default`)).limit(1);return i?.maxMb??25}export{i as n,r as t};
+//# sourceMappingURL=attachment-policy-C3TqztqT.js.map

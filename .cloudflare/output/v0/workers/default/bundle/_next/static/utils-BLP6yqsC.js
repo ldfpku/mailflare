@@ -1,0 +1,2 @@
+import{c as e,l as t}from"./address-BtNuDmDg.js";function n(e,t){return`${e}:${t.trim().toLowerCase()}`}function r(n){let r=t(n).name?.trim();return r?r===e(n)?null:r:null}export{r as n,n as t};
+//# sourceMappingURL=utils-BLP6yqsC.js.map

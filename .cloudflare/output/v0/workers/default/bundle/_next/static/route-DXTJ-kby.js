@@ -1,0 +1,2 @@
+import{n as e}from"./deletion-De9P_paa.js";import{n as t}from"./server-Cb0y_iLs.js";import{i as n}from"./utils-B2dOzkWg.js";async function r(r,{params:i}){let a=await n(r);if(a.error)return a.error;let{id:o}=await i,s=await e(a.env,a.user,o);return s.ok?t.json({ok:!0}):t.json({error:s.error},{status:s.status})}export{r as POST};
+//# sourceMappingURL=route-DXTJ-kby.js.map

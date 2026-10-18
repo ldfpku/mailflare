@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{t}from"./db-BMvxAiwD.js";import{t as n}from"./origin-BMLom-10.js";import{n as r}from"./server-Cb0y_iLs.js";import{r as i}from"./auth-BshERKRB.js";async function a(a,o=!1){let s=e(),{user:c,error:l}=await i(s,a);return l?{error:l}:o&&!n(a)?{error:r.json({error:`Invalid origin`},{status:403})}:{env:s,db:t(s),user:c,error:null}}export{a as t};
+//# sourceMappingURL=auth-CWikPLsX.js.map

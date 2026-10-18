@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{n as t}from"./server-Cb0y_iLs.js";import{r as n}from"./auth-BshERKRB.js";import{i as r}from"./mfa-VFmsxq7Q.js";async function i(i){let a=e(),o=await n(a,i);return o.error?o.error:t.json(await r(a,o.user))}export{i as GET};
+//# sourceMappingURL=route-BPBzEMCd.js.map

@@ -1,0 +1,2 @@
+var e=67108864e4;function t(e){return e===`owner`||e===`edit`}function n(e){if(e<1024)return`${e} B`;let t=[`KB`,`MB`,`GB`,`TB`],n=e/1024,r=0;for(;n>=1024&&r<t.length-1;)n/=1024,r+=1;return`${n>=10?Math.round(n):n.toFixed(1)} ${t[r]}`}export{t as n,n as r,e as t};
+//# sourceMappingURL=utils-C0hpYhWq.js.map

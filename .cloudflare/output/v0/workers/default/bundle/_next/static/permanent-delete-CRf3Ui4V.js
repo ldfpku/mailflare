@@ -1,0 +1,2 @@
+import{t as e}from"./audit-BXBIWfXh.js";import{t}from"./message-cleanup-CzR1iHOu.js";async function n(n,r,i,a,o){for(let s of a)await t(n,r,s.id,s.rawR2Key),await e(n,{actorUserId:i,mailboxId:s.mailboxId,action:`email.delete`,metadata:{permanent:!0,source:o,messageId:s.id,previousStatus:s.status}});return a.length}export{n as t};
+//# sourceMappingURL=permanent-delete-CRf3Ui4V.js.map

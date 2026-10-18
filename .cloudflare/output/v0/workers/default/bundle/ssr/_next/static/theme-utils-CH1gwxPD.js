@@ -1,0 +1,2 @@
+var e=`mailflare-theme`,t=`mailflare:theme-changed`;function n(e){return e===`light`||e===`dark`||e===`system`}function r(){return`system`}function i(e){return e===`system`?`light`:e}function a(e){if(typeof document>`u`)return;let t=i(e)===`dark`;document.documentElement.classList.toggle(`dark`,t),document.documentElement.classList.toggle(`light`,!t)}function o(t){try{t===`system`?localStorage.removeItem(e):localStorage.setItem(e,t)}catch{}a(t)}export{o as a,r as i,a as n,n as r,t};
+//# sourceMappingURL=theme-utils-CH1gwxPD.js.map

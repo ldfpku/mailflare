@@ -1,0 +1,2 @@
+import{t as e}from"./cloudflare-BzdYcC7R.js";import{n as t}from"./server-Cb0y_iLs.js";import{n}from"./cookies-BHe6t_9m.js";import{b as r}from"./validators-Cf6lk7nC.js";import{t as i}from"./preflight-bi5NyjDI.js";async function a(a){let o=e();await n(o,a);let s=r.safeParse(await a.json());if(!s.success)return t.json({error:s.error.flatten()},{status:400});try{return t.json({domain:await i(o,s.data.hostname)})}catch(e){let n=e instanceof Error?e.message:`Domain check failed`;return t.json({error:n},{status:502})}}export{a as POST};
+//# sourceMappingURL=route-D5kevk6S.js.map
