@@ -1,2 +1,0 @@
-import{t as e}from"./jsx-runtime-7_pICZxP.js";import{c as t}from"./message-folder-configs-eVRBJSRF.js";import{t as n}from"./message-folder-page-DuklGSJG.js";var r=e();function i(){return(0,r.jsx)(n,{config:t})}export{i as default};
-//# sourceMappingURL=page-DffVnqSw.js.map

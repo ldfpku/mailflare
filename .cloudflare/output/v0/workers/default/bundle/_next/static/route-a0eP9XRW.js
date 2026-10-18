@@ -1,2 +1,0 @@
-import{a as e}from"./webhooks-CN6SNQ2a.js";import{n as t}from"./server-Cb0y_iLs.js";import{t as n}from"./utils-B1VfNEe9.js";async function r(r,{params:i}){let{id:a}=await i,o=await n(r,a);if(o.error)return o.error;let s=await e(o.env,o.hook);return t.json(s)}export{r as POST};
-//# sourceMappingURL=route-a0eP9XRW.js.map

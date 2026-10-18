@@ -1,2 +1,0 @@
-import{i as e,t}from"./react-DJibUF-Z.js";var n=e(t(),1),r=`(max-width: 767px)`;function i(){return window.matchMedia(r).matches}function a(){return(0,n.useSyncExternalStore)(e=>{let t=window.matchMedia(r);return t.addEventListener(`change`,e),()=>t.removeEventListener(`change`,e)},i,()=>!1)}export{a as n,i as t};
-//# sourceMappingURL=sidebar-mobile-utils-B88ikviC.js.map

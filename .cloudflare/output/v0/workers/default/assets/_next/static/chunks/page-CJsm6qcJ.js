@@ -1,1 +1,0 @@
-import{r as e}from"./framework-2k-VFE-j.js";import{t}from"./message-folder-page-B4rLr7fb.js";import{t as n}from"./file-text-BuDBVuz_.js";var r=e();function i(){return(0,r.jsx)(t,{config:{folder:`drafts`,title:`Drafts`,titleKey:`navigation.drafts`,emptyText:`No drafts`,emptyTextKey:`folder.drafts.empty`,hrefPrefix:`/drafts`,icon:n,badgeVariant:`outline`}})}export{i as default};

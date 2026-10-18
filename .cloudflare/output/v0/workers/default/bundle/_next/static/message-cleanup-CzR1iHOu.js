@@ -1,2 +1,0 @@
-import{Y as e,j as t}from"./db-BMvxAiwD.js";import{o as n}from"./attachments-B6ipUiI5.js";async function r(r,i,a,o){await n(r,a),o&&await r.BUCKET.delete(o),await i.delete(t).where(e(t.id,a))}export{r as t};
-//# sourceMappingURL=message-cleanup-CzR1iHOu.js.map

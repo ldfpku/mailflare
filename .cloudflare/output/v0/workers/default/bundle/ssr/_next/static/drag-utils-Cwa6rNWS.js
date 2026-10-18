@@ -1,2 +1,0 @@
-var e=`application/x-mailflare-message-ids`;function t(t,n){t.effectAllowed=`move`,t.setData(e,JSON.stringify(n)),t.setData(`text/plain`,n.messageIds.join(`,`))}function n(t){let n=t.getData(e);if(!n)return null;try{let e=JSON.parse(n).messageIds?.filter(Boolean)??[];return e.length>0?{messageIds:e}:null}catch{return null}}export{t as n,n as t};
-//# sourceMappingURL=drag-utils-Cwa6rNWS.js.map

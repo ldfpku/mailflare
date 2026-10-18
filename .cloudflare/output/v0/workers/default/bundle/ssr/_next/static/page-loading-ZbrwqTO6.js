@@ -1,2 +1,0 @@
-import{i as e,t}from"./react-DJibUF-Z.js";var n=e(t(),1),r=(0,n.createContext)(null);function i(e){let t=(0,n.useContext)(r),i=(0,n.useId)();(0,n.useEffect)(()=>(t?.reportLoading(i,e),()=>t?.reportLoading(i,!1)),[t,i,e])}export{i as n,r as t};
-//# sourceMappingURL=page-loading-ZbrwqTO6.js.map

@@ -1,1 +1,0 @@
-{"version":3,"file":"page-DHXw2y_G.js","names":["redirect","RegisterPage"],"sources":["../../../../../../../../src/app/(auth)/register/page.tsx"],"sourcesContent":["import { redirect } from \"next/navigation\";\n\nexport default function RegisterPage() {\n\tredirect(\"/setup\");\n}\n"],"mappings":"0DAEA,SAAwBC,GAAe,CACtCD,EAAS,QAAQ,CAClB"}

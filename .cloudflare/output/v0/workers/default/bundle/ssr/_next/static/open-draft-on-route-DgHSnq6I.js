@@ -1,2 +1,0 @@
-import{i as e,t}from"./react-DJibUF-Z.js";import{n}from"./compose-context-C3ZS_B0C.js";var r=e(t(),1);function i({draftId:e}){let{openDraftComposer:t}=n(),i=(0,r.useRef)(null);return(0,r.useEffect)(()=>{i.current!==e&&(i.current=e,t(e))},[e,t]),null}export{i as OpenDraftOnRoute};
-//# sourceMappingURL=open-draft-on-route-DgHSnq6I.js.map

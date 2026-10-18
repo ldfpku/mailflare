@@ -1,2 +1,0 @@
-import{t as e}from"./cloudflare-BzdYcC7R.js";import{r as t}from"./user-I8pSF3w8.js";import{n}from"./server-Cb0y_iLs.js";import{t as r}from"./cookies-BHe6t_9m.js";async function i(i,{params:a}){let{messageId:o}=await a,s=e(),c=await r(s,i);return c?await t(s,c,o)?n.json({success:!0}):n.json({error:`Message not found`},{status:404}):n.json({error:`Unauthorized`},{status:401})}export{i as POST};
-//# sourceMappingURL=route-5aQiFKsy.js.map

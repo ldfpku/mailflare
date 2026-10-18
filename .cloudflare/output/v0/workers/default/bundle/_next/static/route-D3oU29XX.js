@@ -1,2 +1,0 @@
-import{t as e}from"./cloudflare-BzdYcC7R.js";import{n as t}from"./utils-C_k6xzZV.js";import{t as n}from"./cookies-BHe6t_9m.js";async function r(r,{params:i}){let a=e(),o=await n(a,r);if(!o)return Response.json({error:`Unauthorized`},{status:401});try{return Response.json(await t(a,o,(await i).id))}catch{return Response.json({error:`Approval not found`},{status:404})}}export{r as GET};
-//# sourceMappingURL=route-D3oU29XX.js.map

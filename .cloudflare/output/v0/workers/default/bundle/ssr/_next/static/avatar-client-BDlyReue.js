@@ -1,2 +1,0 @@
-var e=`mailflare:mailbox-avatar-changed`;function t(t,n){window.dispatchEvent(new CustomEvent(e,{detail:{mailboxId:t,url:n}}))}export{t as n,e as t};
-//# sourceMappingURL=avatar-client-BDlyReue.js.map

@@ -1,2 +1,0 @@
-import{t as e}from"./server-BmQ_CSsA.js";import{t}from"./framework~index~layout~loading~page~page~page~page~page~page~page~page~page~layout~page~pag~ogndk7ov-DMLgQTKt.js";var n=e(()=>{throw Error(`Unexpectedly client reference export 'ApiKeysSettings' is called on server`)},`67efc7d470a1`,`ApiKeysSettings`),r=t();function i(){return(0,r.jsx)(`div`,{className:`py-4`,children:(0,r.jsx)(n,{})})}export{i as default};
-//# sourceMappingURL=page-mhDG10Kl.js.map

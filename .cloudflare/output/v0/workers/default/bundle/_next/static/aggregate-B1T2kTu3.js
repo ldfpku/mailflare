@@ -1,2 +1,0 @@
-import{dt as e,ft as t,pt as n}from"./db-BMvxAiwD.js";function r(t){return e`count(${t||e.raw(`*`)})`.mapWith(Number)}function i(t){return e`count(distinct ${t})`.mapWith(Number)}function a(t){return e`sum(${t})`.mapWith(String)}function o(r){return e`max(${r})`.mapWith(n(r,t)?r:String)}export{a as i,i as n,o as r,r as t};
-//# sourceMappingURL=aggregate-B1T2kTu3.js.map

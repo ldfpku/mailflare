@@ -1,2 +1,0 @@
-import{i as e,t}from"./react-DJibUF-Z.js";import{t as n}from"./jsx-runtime-7_pICZxP.js";import{t as r}from"./utils-bNONNbc6.js";var i=e(t(),1),a=n(),o=i.forwardRef(({className:e,...t},n)=>(0,a.jsx)(`input`,{type:`checkbox`,className:r(`h-4 w-4 shrink-0 rounded border-neutral-300 text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50`,e),ref:n,...t}));o.displayName=`Checkbox`;export{o as t};
-//# sourceMappingURL=checkbox-CNYJA7EQ.js.map

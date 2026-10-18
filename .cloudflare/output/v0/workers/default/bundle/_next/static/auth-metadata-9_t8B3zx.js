@@ -1,2 +1,0 @@
-import{n as e}from"./server-85uK6q8r.js";import{t}from"./home-server-utils-BAVM8wT7.js";async function n(n){let r=await e(),{appName:i}=await t();return{title:`${r(n)} - ${i}`}}export{n as t};
-//# sourceMappingURL=auth-metadata-9_t8B3zx.js.map

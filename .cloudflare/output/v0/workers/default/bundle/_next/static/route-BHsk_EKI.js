@@ -1,2 +1,0 @@
-import{n as e}from"./server-Cb0y_iLs.js";var t=()=>e.json({error:`Multiple accounts are not available in this build`},{status:410});async function n(){return t()}async function r(){return t()}async function i(){return t()}export{i as DELETE,n as GET,r as POST};
-//# sourceMappingURL=route-BHsk_EKI.js.map

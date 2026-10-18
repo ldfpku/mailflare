@@ -1,2 +1,0 @@
-import{t as e}from"./jsx-runtime-7_pICZxP.js";import{n as t}from"./navigation-s7_f6M3_.js";import{t as n}from"./message-folder-page-DuklGSJG.js";import{t as r}from"./use-custom-folder-config-7cCSdh5b.js";var i=e();function a(){let e=t(),a=r(e.folderId);return(0,i.jsx)(n,{config:a})}export{a as default};
-//# sourceMappingURL=page-BGTn42_5.js.map

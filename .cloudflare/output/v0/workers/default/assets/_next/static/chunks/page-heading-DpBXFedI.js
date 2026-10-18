@@ -1,1 +1,0 @@
-import{r as e}from"./framework-2k-VFE-j.js";import{n as t}from"./language-provider-B3Ili1jw.js";var n=e();function r({labelKey:e}){let{t:r}=t();return(0,n.jsx)(`h1`,{className:`sr-only`,children:r(e)})}export{r as PageHeading};

@@ -1,1 +1,0 @@
-{"version":3,"file":"page--Cli8q3K.js","names":["Page","page_default$1","page_default"],"sources":["../../../../../../../../src/app/(dashboard)/starred/[messageId]/page.tsx"],"sourcesContent":["import Page from \"@/app/(dashboard)/inbox/[messageId]/page\";\n\nexport default Page;\n"],"mappings":"kCAEA,IAAAE,EAAeF"}

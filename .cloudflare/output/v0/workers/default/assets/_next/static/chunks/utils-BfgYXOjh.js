@@ -1,1 +1,0 @@
-function e(e){return`${e.localPart}@${e.hostname}`}function t(e){return e.displayName?.trim()||e.localPart}function n(e){return e.startsWith(`/settings`)?`/settings/mailboxes`:`/mailboxes`}export{t as n,n as r,e as t};

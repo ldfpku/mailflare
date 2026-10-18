@@ -1,2 +1,0 @@
-import"./navigation-s7_f6M3_.js";function e(e,t){return null}function t(e,t){return null}export{e as resolveHybridClientRewriteHref,t as resolveHybridClientRouteOwner};
-//# sourceMappingURL=hybrid-client-route-owner-lmM5bFTp.js.map

@@ -1,1 +1,0 @@
-{"version":3,"file":"page-B5zF8fx4.js","names":["Page","page_default$1","page_default"],"sources":["../../../../../../../../src/app/(dashboard)/scheduled/[messageId]/page.tsx"],"sourcesContent":["import Page from \"@/app/(dashboard)/inbox/[messageId]/page\"\n\nexport default Page;"],"mappings":"kCAEA,IAAAE,EAAeF"}
