@@ -27,6 +27,10 @@
 				"name": "REALTIME",
 				"class_name": "RealtimeHub",
 			},
+			{
+				"name": "IM_HUB",
+				"class_name": "ImUserHub",
+			},
 		],
 	},
 	"migrations": [
@@ -34,6 +38,12 @@
 			"tag": "v1",
 			"new_sqlite_classes": [
 				"RealtimeHub",
+			],
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"ImUserHub",
 			],
 		},
 	],

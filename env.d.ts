@@ -19,6 +19,10 @@ interface CloudflareEnv {
 	REALTIME: DurableObjectNamespace<
 		import("./src/lib/realtime/hub").RealtimeHub
 	>;
+	/** HuLa client sockets, one object per user. Absent in the Node runtime. */
+	IM_HUB: DurableObjectNamespace<
+		import("./src/lib/im/hub").ImUserHub
+	>;
 	LOGIN_RATE_LIMIT?: RateLimit;
 	/** Mobile device sign-in (`/api/auth/device`), stricter than the web login. */
 	DEVICE_LOGIN_RATE_LIMIT?: RateLimit;
