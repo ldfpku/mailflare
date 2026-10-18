@@ -63,3 +63,6 @@ mailflare-landing
 .agents
 skills-lock.json
 /dist/
+
+# cf build output and local dev state
+.cloudflare/

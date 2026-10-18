@@ -11,7 +11,7 @@ CF_TOKEN=your_api_token_with_zone_email_permissions
 # CF_API_KEY=your_global_api_key
 
 # The Worker uses the AI binding in wrangler.jsonc. Override its chat/draft model if needed.
-# AI_MODEL=@cf/moonshotai/kimi-k2.5
+# AI_MODEL=@cf/deepseek-ai/deepseek-v4-pro-0813
 
 # Optional: send and receive through Resend or Amazon SES instead of Cloudflare.
 # These can also be entered in Admin > Domains; values saved there take precedence.

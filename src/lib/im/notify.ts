@@ -1,0 +1,22 @@
+import type { ImSocketEvent } from "./hub-utils";
+
+/** Pushes one event to every open HuLa client of each user. A no-op where there is no hub (Node runtime). */
+export async function notifyImUsers(env: CloudflareEnv, userIds: string[], event: ImSocketEvent): Promise<void> {
+	const hubs = env.IM_HUB;
+	if (!hubs) return;
+	const body = JSON.stringify(event);
+	await Promise.allSettled(
+		[...new Set(userIds)].map((userId) =>
+			hubs.getByName(userId).fetch("https://mailflare-im/notify", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body,
+			}),
+		),
+	);
+}
+
+/** Closes every HuLa connection of a user, e.g. after their sessions were revoked. */
+export async function disconnectImUser(env: CloudflareEnv, userId: string): Promise<void> {
+	await env.IM_HUB?.getByName(userId).fetch("https://mailflare-im/disconnect", { method: "POST" });
+}

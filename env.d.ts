@@ -19,6 +19,10 @@ interface CloudflareEnv {
 	REALTIME: DurableObjectNamespace<
 		import("./src/lib/realtime/hub").RealtimeHub
 	>;
+	/** HuLa client sockets, one object per user. Absent in the Node runtime. */
+	IM_HUB: DurableObjectNamespace<
+		import("./src/lib/im/hub").ImUserHub
+	>;
 	LOGIN_RATE_LIMIT?: RateLimit;
 	/** Mobile device sign-in (`/api/auth/device`), stricter than the web login. */
 	DEVICE_LOGIN_RATE_LIMIT?: RateLimit;
@@ -48,9 +52,6 @@ interface CloudflareEnv {
 	CF_API_KEY?: string;
 	CF_EMAIL?: string;
 	TURNSTILE_SECRET_KEY?: string;
-	GITHUB_UPDATE_TOKEN?: string;
-	GITHUB_UPDATE_REF?: string;
-	GITHUB_UPDATE_REPO?: string;
 	/** "node" when served by the self-hosted runtime in server/; unset on Workers. */
 	MAILFLARE_RUNTIME?: "node";
 	/** Shared secret the Cloudflare email relay signs inbound webhooks with (self-hosted only). */

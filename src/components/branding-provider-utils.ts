@@ -1,9 +1,8 @@
 import type { Branding } from "@/lib/branding/types";
 
 export const DEFAULT_BRANDING: Branding = {
-	appName: "Mailflare",
+	appName: "斯米伽邮箱",
 	hasCustomIcon: false,
-	canCustomizeBranding: false,
 };
 
 export async function fetchBranding(): Promise<Branding> {

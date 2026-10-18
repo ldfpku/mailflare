@@ -14,12 +14,13 @@ interface __BaseEnv_CloudflareEnv {
 	IMAGES: ImagesBinding;
 	ASSETS: Fetcher;
 	REALTIME: DurableObjectNamespace<import("./worker").RealtimeHub>;
+	IM_HUB: DurableObjectNamespace<import("./worker").ImUserHub>;
 	WORKER_SELF_REFERENCE: Service<typeof import("./worker").default>;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./worker");
-		durableNamespaces: "RealtimeHub";
+		durableNamespaces: "RealtimeHub" | "ImUserHub";
 	}
 	interface Env extends __BaseEnv_CloudflareEnv {}
 }

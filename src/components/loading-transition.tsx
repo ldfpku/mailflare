@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsFetching } from "@tanstack/react-query";
-import { useBranding } from "@/components/branding-provider";
+import { BrandIcon } from "@/components/brand-icon";
 import { useLanguage } from "@/components/language-provider";
 import { PageLoadingContext } from "@/components/page-loading";
 import { RouteLoadingBar } from "@/components/route-loading-bar";
@@ -15,14 +15,12 @@ let hasShownInitialLoadingTransition = false;
 
 export function LoadingTransition({ children, ready }: LoadingTransitionProps) {
 	const { t } = useLanguage();
-	const branding = useBranding();
 	const showInitialLoader = useRef(!hasShownInitialLoadingTransition).current;
 	const startedAt = useRef(Date.now());
 	const [progress, setProgress] = useState(8);
 	const [loaderVisible, setLoaderVisible] = useState(showInitialLoader);
 	const [contentVisible, setContentVisible] = useState(!showInitialLoader);
 	const [initialLoadComplete, setInitialLoadComplete] = useState(!showInitialLoader);
-	const [iconUrl, setIconUrl] = useState(branding.iconUrl);
 	const [pageMounted, setPageMounted] = useState(false);
 	const [pendingLoads, setPendingLoads] = useState(0);
 	const [dataWaitExpired, setDataWaitExpired] = useState(false);
@@ -36,10 +34,6 @@ export function LoadingTransition({ children, ready }: LoadingTransitionProps) {
 	}, []);
 	const loadingContext = useMemo(() => ({ reportLoading }), [reportLoading]);
 	const canComplete = ready && pageMounted && (dataWaitExpired || (pendingLoads === 0 && fetchingQueries === 0));
-
-	useEffect(() => {
-		setIconUrl(branding.iconUrl);
-	}, [branding.iconUrl]);
 
 	useEffect(() => {
 		if (canComplete) return;
@@ -102,12 +96,7 @@ export function LoadingTransition({ children, ready }: LoadingTransitionProps) {
 				>
 					<span className="sr-only">{loaderVisible ? t("nav.loading") : ""}</span>
 					<div aria-hidden="true" className="flex w-64 flex-col items-center gap-6">
-						<img
-							src={iconUrl}
-							onError={() => setIconUrl("/icon-96.png")}
-							alt=""
-							className="h-20 w-20 rounded-2xl object-contain"
-						/>
+						<BrandIcon className="h-20 w-20" />
 						<div className="w-full">
 							<div className="h-1.5 overflow-hidden rounded-full bg-blue-100">
 								<div

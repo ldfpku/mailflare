@@ -47,5 +47,8 @@ export const locales = {
 } satisfies Record<string, LocaleEntry>;
 
 export type Locale = keyof typeof locales;
-export const DEFAULT_LOCALE = "en" satisfies Locale;
+/** English ships in the main bundle; every other catalog loads from `public/locales`. */
+export const BUNDLED_LOCALE = "en" satisfies Locale;
+/** Used when no preference cookie is set or its value is not a registered locale. */
+export const DEFAULT_LOCALE = "zh-CN" satisfies Locale;
 export const supportedLocales = Object.keys(locales) as Locale[];

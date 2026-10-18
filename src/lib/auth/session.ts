@@ -1,5 +1,6 @@
 import { and, eq, gt, ne } from "drizzle-orm";
 import { revokeAllDeviceKeys } from "@/lib/auth/device-keys";
+import { disconnectImUser } from "@/lib/im/notify";
 import { newId } from "@/lib/ids";
 import { getDb } from "@/db";
 import { sessions, users } from "@/db/schema";
@@ -74,11 +75,12 @@ export async function deleteSession(env: CloudflareEnv, token: string): Promise<
 /**
  * Signs the user out everywhere: every session (but `keepToken`'s) and every
  * mobile device key, so a password change or "sign out everywhere" also
- * disconnects the apps.
+ * disconnects the apps, HuLa's open sockets included.
  */
 export async function deleteUserSessions(env: CloudflareEnv, userId: string, keepToken?: string): Promise<void> {
 	const db = getDb(env);
 	await revokeAllDeviceKeys(env, userId);
+	await disconnectImUser(env, userId).catch(() => undefined);
 	if (keepToken) {
 		const keepHash = await hashSessionToken(keepToken);
 		await db.delete(sessions).where(and(eq(sessions.userId, userId), ne(sessions.tokenHash, keepHash)));

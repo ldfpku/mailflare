@@ -10,6 +10,7 @@ import { isInboundQueueMessage, isWebhookRetryMessage } from "./worker-utils";
 import { processWebhookRetry, type WebhookRetryMessage } from "./src/lib/email/webhooks";
 import { resolveIncomingMail, forwardMessage } from "./src/lib/email/incoming";
 import { getUserFromSession } from "./src/lib/auth/session";
+import { resolveImSocketToken } from "./src/lib/im/tokens";
 import { getSessionTokenFromRequest } from "./src/lib/realtime/utils";
 import { inboundAttachmentLimitReasonFromRaw } from "./src/lib/email/inbound-attachments";
 import { hasValidSessionMutationOrigin } from "./src/lib/auth/origin";
@@ -25,6 +26,7 @@ import { runDriveTrashRetention } from "./src/lib/drive/retention";
 import { runAccountRetention } from "./src/lib/accounts/deletion";
 import { runJmapChangeRetention } from "./src/lib/jmap/changes";
 export { RealtimeHub } from "./src/lib/realtime/hub";
+export { ImUserHub } from "./src/lib/im/hub";
 
 export default {
 	async fetch(request: Request, rawEnv: CloudflareEnv, ctx: ExecutionContext) {
@@ -47,6 +49,20 @@ export default {
 			const hubRequest = new Request("https://mailflare-realtime/connect", request);
 			hubRequest.headers.set("X-Mailflare-Realtime-User", user.id);
 			return hub.fetch(hubRequest);
+		}
+
+		if (url.pathname === "/api/im/ws") {
+			// HuLa's client socket. It is a native app, so it sends no Origin and authenticates with its token.
+			if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+				return new Response("Expected WebSocket upgrade", { status: 426 });
+			}
+			const user = await resolveImSocketToken(env, url.searchParams.get("Token"));
+			if (!user) return new Response("Unauthorized", { status: 401 });
+
+			const hubRequest = new Request("https://mailflare-im/connect", request);
+			hubRequest.headers.set("X-Mailflare-Im-User", user.id);
+			hubRequest.headers.set("X-Mailflare-Im-Client", url.searchParams.get("clientId")?.slice(0, 200) ?? "");
+			return env.IM_HUB.getByName(user.id).fetch(hubRequest);
 		}
 
 		return vinextHandler.fetch(request, env, ctx);

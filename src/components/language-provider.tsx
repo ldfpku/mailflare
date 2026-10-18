@@ -1,14 +1,14 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_LOCALE, createTranslator, getDirection, loadMessages, resolveLocale, serializeLocaleCookie } from "@/lib/i18n/utils";
+import { BUNDLED_LOCALE, createTranslator, getDirection, loadMessages, resolveLocale, serializeLocaleCookie } from "@/lib/i18n/utils";
 import type { Locale, Messages } from "@/lib/i18n/types";
 import type { LanguageState } from "./language-provider-types";
 
 const LanguageContext = createContext<LanguageState>({
-	locale: DEFAULT_LOCALE,
+	locale: BUNDLED_LOCALE,
 	setLocale: () => undefined,
-	t: createTranslator(DEFAULT_LOCALE),
+	t: createTranslator(BUNDLED_LOCALE),
 });
 
 type Active = { locale: Locale; messages?: Partial<Messages> };

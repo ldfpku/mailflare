@@ -47,6 +47,7 @@ export async function POST(request: Request) {
 	if (!hasValidSessionMutationOrigin(request)) return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
 	const parsed = createKeySchema.safeParse(await request.json().catch(() => null));
 	if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+	if (parsed.data.mcpAllowed && !access.user!.mcpEnabled) return NextResponse.json({ error: "MCP is not turned on for your account" }, { status: 403 });
 	const db = getDb(access.env);
 	const { fullKey, prefix, hash } = generateApiKey();
 	const id = newId("key");

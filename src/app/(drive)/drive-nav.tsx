@@ -11,7 +11,6 @@ import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { PoweredBy } from "@/components/sidebar-footer";
 import { useSidebar } from "@/components/sidebar-state";
 import { authFetch } from "@/lib/auth/client";
 import { formatDriveSize } from "@/lib/drive/utils";
@@ -195,7 +194,6 @@ export function DriveNav({ onNavigate }: { onNavigate?: () => void }) {
 							</div>
 						) : <p className="mb-2 text-xs text-neutral-600">{t("drive.storageUsed", { size: formatDriveSize(storage.used) })}</p>
 					)}
-					<PoweredBy className="" />
 				</div>
 			)}
 			<Dialog open={creating} onOpenChange={(open) => { if (!saving) setCreating(open); }}>

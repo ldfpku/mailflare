@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { BrandIcon } from "@/components/brand-icon";
 import { useBranding } from "@/components/branding-provider";
 import { LanguageSelector } from "@/components/language-selector";
 import type { AuthShellProps } from "./types";
 
 export function AuthShell({
-  icon: Icon,
   title,
   description,
   children,
@@ -14,34 +13,12 @@ export function AuthShell({
   steps,
 }: AuthShellProps) {
   const branding = useBranding();
-  const [iconUrl, setIconUrl] = useState(branding.iconUrl);
-  const [iconFailed, setIconFailed] = useState(false);
-
-  useEffect(() => {
-    setIconUrl(branding.iconUrl);
-    setIconFailed(false);
-  }, [branding.iconUrl]);
-
   return (
     <div className="min-h-dvh bg-[#f1f4fa] text-neutral-900 sm:px-6 sm:py-6 lg:flex lg:items-center lg:px-10 lg:py-10">
       <main className="mx-auto grid min-h-dvh w-full max-w-4xl grid-rows-[auto_1fr] overflow-hidden bg-white sm:min-h-0 sm:grid-rows-none sm:rounded-4xl lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <section className="flex flex-col p-7 sm:p-10 lg:p-14">
           <div className="flex items-center gap-2">
-            <span className="flex items-center justify-center overflow-hidden">
-              {iconFailed ? (
-                <Icon className="h-8 w-8 text-blue-600" />
-              ) : (
-                <img
-                  src={iconUrl}
-                  onError={() => {
-                    if (iconUrl !== "/icon-96.png") setIconUrl("/icon-96.png");
-                    else setIconFailed(true);
-                  }}
-                  alt=""
-                  className="h-8 w-8 object-contain"
-                />
-              )}
-            </span>
+            <BrandIcon className="h-8 w-8" />
             <span className="truncate text-md font-semibold text-neutral-800">
               {branding.appName}
             </span>
