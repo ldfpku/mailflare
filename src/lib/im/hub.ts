@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { setPresence } from "./chat";
 import { IM_HEARTBEAT_REQUEST, IM_HEARTBEAT_RESPONSE, type ImSocketAttachment, type ImSocketEvent } from "./hub-utils";
 
 /**
@@ -30,6 +31,7 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 				connectedAt: Date.now(),
 			};
 			server.serializeAttachment(attachment);
+			await setPresence(this.env, userId, true).catch(() => undefined);
 			return new Response(null, { status: 101, webSocket: client });
 		}
 
@@ -69,5 +71,18 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 		} catch {
 			// Already closed.
 		}
+		await this.markOfflineIfLast(socket);
+	}
+
+	async webSocketError(socket: WebSocket): Promise<void> {
+		await this.markOfflineIfLast(socket);
+	}
+
+	/** Presence is per user: offline once the last of their clients has gone. */
+	private async markOfflineIfLast(closing: WebSocket): Promise<void> {
+		const open = this.ctx.getWebSockets().filter((socket) => socket !== closing && socket.readyState === WebSocket.OPEN);
+		if (open.length) return;
+		const userId = (closing.deserializeAttachment() as ImSocketAttachment | null)?.userId;
+		if (userId) await setPresence(this.env, userId, false).catch(() => undefined);
 	}
 }

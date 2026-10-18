@@ -44,7 +44,16 @@ async function fixture(t) {
 	await applyMigrations(database, join(root, "drizzle/migrations"));
 	database.db.prepare("INSERT INTO users (id, email, password_hash, name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)")
 		.run("u1", "sam@one.test", hashPassword("right-password"), "Sam", "user", 1);
-	const env = { DB: database, MAILFLARE_RUNTIME: "node", APP_URL: "https://mail.one.test" };
+	const pushes = [];
+	const IM_HUB = {
+		getByName: (userId) => ({
+			fetch: async (url, init) => {
+				if (url.endsWith("/notify")) pushes.push({ userId, ...JSON.parse(init.body) });
+				return new Response(null, { status: 204 });
+			},
+		}),
+	};
+	const env = { DB: database, MAILFLARE_RUNTIME: "node", APP_URL: "https://mail.one.test", IM_HUB };
 	globalThis.__mailflareNodeEnv = env;
 	t.after(() => { delete globalThis.__mailflareNodeEnv; });
 	const call = async (method, path, { body, token, query } = {}) => {
@@ -64,7 +73,10 @@ async function fixture(t) {
 		for (const { id } of row) database.db.prepare("UPDATE sessions SET expires_at = 1 WHERE id = ?").run(id);
 		return token;
 	};
-	return { database, env, call, login, expireAccess };
+	const addUser = (id, email, name) =>
+		database.db.prepare("INSERT INTO users (id, email, password_hash, name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run(id, email, hashPassword("right-password"), name, "user", 1);
+	return { database, env, call, login, expireAccess, addUser, pushes };
 }
 
 test("signs in with the mailflare email and password and answers in HuLa's envelope", async (t) => {
@@ -143,18 +155,185 @@ test("the socket accepts an expired access token only while its refresh token is
 	assert.equal(await resolveImSocketToken(env, null), null);
 });
 
-test("startup endpoints answer empty data and unknown endpoints answer 501", async (t) => {
+test("startup endpoints: the all-staff room is the only session and unknown endpoints answer 501", async (t) => {
 	const { call, login } = await fixture(t);
 	const { token } = (await login()).data;
-	assert.deepEqual((await call("GET", "im/chat/contact/list", { token })).data, []);
+	const sessions = (await call("GET", "im/chat/contact/list", { token })).data;
+	assert.equal(sessions.length, 1);
+	assert.deepEqual(
+		{ roomId: sessions[0].roomId, type: sessions[0].type, hotFlag: sessions[0].hotFlag, memberNum: sessions[0].memberNum, unreadCount: sessions[0].unreadCount, text: sessions[0].text },
+		{ roomId: "1", type: 1, hotFlag: 1, memberNum: 1, unreadCount: 0, text: "" },
+	);
 	assert.deepEqual((await call("POST", "im/chat/msg/list", { token, body: { async: true } })).data, []);
-	assert.deepEqual((await call("GET", "im/room/group/list", { token })).data, []);
-	assert.deepEqual((await call("GET", "im/room/group/list", { token, query: { current: "1", size: "50" } })).data, { records: [], total: "0", size: "50" });
+	assert.deepEqual((await call("GET", "im/room/group/list", { token })).data.map((group) => group.roomId), ["1"]);
+	assert.deepEqual((await call("GET", "im/room/group/list", { token, query: { current: "1", size: "50" } })).data.total, "1");
 	assert.deepEqual((await call("GET", "im/user/friend/page", { token, query: { pageSize: "100", cursor: "" } })).data, { list: [], cursor: "", isLast: true });
 	assert.deepEqual((await call("GET", "im/room/notice/page", { token, query: { pageNo: "1", pageSize: "30" } })).data, { list: [], cursor: "", isLast: true });
 	assert.equal((await call("GET", "im/user/state/list", { token })).data[0].id, "1");
-	assert.equal((await call("GET", "system/anyTenant/config/init")).code, 200, "config is public like HuLa-Server's anyTenant routes");
+	assert.equal((await call("GET", "system/anyTenant/config/init")).data.roomGroupId, "1", "config is public like HuLa-Server's anyTenant routes");
 	assert.equal((await call("GET", "im/feed/list", { token })).code, 501);
+});
+
+test("the directory lists every other active account and the all-staff room follows it", async (t) => {
+	const { database, call, login, addUser } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const { token } = (await login()).data;
+	const friends = (await call("GET", "im/user/friend/page", { token })).data;
+	assert.deepEqual(friends.list.map((friend) => friend.uid), ["u2", "u3"]);
+	assert.equal(friends.list[0].activeStatus, 2);
+	const members = (await call("GET", "im/room/group/listMember", { token, query: { roomId: "1" } })).data;
+	assert.deepEqual(members.map((member) => member.uid).sort(), ["u1", "u2", "u3"]);
+	assert.equal(typeof members[0].id, "string");
+	assert.equal(typeof members[0].lastOptTime, "number");
+
+	database.db.prepare("UPDATE users SET disabled = 1 WHERE id = 'u3'").run();
+	assert.deepEqual((await call("GET", "im/user/friend/page", { token })).data.list.map((friend) => friend.uid), ["u2"]);
+	assert.deepEqual((await call("GET", "im/room/group/listMember", { token, query: { roomId: "1" } })).data.map((member) => member.uid).sort(), ["u1", "u2"]);
+	assert.equal((await call("POST", "im/room/group/member/exit", { token, body: { roomId: "1" } })).code, 501, "exit uses DELETE");
+	assert.equal((await call("DELETE", "im/room/group/member/exit", { token, body: { roomId: "1" } })).code, 400);
+	const people = (await call("POST", "im/user/getUserByIds", { token, body: { uidList: ["u2", "u3", "nobody"] } })).data;
+	assert.deepEqual(people.map((person) => person.uid), ["u2"]);
+});
+
+test("one-to-one chat: open from a contact, send, push, sync, unread and read", async (t) => {
+	const { call, login, addUser, pushes } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+
+	const opened = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data;
+	assert.equal(opened.type, 2);
+	assert.equal(opened.detailId, "u2");
+	assert.equal(opened.name, "Kim");
+	const again = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data;
+	assert.equal(again.roomId, opened.roomId, "the same pair always gets the same room");
+	assert.equal((await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u1", roomType: "2" } })).code, 400);
+
+	const sent = await call("POST", "im/chat/msg", { token: sam, body: { id: "tmp-1", roomId: opened.roomId, msgType: 1, body: { content: "你好 <b>Kim</b>" } } });
+	assert.equal(sent.code, 200);
+	assert.match(sent.data.message.id, /^\d+$/);
+	assert.equal(sent.data.fromUser.uid, "u1");
+	assert.equal(sent.data.message.body.content, "你好 <b>Kim</b>");
+	assert.deepEqual(pushes.map((push) => [push.userId, push.type, push.data.message.id]), [["u2", "receiveMessage", sent.data.message.id]]);
+
+	const retried = await call("POST", "im/chat/msg", { token: sam, body: { id: "tmp-1", roomId: opened.roomId, msgType: 1, body: { content: "你好 <b>Kim</b>" } } });
+	assert.equal(retried.data.message.id, sent.data.message.id, "a retried send is stored once");
+
+	const kimSessions = (await call("GET", "im/chat/contact/list", { token: kim })).data;
+	const kimRoom = kimSessions.find((session) => session.roomId === opened.roomId);
+	assert.deepEqual({ name: kimRoom.name, unreadCount: kimRoom.unreadCount, text: kimRoom.text }, { name: "Sam", unreadCount: 1, text: "你好 Kim" });
+	assert.equal((await call("GET", "im/chat/contact/list", { token: sam })).data.find((session) => session.roomId === opened.roomId).unreadCount, 0);
+
+	const synced = (await call("POST", "im/chat/msg/list", { token: kim })).data;
+	assert.deepEqual(synced.map((message) => message.message.id), [sent.data.message.id]);
+	assert.equal(typeof synced[0].message.sendTime, "number");
+
+	assert.equal((await call("PUT", "im/chat/msg/read", { token: kim, body: { roomId: opened.roomId } })).code, 200);
+	assert.equal((await call("GET", "im/chat/contact/list", { token: kim })).data.find((session) => session.roomId === opened.roomId).unreadCount, 0);
+
+	const reply = await call("POST", "im/chat/msg", { token: kim, body: { id: "k-1", roomId: opened.roomId, msgType: 1, body: { content: "收到", replyMsgId: sent.data.message.id } } });
+	assert.deepEqual(
+		{ id: reply.data.message.body.reply.id, username: reply.data.message.body.reply.username, body: reply.data.message.body.reply.body },
+		{ id: sent.data.message.id, username: "Sam", body: "你好 Kim" },
+	);
+	const page = (await call("GET", "im/chat/msg/page", { token: sam, query: { roomId: opened.roomId, pageSize: "1" } })).data;
+	assert.deepEqual([page.list.map((message) => message.message.id), page.isLast], [[reply.data.message.id], false]);
+	const older = (await call("GET", "im/chat/msg/page", { token: sam, query: { roomId: opened.roomId, pageSize: "1", cursor: page.cursor } })).data;
+	assert.deepEqual([older.list.map((message) => message.message.id), older.isLast], [[sent.data.message.id], true]);
+
+	assert.equal((await call("POST", "im/chat/msg", { token: sam, body: { roomId: opened.roomId, msgType: 3, body: { url: "x" } } })).code, 400);
+	assert.equal((await call("POST", "im/chat/msg", { token: sam, body: { roomId: opened.roomId, msgType: 1, body: { content: "  " } } })).code, 400);
+});
+
+test("only members can read or write a room", async (t) => {
+	const { call, login, addUser } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const sam = (await login()).data.token;
+	const lee = (await login("lee@one.test")).data.token;
+	const room = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
+	await call("POST", "im/chat/msg", { token: sam, body: { roomId: room, msgType: 1, body: { content: "secret" } } });
+	assert.equal((await call("POST", "im/chat/msg", { token: lee, body: { roomId: room, msgType: 1, body: { content: "hi" } } })).code, 403);
+	assert.equal((await call("GET", "im/chat/msg/page", { token: lee, query: { roomId: room } })).code, 403);
+	assert.equal((await call("GET", "im/chat/contact/detail", { token: lee, query: { id: room } })).code, 403);
+	assert.equal((await call("POST", "im/chat/msg/list", { token: lee })).data.length, 0);
+	assert.equal((await call("POST", "im/chat/setTop", { token: lee, body: { roomId: room, top: true } })).code, 403);
+});
+
+test("recall: senders within two minutes, group managers any time, and everyone is told", async (t) => {
+	const { database, call, login, addUser, pushes } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	const created = await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } });
+	assert.equal(created.code, 200);
+	const roomId = created.data.roomId;
+	const own = (await call("POST", "im/chat/msg", { token: kim, body: { roomId, msgType: 1, body: { content: "oops" } } })).data;
+	pushes.length = 0;
+	assert.equal((await call("PUT", "im/chat/msg/recall", { token: kim, body: { roomId, msgId: own.message.id } })).code, 200);
+	assert.deepEqual(pushes.map((push) => push.type), ["msgRecall", "msgRecall", "msgRecall"]);
+	assert.deepEqual(pushes[0].data, { msgId: own.message.id, roomId, recallUid: "u2" });
+	const synced = (await call("POST", "im/chat/msg/list", { token: sam })).data.find((message) => message.message.id === own.message.id);
+	assert.deepEqual([synced.message.type, synced.message.body.content], [2, "Kim撤回了一条消息"]);
+
+	const old = (await call("POST", "im/chat/msg", { token: kim, body: { roomId, msgType: 1, body: { content: "old" } } })).data;
+	database.db.prepare("UPDATE im_messages SET created_at = created_at - 600000 WHERE id = ?").run(Number(old.message.id));
+	assert.equal((await call("PUT", "im/chat/msg/recall", { token: kim, body: { roomId, msgId: old.message.id } })).code, 403);
+	assert.equal((await call("PUT", "im/chat/msg/recall", { token: sam, body: { roomId, msgId: old.message.id } })).code, 200, "the owner moderates");
+});
+
+test("groups: create, invite, rename, admins, remove and leave", async (t) => {
+	const { call, login, addUser, pushes } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	addUser("u4", "max@one.test", "Max");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	assert.equal((await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2"] } })).code, 400, "a group needs two others");
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+	assert.deepEqual(pushes.map((push) => push.userId).sort(), ["u1", "u2", "u3"], "everyone gets the system message");
+	assert.equal(pushes[0].data.message.type, 8);
+	assert.equal(pushes[0].data.message.body, "Sam邀请Kim、Lee加入了群聊");
+
+	const kimView = (await call("GET", "im/chat/contact/detail", { token: kim, query: { id: roomId } })).data;
+	assert.deepEqual({ name: kimView.name, memberNum: kimView.memberNum, unreadCount: kimView.unreadCount }, { name: "Sam、Kim、Lee", memberNum: 3, unreadCount: 1 });
+	const detail = (await call("GET", "im/room/group/detail", { token: kim, query: { id: roomId } })).data;
+	assert.deepEqual({ roleId: detail.roleId, memberNum: detail.memberNum, groupName: detail.groupName }, { roleId: 3, memberNum: 3, groupName: "Sam、Kim、Lee" });
+
+	assert.equal((await call("POST", "im/room/updateRoomInfo", { token: kim, body: { id: roomId, name: "Team" } })).code, 403);
+	assert.equal((await call("POST", "im/room/updateRoomInfo", { token: sam, body: { id: roomId, name: "Team" } })).code, 200);
+	assert.equal((await call("GET", "im/chat/contact/detail", { token: kim, query: { id: roomId } })).data.name, "Team");
+
+	assert.equal((await call("POST", "im/room/group/member", { token: kim, body: { roomId, uidList: ["u4"] } })).code, 200, "any member can invite");
+	assert.equal((await call("DELETE", "im/room/group/member", { token: kim, body: { roomId, uidList: ["u4"] } })).code, 403);
+	assert.equal((await call("PUT", "im/room/group/admin", { token: sam, body: { roomId, uidList: ["u2"] } })).code, 200);
+	assert.equal((await call("DELETE", "im/room/group/member", { token: kim, body: { roomId, uidList: ["u4", "u1"] } })).code, 200, "admins remove members but never the owner");
+	const members = (await call("GET", "im/room/group/listMember", { token: sam, query: { roomId } })).data;
+	assert.deepEqual(members.map((member) => [member.uid, member.roleId]), [["u1", 1], ["u2", 2], ["u3", 3]]);
+
+	assert.equal((await call("DELETE", "im/room/group/member/exit", { token: sam, body: { roomId } })).code, 200);
+	const after = (await call("GET", "im/room/group/listMember", { token: kim, query: { roomId } })).data;
+	assert.deepEqual(after.map((member) => [member.uid, member.roleId]), [["u2", 1], ["u3", 3]], "ownership passes to the admin");
+	assert.equal((await call("GET", "im/room/group/listMember", { token: sam, query: { roomId } })).code, 403);
+});
+
+test("session settings are per member", async (t) => {
+	const { call, login, addUser } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	await call("POST", "im/chat/setTop", { token: sam, body: { roomId: "1", top: true } });
+	await call("POST", "im/chat/notification", { token: sam, body: { roomId: "1", type: 1 } });
+	await call("POST", "im/chat/setHide", { token: sam, body: { roomId: "1", hide: true } });
+	const mine = (await call("GET", "im/chat/contact/detail", { token: sam, query: { id: "1" } })).data;
+	assert.deepEqual([mine.top, mine.muteNotification, mine.hide], [true, 1, true]);
+	const theirs = (await call("GET", "im/chat/contact/detail", { token: kim, query: { id: "1" } })).data;
+	assert.deepEqual([theirs.top, theirs.muteNotification, theirs.hide], [false, 0, false]);
+	await call("POST", "im/chat/msg", { token: kim, body: { roomId: "1", msgType: 1, body: { content: "全员通知" } } });
+	assert.equal((await call("GET", "im/chat/contact/detail", { token: sam, query: { id: "1" } })).data.hide, false, "a new message shows a hidden session again");
+	assert.equal((await call("GET", "im/chat/contact/detail", { token: sam, query: { id: "1" } })).data.text, "Kim:全员通知");
 });
 
 test("route helpers", () => {
