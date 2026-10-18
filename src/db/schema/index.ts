@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, uniqueIndex, primaryKey } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 
@@ -931,6 +931,88 @@ export const driveShares = sqliteTable("drive_shares", {
 	index("drive_shares_user_idx").on(t.userId),
 ]);
 
+
+/**
+ * HuLa chat (`src/lib/im/`). Room "1" is the all-staff group every active
+ * account belongs to; it is HuLa's organisation directory. Message ids are the
+ * autoincrement row id, so they order messages and serve as read cursors.
+ */
+export const imRooms = sqliteTable(
+	"im_rooms",
+	{
+		id: text("id").primaryKey(),
+		/** 1 group, 2 one-to-one (HuLa's RoomTypeEnum). */
+		type: integer("type").notNull(),
+		hotFlag: integer("hot_flag").notNull().default(0),
+		name: text("name").notNull().default(""),
+		avatar: text("avatar").notNull().default(""),
+		ownerId: text("owner_id"),
+		/** The two user ids of a one-to-one room, sorted and joined by a space; null for groups. */
+		singleKey: text("single_key"),
+		lastMsgId: integer("last_msg_id"),
+		/** Epoch milliseconds, like every IM timestamp. */
+		activeTime: integer("active_time").notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [uniqueIndex("im_rooms_single_key_unique").on(table.singleKey)],
+);
+
+export const imRoomMembers = sqliteTable(
+	"im_room_members",
+	{
+		roomId: text("room_id")
+			.notNull()
+			.references(() => imRooms.id, { onDelete: "cascade" }),
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		/** 1 owner, 2 admin, 3 member (HuLa's roleId). */
+		role: integer("role").notNull().default(3),
+		myName: text("my_name").notNull().default(""),
+		remark: text("remark").notNull().default(""),
+		top: integer("top", { mode: "boolean" }).notNull().default(false),
+		hide: integer("hide", { mode: "boolean" }).notNull().default(false),
+		muteNotification: integer("mute_notification").notNull().default(0),
+		shield: integer("shield", { mode: "boolean" }).notNull().default(false),
+		lastReadMsgId: integer("last_read_msg_id").notNull().default(0),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.roomId, table.userId] }), index("im_room_members_user_idx").on(table.userId)],
+);
+
+export const imMessages = sqliteTable(
+	"im_messages",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		roomId: text("room_id")
+			.notNull()
+			.references(() => imRooms.id, { onDelete: "cascade" }),
+		fromUid: text("from_uid").notNull(),
+		/** The id the client gave the message, so a retried send is stored once. */
+		clientMsgId: text("client_msg_id"),
+		type: integer("type").notNull(),
+		/** JSON, in HuLa's body shape for the type. */
+		body: text("body").notNull(),
+		replyMsgId: integer("reply_msg_id"),
+		recalledBy: text("recalled_by"),
+		recalledAt: integer("recalled_at"),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [
+		index("im_messages_room_idx").on(table.roomId, table.id),
+		uniqueIndex("im_messages_client_msg_unique").on(table.fromUid, table.clientMsgId),
+	],
+);
+
+/** Kept by the socket hub; derived, so it is not backed up. */
+export const imPresence = sqliteTable("im_presence", {
+	userId: text("user_id")
+		.primaryKey()
+		.references(() => users.id, { onDelete: "cascade" }),
+	online: integer("online", { mode: "boolean" }).notNull().default(false),
+	lastOptTime: integer("last_opt_time").notNull(),
+});
+
 export const schema = {
 	users,
 	domains,
@@ -972,4 +1054,8 @@ export const schema = {
 	agentDraftMetadata,
 	agentSendApprovals,
 	mcpKeyMailboxes,
+	imRooms,
+	imRoomMembers,
+	imMessages,
+	imPresence,
 };

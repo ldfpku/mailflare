@@ -414,6 +414,13 @@
       "when": 1792200002000,
       "tag": "0066_smj_brand_name",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1792200003000,
+      "tag": "0067_add_im_chat",
+      "breakpoints": true
     }
   ]
 }
