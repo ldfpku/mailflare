@@ -3,7 +3,7 @@ import { getDb } from "@/db";
 import { domains, mailboxes } from "@/db/schema";
 import { formatEmailAddress } from "@/lib/email/address";
 import { sendEmail } from "@/lib/email/send";
-import { sendMessage, type ImDelivery } from "@/lib/im/chat";
+import { openSingleRoom, sendMessage, type ImDelivery } from "@/lib/im/chat";
 import { IM_ALL_STAFF_ROOM_ID, IM_MSG_TYPE, IM_ROOM_TYPE } from "@/lib/im/chat-utils";
 import { imAvatarUrl } from "@/lib/im/users-utils";
 import { buildMeetingIcs, ICS_CONTENT_TYPE } from "./ics-utils";
@@ -15,6 +15,7 @@ import {
 	invitationSubject,
 	invitationText,
 	meetingChatText,
+	meetingInviteText,
 	meetingUrl,
 	newMeetingId,
 	type MeetingCreateInput,
@@ -229,13 +230,16 @@ async function sendInvitation(
 	host: MeetingUser,
 	invitees: MeetingUser[],
 	content: { title: string; hostName: string; time: string; joinUrl: string },
+	/** Someone added mid-meeting is mailed from the inviter's own mailbox; the host stays the calendar organizer. */
+	sender: MeetingUser = host,
 ): Promise<string[]> {
-	const mailbox = await hostMailbox(env, host);
-	if (!mailbox) throw new Error("发起人没有可用的邮箱");
-	const ics = icsFor(row, host, mailbox.address, invitees, content, "REQUEST");
+	const mailbox = await hostMailbox(env, sender);
+	if (!mailbox) throw new Error(sender.id === host.id ? "发起人没有可用的邮箱" : "你没有可用的邮箱");
+	const organizer = sender.id === host.id ? mailbox.address : ((await hostMailbox(env, host).catch(() => null))?.address ?? host.email);
+	const ics = icsFor(row, host, organizer, invitees, content, "REQUEST");
 	const to = invitees.map((user) => formatEmailAddress(user.email, user.name));
 	await sendEmail(env, {
-		userId: host.id,
+		userId: sender.id,
 		mailboxId: mailbox.id,
 		from: mailbox.address,
 		to,
@@ -358,4 +362,111 @@ export async function listMeetings(env: Env, userId: string, origin: string, lim
 		.bind(userId, userId, limit)
 		.all<MeetingRow & { host_name: string | null }>();
 	return result.results.map((row) => toView(row, row.host_name ?? "", origin));
+}
+
+/** Who may add people to a meeting: its host and anyone who has joined it. */
+async function canInvite(env: Env, row: MeetingRow, userId: string): Promise<boolean> {
+	if (row.host_id === userId) return true;
+	const joined = await env.DB.prepare("SELECT 1 FROM im_meeting_participants WHERE meeting_id = ? AND user_id = ?").bind(row.id, userId).first();
+	return Boolean(joined);
+}
+
+/** The signed-in user behind a meeting page that holds a participant token (the desktop meeting window has no web session). */
+export async function getMeetingUserByToken(env: Env, id: string, authToken: string): Promise<MeetingUser | null> {
+	if (!MEETING_ID_PATTERN.test(id) || !authToken) return null;
+	const row = await env.DB
+		.prepare("SELECT user_id FROM im_meeting_participants WHERE meeting_id = ? AND auth_token = ?")
+		.bind(id, authToken)
+		.first<{ user_id: string }>();
+	return row ? getMeetingUser(env, row.user_id) : null;
+}
+
+export interface MeetingPerson {
+	id: string;
+	name: string;
+	email: string;
+	invited: boolean;
+	joined: boolean;
+}
+
+/** The organisation directory for the meeting page's “添加参会人”, marking who is already invited or in the meeting. */
+export async function listMeetingPeople(env: Env, id: string, user: MeetingUser): Promise<MeetingPerson[]> {
+	const row = await findMeeting(env, id);
+	if (row.ended_at) throw new MeetingError(404, "会议已结束");
+	if (!(await canInvite(env, row, user.id))) throw new MeetingError(403, "加入会议后才能邀请他人");
+	const result = await env.DB
+		.prepare(
+			`SELECT u.id, u.name, u.email,
+				EXISTS (SELECT 1 FROM json_each(?) WHERE json_each.value = u.id) AS invited,
+				EXISTS (SELECT 1 FROM im_meeting_participants p WHERE p.meeting_id = ? AND p.user_id = u.id) AS joined
+			FROM users u WHERE ${ACTIVE_USER} AND u.id <> ? ORDER BY u.name, u.email LIMIT 500`,
+		)
+		.bind(row.invitee_ids, row.id, user.id)
+		.all<{ id: string; name: string | null; email: string; invited: number; joined: number }>();
+	return result.results.map((person) => ({
+		id: person.id,
+		name: person.name || person.email,
+		email: person.email,
+		invited: Boolean(person.invited) || person.id === row.host_id,
+		joined: Boolean(person.joined),
+	}));
+}
+
+export interface MeetingInvited {
+	/** One chat line per invitee, in the inviter's private chat with them; both sides get it, since the inviter sent it from the meeting page. */
+	deliveries: ImDelivery[];
+	invited: string[];
+	mailError: string | null;
+}
+
+/**
+ * Adds people while a meeting is on: each gets the meeting link in a private chat
+ * from whoever invited them (a card they can click to join), joins the invitee
+ * list (so the meeting shows in their list), and optionally a mail with the
+ * calendar invitation.
+ */
+export async function inviteToMeeting(
+	env: Env,
+	id: string,
+	inviter: MeetingUser,
+	input: { userIds: string[]; sendMail: boolean },
+	origin: string,
+): Promise<MeetingInvited> {
+	const row = await findMeeting(env, id);
+	if (row.ended_at) throw new MeetingError(404, "会议已结束");
+	if (!(await canInvite(env, row, inviter.id))) throw new MeetingError(403, "加入会议后才能邀请他人");
+	const wanted = [...new Set(input.userIds.filter((userId) => typeof userId === "string" && userId && userId !== inviter.id))].slice(0, 50);
+	const people = await activeUsers(env, wanted);
+	if (!people.length) throw new MeetingError(400, "请选择要邀请的人");
+
+	const existing = toView(row, "", origin).inviteeIds;
+	const inviteeIds = [...new Set([...existing, ...people.map((person) => person.id)])].filter((userId) => userId !== row.host_id);
+	await env.DB.prepare("UPDATE im_meetings SET invitee_ids = ? WHERE id = ?").bind(JSON.stringify(inviteeIds), row.id).run();
+
+	const host = (await getMeetingUser(env, row.host_id)) ?? inviter;
+	const content = {
+		title: row.title,
+		hostName: host.name,
+		time: formatMeetingTime(row.starts_at ?? row.created_at, row.duration_minutes, inviter.timeZone),
+		joinUrl: meetingUrl(origin, row.id),
+	};
+	const deliveries: ImDelivery[] = [];
+	for (const person of people) {
+		const roomId = await openSingleRoom(env, inviter.id, person.id);
+		const delivery = await sendMessage(env, inviter.id, { roomId, msgType: IM_MSG_TYPE.TEXT, body: { content: meetingInviteText(content) } }, origin);
+		deliveries.push({ message: delivery.message, recipients: [...new Set([...delivery.recipients, inviter.id])] });
+	}
+
+	let invited: string[] = [];
+	let mailError: string | null = null;
+	const mailTo = people.filter((person) => person.email);
+	if (input.sendMail && mailTo.length) {
+		try {
+			invited = await sendInvitation(env, { ...row, invitee_ids: JSON.stringify(inviteeIds) }, host, mailTo, content, inviter);
+		} catch (error) {
+			mailError = error instanceof Error ? error.message : String(error);
+			console.warn(`Meeting ${row.id}: added invitees not mailed: ${mailError}`);
+		}
+	}
+	return { deliveries, invited, mailError };
 }

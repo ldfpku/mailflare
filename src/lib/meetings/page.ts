@@ -19,6 +19,8 @@
  * it lasts as long as the host stays in the meeting.
  */
 const REALTIMEKIT_VERSION = "2.0.2";
+/** RealtimeKit's capture preset for meetings (`qvga`, `vga`, `hd`, `fhd`); the presets' own default is `vga`. */
+const MEETING_VIDEO_QUALITY = "hd";
 const VENDOR = `/vendor/realtimekit/${REALTIMEKIT_VERSION}`;
 const REALTIMEKIT_HOSTS = "https://*.realtime.cloudflare.com";
 /** Matches the stack the vendoring script writes into the UI Kit. */
@@ -154,7 +156,7 @@ const ZH: Record<string, string> = {
 const SCREEN_LOCK_MESSAGE = "smj-screenshare-lock";
 
 export function renderMeetingPage(id: string, hostPreset = "group_call_host"): string {
-	const config = JSON.stringify({ id, hostPreset, lockMessage: SCREEN_LOCK_MESSAGE, core: `${VENDOR}/core`, ui: `${VENDOR}/ui`, font: FONT_STACK, zh: ZH }).replace(/</g, "\\u003c");
+	const config = JSON.stringify({ id, hostPreset, videoQuality: MEETING_VIDEO_QUALITY, lockMessage: SCREEN_LOCK_MESSAGE, core: `${VENDOR}/core`, ui: `${VENDOR}/ui`, font: FONT_STACK, zh: ZH }).replace(/</g, "\\u003c");
 	return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -173,6 +175,7 @@ header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; bord
 .spacer { flex: 1; }
 button, a.button { font: inherit; font-size: 13px; border: 1px solid var(--smj-line); background: #fff; color: var(--smj-navy); padding: 6px 12px; border-radius: 6px; cursor: pointer; text-decoration: none; }
 button.primary { background: var(--smj-blue); border-color: var(--smj-blue); color: #fff; }
+button:disabled { opacity: 0.5; cursor: default; }
 .lock { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; cursor: pointer; }
 .lock[hidden], .notice[hidden] { display: none; }
 .lock input { accent-color: var(--smj-blue); margin: 0; }
@@ -183,6 +186,20 @@ rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; 
 #status { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 24px; }
 #status[hidden] { display: none; }
 #status p { margin: 0; color: var(--smj-muted); }
+#invite-dialog { border: 1px solid var(--smj-line); border-radius: 10px; padding: 0; width: min(420px, calc(100vw - 32px)); color: var(--smj-navy); }
+#invite-dialog::backdrop { background: rgba(26, 43, 74, 0.35); }
+#invite-dialog form { display: flex; flex-direction: column; gap: 12px; padding: 16px; max-height: calc(100vh - 4rem); }
+#invite-dialog h2 { margin: 0; font-size: 16px; }
+#invite-search { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--smj-line); border-radius: 6px; }
+#invite-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 120px; max-height: 50vh; border: 1px solid var(--smj-line); border-radius: 6px; }
+#invite-list li label { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; }
+#invite-list li + li { border-top: 1px solid var(--smj-line); }
+#invite-list input, #invite-mail { accent-color: var(--smj-blue); margin: 0; }
+#invite-list .who { flex: 1; min-width: 0; }
+#invite-list .email, #invite-list .tag, #invite-hint { color: var(--smj-muted); font-size: 12px; }
+#invite-list .email { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.invite-actions { display: flex; align-items: center; gap: 8px; }
+.invite-actions label { flex: 1; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -193,6 +210,7 @@ rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; 
 	<span class="spacer"></span>
 	<label class="lock" id="lock" hidden><input type="checkbox" id="lock-input">仅主持人可共享屏幕</label>
 	<span class="notice" id="lock-notice" hidden>主持人已限制共享屏幕</span>
+	<button type="button" id="invite" hidden>添加参会人</button>
 	<a class="button" id="calendar" href="/api/meetings/${id}/meeting.ics" download="meeting.ics">加入日历</a>
 	<button type="button" id="copy">复制会议链接</button>
 </header>
@@ -200,6 +218,19 @@ rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; 
 	<rtk-meeting id="meeting" mode="fill" show-setup-screen="true"></rtk-meeting>
 	<div id="status"><p id="status-text">正在进入会议…</p><button type="button" class="primary" id="retry" hidden>重新进入</button></div>
 </main>
+<dialog id="invite-dialog">
+	<form method="dialog" id="invite-form">
+		<h2>添加参会人</h2>
+		<input type="search" id="invite-search" placeholder="搜索姓名或邮箱" autocomplete="off">
+		<ul id="invite-list"></ul>
+		<p id="invite-hint" hidden></p>
+		<div class="invite-actions">
+			<label><input type="checkbox" id="invite-mail">同时发送邮件邀请</label>
+			<button type="button" id="invite-cancel">取消</button>
+			<button type="submit" class="primary" id="invite-send" disabled>邀请</button>
+		</div>
+	</form>
+</dialog>
 <script type="module">
 const config = ${config};
 const statusBox = document.getElementById("status");
@@ -284,12 +315,97 @@ async function start() {
 		// Without the helpers the meeting still works, in English and default colours.
 		console.warn("RealtimeKit UI helpers unavailable", error);
 	}
-	const meeting = await window.RealtimeKitClient.init({ authToken: token, defaults: { audio: true, video: true } });
+	// The presets default to VGA; 720p (with the UI Kit's simulcast layers) is what a meeting should look like.
+	const meeting = await window.RealtimeKitClient.init({ authToken: token, defaults: { audio: true, video: true, mediaConfiguration: { video: config.videoQuality } } });
 	element.showSetupScreen = true;
 	element.meeting = meeting;
 	statusBox.hidden = true;
 	meeting.self.on("roomLeft", () => { element.hidden = true; show("你已离开会议", true); });
 	setupScreenLock(meeting);
+	setupInvite(token);
+}
+
+/** “添加参会人”: pick people from the directory; each gets the link in a chat from you, and optionally a mail. */
+function setupInvite(token) {
+	const button = document.getElementById("invite");
+	const dialog = document.getElementById("invite-dialog");
+	const list = document.getElementById("invite-list");
+	const search = document.getElementById("invite-search");
+	const hint = document.getElementById("invite-hint");
+	const send = document.getElementById("invite-send");
+	const mail = document.getElementById("invite-mail");
+	const api = (path, init = {}) =>
+		fetch("/api/meetings/" + config.id + "/" + path, { ...init, headers: { ...(init.headers || {}), Authorization: "Bearer " + token } });
+	let people = [];
+	const chosen = new Set();
+	const say = (text) => { hint.textContent = text; hint.hidden = !text; };
+
+	const render = () => {
+		const query = search.value.trim().toLowerCase();
+		list.replaceChildren(...people
+			.filter((person) => !query || person.name.toLowerCase().includes(query) || person.email.toLowerCase().includes(query))
+			.map((person) => {
+				const item = document.createElement("li");
+				const label = document.createElement("label");
+				const box = document.createElement("input");
+				box.type = "checkbox";
+				box.checked = chosen.has(person.id);
+				box.addEventListener("change", () => {
+					box.checked ? chosen.add(person.id) : chosen.delete(person.id);
+					send.disabled = chosen.size === 0;
+				});
+				const who = document.createElement("span");
+				who.className = "who";
+				who.textContent = person.name;
+				const email = document.createElement("span");
+				email.className = "email";
+				email.textContent = person.email;
+				who.append(email);
+				label.append(box, who);
+				if (person.joined || person.invited) {
+					const tag = document.createElement("span");
+					tag.className = "tag";
+					tag.textContent = person.joined ? "已入会" : "已邀请";
+					label.append(tag);
+				}
+				item.append(label);
+				return item;
+			}));
+	};
+
+	button.hidden = false;
+	button.addEventListener("click", async () => {
+		chosen.clear();
+		send.disabled = true;
+		search.value = "";
+		say("正在加载通讯录…");
+		dialog.showModal();
+		const response = await api("people").catch(() => null);
+		const data = response ? await response.json().catch(() => ({})) : {};
+		if (!response || !response.ok) { people = []; render(); say(data.error || "无法加载通讯录"); return; }
+		people = data.people || [];
+		render();
+		say(people.length ? "" : "没有可邀请的人");
+		search.focus();
+	});
+	search.addEventListener("input", render);
+	document.getElementById("invite-cancel").addEventListener("click", () => dialog.close());
+	document.getElementById("invite-form").addEventListener("submit", async (event) => {
+		event.preventDefault();
+		if (!chosen.size) return;
+		send.disabled = true;
+		say("正在发送邀请…");
+		const response = await api("invite", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ userIds: [...chosen], sendMail: mail.checked }),
+		}).catch(() => null);
+		const data = response ? await response.json().catch(() => ({})) : {};
+		if (!response || !response.ok) { send.disabled = false; say(data.error || "邀请失败，请重试"); return; }
+		dialog.close();
+		button.textContent = data.mailError ? "已邀请 " + data.invited + " 人，邮件未发出" : "已邀请 " + data.invited + " 人";
+		setTimeout(() => { button.textContent = "添加参会人"; }, 4000);
+	});
 }
 
 function setupScreenLock(meeting) {

@@ -1,10 +1,11 @@
 import { hasValidSessionMutationOrigin } from "@/lib/auth/origin";
 import { getUserFromSession } from "@/lib/auth/session";
+import { notifyImUsers } from "@/lib/im/notify";
 import { getSessionTokenFromRequest } from "@/lib/realtime/utils";
 import { MEETING_ID_PATTERN, MeetingError } from "./meeting-utils";
 import { MEETING_PAGE_HEADERS, renderMeetingPage } from "./page";
 import { getRealtimeKitConfig, RealtimeKitNotConfiguredError } from "./realtimekit";
-import { getMeetingIcs, joinMeeting } from "./service";
+import { getMeetingIcs, getMeetingUser, getMeetingUserByToken, inviteToMeeting, joinMeeting, listMeetingPeople, type MeetingUser } from "./service";
 
 /**
  * The browser side of meetings, served from `worker.ts` without Next so the
@@ -14,6 +15,8 @@ import { getMeetingIcs, joinMeeting } from "./service";
  * - `GET /meet/<id>`: the meeting page, the link in invitations and chats.
  * - `POST /api/meetings/<id>/join`: a participant token for the signed-in web user.
  * - `GET /api/meetings/<id>/meeting.ics`: the calendar file; the id is the only key, as for the link itself.
+ * - `GET /api/meetings/<id>/people`, `POST /api/meetings/<id>/invite`: “添加参会人” on the meeting page. The
+ *   desktop meeting window has no web session, so these also accept the page's participant token as a bearer.
  */
 export function isMeetingPath(pathname: string): boolean {
 	return pathname.startsWith("/meet/") || pathname.startsWith("/api/meetings/");
@@ -31,7 +34,7 @@ export async function handleMeetingRequest(request: Request, env: CloudflareEnv)
 		return new Response(renderMeetingPage(page[1], getRealtimeKitConfig(env)?.hostPreset), { headers: MEETING_PAGE_HEADERS });
 	}
 
-	const api = /^\/api\/meetings\/([^/]+)\/(join|meeting\.ics)$/.exec(url.pathname);
+	const api = /^\/api\/meetings\/([^/]+)\/(join|meeting\.ics|people|invite)$/.exec(url.pathname);
 	if (!api || !MEETING_ID_PATTERN.test(api[1])) return json({ error: "会议不存在" }, 404);
 	const [, id, action] = api;
 
@@ -46,6 +49,20 @@ export async function handleMeetingRequest(request: Request, env: CloudflareEnv)
 					"Cache-Control": "no-store",
 				},
 			});
+		}
+
+		if (action === "people" || action === "invite") {
+			if (request.method !== (action === "people" ? "GET" : "POST")) return json({ error: "Method not allowed" }, 405);
+			const user = await meetingPageUser(request, env, id);
+			if (!user) return json({ error: "请先加入会议" }, 401);
+			if (action === "people") return json({ people: await listMeetingPeople(env, id, user) });
+			const body = (await request.json().catch(() => ({}))) as { userIds?: unknown; sendMail?: unknown };
+			const userIds = Array.isArray(body.userIds) ? body.userIds.filter((value): value is string => typeof value === "string") : [];
+			const result = await inviteToMeeting(env, id, user, { userIds, sendMail: body.sendMail === true }, origin);
+			for (const delivery of result.deliveries) {
+				await notifyImUsers(env, delivery.recipients, { type: "receiveMessage", data: delivery.message });
+			}
+			return json({ invited: result.deliveries.length, mailed: result.invited, mailError: result.mailError });
 		}
 
 		if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -65,4 +82,14 @@ export async function handleMeetingRequest(request: Request, env: CloudflareEnv)
 		console.error("Meeting request failed", error);
 		return json({ error: "会议服务暂时不可用" }, 502);
 	}
+}
+
+/** The participant token in `Authorization: Bearer`, else the web session (whose POSTs must come from our own pages). */
+async function meetingPageUser(request: Request, env: CloudflareEnv, id: string): Promise<MeetingUser | null> {
+	const bearer = /^Bearer\s+(.+)$/i.exec(request.headers.get("Authorization") ?? "")?.[1]?.trim();
+	if (bearer) return getMeetingUserByToken(env, id, bearer);
+	const user = await getUserFromSession(env, getSessionTokenFromRequest(request));
+	if (!user || user.disabled || user.deletedAt) return null;
+	if (request.method !== "GET" && !hasValidSessionMutationOrigin(request)) return null;
+	return getMeetingUser(env, user.id);
 }

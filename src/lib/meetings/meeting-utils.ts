@@ -122,3 +122,8 @@ export function meetingChatText(content: InvitationContent & { scheduled: boolea
 		? `预约了视频会议「${content.title}」\n时间：${content.time}\n加入会议：${content.joinUrl}`
 		: `发起了视频会议「${content.title}」\n加入会议：${content.joinUrl}`;
 }
+
+/** The chat line someone in a meeting sends to a person they add; HuLa turns the link into a card. */
+export function meetingInviteText(content: InvitationContent): string {
+	return `邀请你加入视频会议「${content.title}」\n加入会议：${content.joinUrl}`;
+}

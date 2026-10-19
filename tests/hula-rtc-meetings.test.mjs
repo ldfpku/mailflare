@@ -267,3 +267,36 @@ test("the meeting page allows camera and microphone, and web joins need a sessio
 	assert.equal(ics.headers.get("Content-Type"), "text/calendar; charset=UTF-8");
 	assert.equal((await handleMeetingRequest(new Request("https://mail.one.test/api/meetings/zzzzzzzzzzzzzzzz/meeting.ics"), env)).status, 404);
 });
+
+test("people already in a meeting can add others, who get the link in a private chat", async (t) => {
+	mockCloudflare(t);
+	const { call, login, pushes, env } = await fixture(t, RTK_ENV);
+	const sam = await login("sam@one.test");
+	const kim = await login("kim@one.test");
+	const created = (await call("POST", "im/meeting", { token: sam, body: { title: "评审", inviteUids: ["u2"], sendMail: false } })).data;
+	const kimToken = (await call("POST", "im/meeting/join", { token: kim, body: { id: created.id } })).data.authToken;
+	const page = (path, init = {}) => handleMeetingRequest(new Request(`https://mail.one.test/api/meetings/${created.id}/${path}`, init), env);
+
+	assert.equal((await page("people")).status, 401, "no token, no session");
+	assert.equal((await page("people", { headers: { Authorization: "Bearer someone-else" } })).status, 401);
+	const people = (await (await page("people", { headers: { Authorization: `Bearer ${kimToken}` } })).json()).people;
+	assert.deepEqual(people.map((person) => [person.id, person.invited, person.joined]), [["u3", false, false], ["u1", true, false]], "the directory, without the viewer");
+
+	pushes.length = 0;
+	const invite = await page("invite", {
+		method: "POST",
+		headers: { Authorization: `Bearer ${kimToken}`, "Content-Type": "application/json" },
+		body: JSON.stringify({ userIds: ["u3", "u2"], sendMail: false }),
+	});
+	assert.equal(invite.status, 200);
+	assert.deepEqual(await invite.json(), { invited: 1, mailed: [], mailError: null });
+	const pushed = pushes.filter((push) => push.type === "receiveMessage");
+	assert.deepEqual(pushed.map((push) => push.userId).sort(), ["u2", "u3"], "the invitee and the inviter's own client");
+	assert.match(pushed[0].data.message.body.content, new RegExp(`邀请你加入视频会议「评审」[\\s\\S]*/meet/${created.id}`));
+	assert.equal(pushed[0].data.fromUser.uid, "u2");
+	const lee = await login("lee@one.test");
+	assert.deepEqual((await call("GET", "im/meeting/list", { token: lee })).data.map((meeting) => meeting.id), [created.id], "now on the invitee's list");
+
+	const outsider = await page("invite", { method: "POST", headers: { Authorization: "Bearer token-x" }, body: "{}" });
+	assert.equal(outsider.status, 401);
+});
