@@ -33,7 +33,12 @@ interface CloudflareEnv {
 	APNS_TEAM_ID?: string;
 	/** The .p8 file contents (PKCS#8 PEM). */
 	APNS_PRIVATE_KEY?: string;
+	/** Assistant calls per minute per key (10/min); see src/lib/agent/rate-limit.ts. */
 	AGENT_RATE_LIMIT?: RateLimit;
+	/** Assistant calls per user per UTC day across chat, MCP and chat summaries; default 200, "0" disables. */
+	AGENT_DAILY_LIMIT?: string;
+	/** Assistant calls per UTC day for the whole install; default 2000, "0" disables. */
+	AGENT_DAILY_GLOBAL_LIMIT?: string;
 	/**
 	 * Backblaze B2 storage. When all four are set, B2 replaces the R2 binding for raw mail, attachments, Drive,
 	 * avatars, branding and backups. B2_ENDPOINT is the S3-compatible host, e.g. s3.us-west-004.backblazeb2.com.

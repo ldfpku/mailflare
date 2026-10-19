@@ -826,6 +826,16 @@ export const aiUsage = sqliteTable("ai_usage", {
 	costUsdMicros: integer("cost_usd_micros"),
 }, (t) => [index("ai_usage_created_idx").on(t.createdAt)]);
 
+/**
+ * Call counters behind the assistant's daily caps (src/lib/agent/rate-limit.ts): one row per
+ * (scope, UTC day), scope being `user:<id>` or `global`. Operational and derived, so excluded from backups.
+ */
+export const aiDailyCounters = sqliteTable("ai_daily_counters", {
+	scope: text("scope").notNull(),
+	day: text("day").notNull(),
+	count: integer("count").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.scope, t.day] })]);
+
 export const agentConversations = sqliteTable("agent_conversations", {
 	id: text("id").primaryKey(),
 	userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
