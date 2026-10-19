@@ -37,7 +37,7 @@ import {
 	type ImDelivery,
 } from "./chat";
 import { IM_ALL_STAFF_ROOM_ID, IM_ROOM_TYPE, ImChatError, parseImMessageId } from "./chat-utils";
-import { createImUpload, receiveImUpload, serveImFile } from "./files";
+import { createImUpload, preflightImFile, receiveImUpload, serveImFile } from "./files";
 import { countUnreadMail, createMailSsoLink, redeemMailSsoLink } from "./mail";
 import { serveMailShare } from "./mail-share";
 import { disableRoomMailbox, enableRoomMailbox, getRoomMailbox } from "./room-mailbox";
@@ -79,6 +79,7 @@ const publicRoutes: ImRouteTable<PublicContext> = {
 	"PUT files/:id/:name": ({ request, env, url }, params) => receiveImUpload(env, request, params.id, url.searchParams.get("token")),
 	"GET files/:id/:name": ({ request, env }, params) => serveImFile(env, request, params.id),
 	"HEAD files/:id/:name": ({ request, env }, params) => serveImFile(env, request, params.id),
+	"OPTIONS files/:id/:name": ({ request }) => preflightImFile(request),
 	"GET mail/sso/:code": ({ request, env }, params) => redeemMailSsoLink(env, request, params.code),
 	// A mail shared into a chat: the page checks the web session cookie and room membership itself (see mail-share.ts).
 	"GET mail/share/:id": ({ request, env, origin }, params) => serveMailShare(env, request, params.id, null, origin),

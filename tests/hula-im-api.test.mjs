@@ -382,6 +382,13 @@ test("files: upload once with the presigned URL, serve with ranges, and send as 
 	assert.equal(ranged.headers.get("Content-Range"), "bytes 2-4/10");
 	assert.deepEqual(new Uint8Array(await ranged.arrayBuffer()), png.slice(2, 5));
 	assert.equal((await raw("HEAD", cred.downloadUrl)).headers.get("Content-Length"), "10");
+	const desktop = await raw("GET", cred.downloadUrl, { headers: { Origin: "http://tauri.localhost" } });
+	assert.equal(desktop.headers.get("Access-Control-Allow-Origin"), "http://tauri.localhost", "the desktop webview fetches voice files itself");
+	assert.equal((await raw("GET", cred.downloadUrl, { headers: { Origin: "https://evil.test" } })).headers.get("Access-Control-Allow-Origin"), null);
+	const preflight = await raw("OPTIONS", cred.downloadUrl, { headers: { Origin: "tauri://localhost", "Access-Control-Request-Headers": "range" } });
+	assert.equal(preflight.status, 204);
+	assert.equal(preflight.headers.get("Access-Control-Allow-Origin"), "tauri://localhost");
+	assert.match(preflight.headers.get("Access-Control-Allow-Headers"), /Range/);
 
 	const room = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
 	const image = await call("POST", "im/chat/msg", { token: sam, body: { id: "img-1", roomId: room, msgType: 3, body: { url: cred.downloadUrl, size: 10, width: 640, height: 480, path: "C:/secret" } } });

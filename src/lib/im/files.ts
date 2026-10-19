@@ -7,6 +7,7 @@ import {
 	IM_UPLOAD_TTL_MS,
 	digestsMatch,
 	imFileContentType,
+	imFileCorsHeaders,
 	imFileObjectKey,
 	imFileUrl,
 	isImFileId,
@@ -100,6 +101,8 @@ export async function serveImFile(env: Env, request: Request, id: string): Promi
 		"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
 		"Referrer-Policy": "no-referrer",
 		"Cache-Control": "private, max-age=31536000, immutable",
+		Vary: "Origin",
+		...imFileCorsHeaders(request.headers.get("Origin")),
 	});
 	if (request.headers.get("If-None-Match") === etag) return new Response(null, { status: 304, headers });
 
@@ -124,6 +127,11 @@ export async function serveImFile(env: Env, request: Request, id: string): Promi
 	headers.set("Content-Range", `bytes ${range.start}-${range.end}/${file.size}`);
 	headers.set("Content-Length", String(range.end - range.start + 1));
 	return new Response(object.body, { status: 206, headers });
+}
+
+/** The CORS preflight the desktop client sends before a ranged download. */
+export function preflightImFile(request: Request): Response {
+	return new Response(null, { status: 204, headers: { Vary: "Origin", ...imFileCorsHeaders(request.headers.get("Origin"), true) } });
 }
 
 /** Message bodies may only point at uploaded chat files; this throws for anything else. */

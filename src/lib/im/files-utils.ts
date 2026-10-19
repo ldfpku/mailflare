@@ -84,6 +84,37 @@ export function imFileIdFromUrl(value: unknown, origin: string): string | null {
 	return rest.length === 0 && name && isImFileId(id) ? id : null;
 }
 
+/**
+ * Origins of the desktop client's webview: Tauri's custom protocol on macOS and
+ * Linux, its http(s) host on Windows, and the dev server. The webview fetches
+ * voice files itself, so a download from there needs CORS. Access still rests
+ * on the file id; the list only keeps other sites from reading files by script.
+ */
+const IM_DESKTOP_ORIGINS = new Set([
+	"tauri://localhost",
+	"http://tauri.localhost",
+	"https://tauri.localhost",
+	"http://127.0.0.1:6130",
+	"http://localhost:6130",
+]);
+
+/** CORS headers for a chat file download, empty unless the request comes from the desktop client. */
+export function imFileCorsHeaders(origin: string | null, preflight = false): Record<string, string> {
+	if (!origin || !IM_DESKTOP_ORIGINS.has(origin)) return {};
+	if (preflight) {
+		return {
+			"Access-Control-Allow-Origin": origin,
+			"Access-Control-Allow-Methods": "GET, HEAD",
+			"Access-Control-Allow-Headers": "Range, If-None-Match, If-Range",
+			"Access-Control-Max-Age": "86400",
+		};
+	}
+	return {
+		"Access-Control-Allow-Origin": origin,
+		"Access-Control-Expose-Headers": "Content-Type, Content-Length, Content-Disposition, Content-Range, Accept-Ranges, ETag",
+	};
+}
+
 export function randomHex(bytes: number): string {
 	const buffer = crypto.getRandomValues(new Uint8Array(bytes));
 	return Array.from(buffer, (byte) => byte.toString(16).padStart(2, "0")).join("");
