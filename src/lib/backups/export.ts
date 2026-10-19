@@ -38,6 +38,8 @@ const INTERNAL_TABLES = [
 	"push_devices",
 	// Chat presence is rewritten by the socket hub as clients connect.
 	"im_presence",
+	// Parsed meeting invitations, re-read from the restored attachments when needed.
+	"im_calendar_invites",
 ];
 
 /**

@@ -33,6 +33,8 @@ export interface MeetingCreateInput {
 	startsAt: number | null;
 	durationMinutes: number;
 	inviteeIds: string[];
+	/** The client sent its own list (possibly empty), so the chat's members are not invited by default. */
+	inviteesChosen: boolean;
 	sendMail: boolean;
 }
 
@@ -57,7 +59,7 @@ export function parseMeetingCreateInput(body: Record<string, unknown>, now = Dat
 	const inviteeIds = [...new Set(rawInvitees.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 64))];
 	if (inviteeIds.length > MEETING_INVITEE_LIMIT) throw new MeetingError(400, `一次最多邀请 ${MEETING_INVITEE_LIMIT} 人`);
 
-	return { title, roomId, startsAt, durationMinutes: Math.round(duration), inviteeIds, sendMail: body.sendMail !== false };
+	return { title, roomId, startsAt, durationMinutes: Math.round(duration), inviteeIds, inviteesChosen: Array.isArray(body.inviteUids), sendMail: body.sendMail !== false };
 }
 
 export function formatMeetingTime(startsAt: number, durationMinutes: number, timeZone: string | null | undefined): string {

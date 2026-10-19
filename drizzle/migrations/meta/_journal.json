@@ -463,6 +463,13 @@
       "when": 1792200009000,
       "tag": "0073_add_im_room_files",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "6",
+      "when": 1792200010000,
+      "tag": "0074_add_im_calendar_invites",
+      "breakpoints": true
     }
   ]
 }

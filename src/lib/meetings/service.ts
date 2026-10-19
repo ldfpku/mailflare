@@ -77,7 +77,7 @@ export interface MeetingCreated {
 
 const ACTIVE_USER = "disabled = 0 AND deleted_at IS NULL";
 
-async function activeUsers(env: Env, ids: string[]): Promise<MeetingUser[]> {
+export async function activeUsers(env: Env, ids: string[]): Promise<MeetingUser[]> {
 	if (!ids.length) return [];
 	const result = await env.DB
 		.prepare(`SELECT id, name, email, avatar_key, time_zone FROM users WHERE ${ACTIVE_USER} AND id IN (${ids.map(() => "?").join(", ")})`)
@@ -126,7 +126,7 @@ export async function getMeeting(env: Env, id: string, origin: string): Promise<
 }
 
 /** The room a meeting is started from must be one the host is in; a group's members become the default invitees. */
-async function roomForHost(env: Env, roomId: string, hostId: string) {
+export async function roomForHost(env: Env, roomId: string, hostId: string) {
 	const room = await env.DB
 		.prepare("SELECT r.id, r.type, r.name FROM im_rooms r JOIN im_room_members m ON m.room_id = r.id WHERE r.id = ? AND m.user_id = ?")
 		.bind(roomId, hostId)
@@ -140,9 +140,9 @@ export async function createMeeting(env: Env, host: MeetingUser, input: MeetingC
 	const config = requireRealtimeKitConfig(env);
 	const room = input.roomId ? await roomForHost(env, input.roomId, host.id) : null;
 
-	// Without an explicit list, a meeting from a chat invites that chat; the all-staff group is too big to mail by default.
+	// Without a list of its own, a meeting from a chat invites that chat; the all-staff group is too big to mail by default.
 	let inviteeIds = input.inviteeIds;
-	if (!inviteeIds.length && room && room.id !== IM_ALL_STAFF_ROOM_ID) inviteeIds = room.memberIds.slice(0, 50);
+	if (!input.inviteesChosen && !inviteeIds.length && room && room.id !== IM_ALL_STAFF_ROOM_ID) inviteeIds = room.memberIds.slice(0, 50);
 	const invitees = (await activeUsers(env, inviteeIds.filter((id) => id !== host.id))).filter((user) => user.email);
 
 	const defaultTitle = room?.type === IM_ROOM_TYPE.GROUP && room.name ? `${room.name} 的会议` : `${host.name} 的会议`;
