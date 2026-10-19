@@ -12,6 +12,8 @@ import { resolveIncomingMail, forwardMessage } from "./src/lib/email/incoming";
 import { getUserFromSession } from "./src/lib/auth/session";
 import { resolveImSocketToken } from "./src/lib/im/tokens";
 import { handleMeetingRequest, isMeetingPath } from "./src/lib/meetings/http";
+import { handleImRequest } from "./src/lib/im/handler";
+import { IM_MAIL_SHARE_PATH } from "./src/lib/im/mail-share-utils";
 import { getSessionTokenFromRequest } from "./src/lib/realtime/utils";
 import { inboundAttachmentLimitReasonFromRaw } from "./src/lib/email/inbound-attachments";
 import { hasValidSessionMutationOrigin } from "./src/lib/auth/origin";
@@ -68,6 +70,8 @@ export default {
 
 		// Meeting pages set their own CSP and Permissions-Policy (camera, microphone), which the Next headers forbid.
 		if (isMeetingPath(url.pathname)) return handleMeetingRequest(request, env);
+		// Mail shared into a chat is sender-controlled HTML: its page must keep its own sandboxed CSP, not the app's.
+		if (url.pathname.startsWith(IM_MAIL_SHARE_PATH)) return handleImRequest(request, env);
 
 		return vinextHandler.fetch(request, env, ctx);
 	},

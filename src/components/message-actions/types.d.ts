@@ -82,3 +82,18 @@ export type MoveMessageActionItem = {
 	labelKey: TranslationKey;
 	icon: any
 };
+
+export type ChatShareTarget = {
+	roomId: string;
+	name: string;
+	avatar: string;
+	/** 1 is a group, 2 a one-to-one chat. */
+	type: number;
+	memberNum?: number;
+};
+
+export type ChatShareDialogProps = {
+	messageId: string;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+};

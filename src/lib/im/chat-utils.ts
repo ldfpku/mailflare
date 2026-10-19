@@ -11,7 +11,7 @@ export const IM_ALL_STAFF_ROOM_NAME = "全员群";
 export const IM_ROOM_TYPE = { GROUP: 1, SINGLE: 2 } as const;
 export const IM_ROLE = { OWNER: 1, ADMIN: 2, MEMBER: 3 } as const;
 /** The subset of HuLa's MsgEnum this server stores. */
-export const IM_MSG_TYPE = { TEXT: 1, RECALL: 2, IMAGE: 3, FILE: 4, VOICE: 5, VIDEO: 6, EMOJI: 7, SYSTEM: 8 } as const;
+export const IM_MSG_TYPE = { TEXT: 1, RECALL: 2, IMAGE: 3, FILE: 4, VOICE: 5, VIDEO: 6, EMOJI: 7, SYSTEM: 8, MAIL_CARD: 19 } as const;
 
 /** Message types whose body points at an uploaded chat file. */
 export const IM_MEDIA_TYPES: ReadonlySet<number> = new Set([IM_MSG_TYPE.IMAGE, IM_MSG_TYPE.FILE, IM_MSG_TYPE.VOICE, IM_MSG_TYPE.VIDEO, IM_MSG_TYPE.EMOJI]);
@@ -172,6 +172,10 @@ export function messageText(row: Pick<ImMessageRow, "type" | "body">): string {
 		return typeof name === "string" && name ? `[文件] ${name}` : "[文件]";
 	}
 	if (MEDIA_LABELS[row.type]) return MEDIA_LABELS[row.type];
+	if (row.type === IM_MSG_TYPE.MAIL_CARD) {
+		const subject = body && typeof body === "object" ? (body as { subject?: unknown }).subject : null;
+		return typeof subject === "string" && subject ? `[邮件] ${subject}` : "[邮件]";
+	}
 	if (body && typeof body === "object" && typeof (body as { content?: unknown }).content === "string") {
 		return stripHtml((body as { content: string }).content);
 	}

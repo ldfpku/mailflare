@@ -1997,5 +1997,16 @@
 	"drive.noPreview": "No preview available for this file type.",
 	"drive.publicNotFound": "This link is not available. It may have been turned off or the file removed.",
 	"drive.sharedBy": "Shared by {name}",
-	"drive.save": "Save"
+	"drive.save": "Save",
+	"chatShare.action": "Share to chat",
+	"chatShare.title": "Share to chat",
+	"chatShare.description": "Post this mail as a card in the chats you pick. Members can open it even without access to this mailbox.",
+	"chatShare.search": "Search chats",
+	"chatShare.empty": "No chats found",
+	"chatShare.members": "{count} members",
+	"chatShare.submit": "Share",
+	"chatShare.sharing": "Sharing…",
+	"chatShare.done": "Shared to {count} chats",
+	"chatShare.failed": "Could not share this mail",
+	"chatShare.loadFailed": "Could not load your chats"
 }

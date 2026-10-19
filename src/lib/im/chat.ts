@@ -497,6 +497,21 @@ export async function sendMessage(
 	return { message, recipients };
 }
 
+/**
+ * Posts a mail card (see `mail-share.ts`) as `userId`. Unlike `sendMessage` the sender's own client did not
+ * send it, so the sender is among the recipients too.
+ */
+export async function postMailCard(env: Env, userId: string, roomId: unknown, body: unknown, origin: string): Promise<ImDelivery> {
+	const member = await requireMember(env, roomId, userId);
+	const row = await insertMessage(env, { roomId: member.room_id, fromUid: userId, clientMsgId: null, type: IM_MSG_TYPE.MAIL_CARD, body, replyMsgId: null });
+	const [message] = await renderMessages(env, userId, [row], origin);
+	return { message, recipients: await roomMemberIds(env, member.room_id) };
+}
+
+export async function isRoomMember(env: Env, roomId: string, userId: string): Promise<boolean> {
+	return (await findMember(env, roomId, userId)) !== null;
+}
+
 async function postSystemMessage(env: Env, roomId: string, actorUid: string, text: string, origin: string): Promise<ImDelivery> {
 	const row = await insertMessage(env, { roomId, fromUid: actorUid, clientMsgId: null, type: IM_MSG_TYPE.SYSTEM, body: text, replyMsgId: null });
 	const [message] = await renderMessages(env, actorUid, [row], origin);

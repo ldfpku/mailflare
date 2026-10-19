@@ -1965,5 +1965,16 @@
 	"drive.noPreview": "此文件类型无法预览。",
 	"drive.publicNotFound": "此链接不可用。它可能已被关闭，或文件已被删除。",
 	"drive.sharedBy": "由 {name} 共享",
-	"drive.save": "保存"
+	"drive.save": "保存",
+	"chatShare.action": "转发到聊天",
+	"chatShare.title": "转发到聊天",
+	"chatShare.description": "把这封邮件以卡片形式发到选中的会话，会话成员即使没有这个邮箱的权限也能打开查看。",
+	"chatShare.search": "搜索会话",
+	"chatShare.empty": "没有找到会话",
+	"chatShare.members": "{count} 人",
+	"chatShare.submit": "发送",
+	"chatShare.sharing": "发送中…",
+	"chatShare.done": "已发到 {count} 个会话",
+	"chatShare.failed": "转发失败",
+	"chatShare.loadFailed": "会话列表加载失败"
 }

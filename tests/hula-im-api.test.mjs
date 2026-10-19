@@ -19,6 +19,7 @@ await build({
 			export { resolveImSocketToken } from "./src/lib/im/tokens.ts";
 			export { findImRoute, imApiPath } from "./src/lib/im/handler-utils.ts";
 			export { parseImPairId, imPairSessionIds } from "./src/lib/im/tokens-utils.ts";
+			export { listShareTargets, shareMailToChats } from "./src/lib/im/mail-share.ts";
 		`,
 		resolveDir: root,
 		sourcefile: "hula-im-test-entry.ts",
@@ -35,7 +36,7 @@ await build({
 });
 const {
 	SqliteDatabase, applyMigrations, hashPassword, createSession, deleteUserSessions, handleImRequest,
-	resolveImSocketToken, findImRoute, imApiPath, parseImPairId, imPairSessionIds,
+	resolveImSocketToken, findImRoute, imApiPath, parseImPairId, imPairSessionIds, listShareTargets, shareMailToChats,
 } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 
 async function fixture(t) {
@@ -425,6 +426,64 @@ test("mail: one-time web sign-in link, inbox unread count", async (t) => {
 	insert.run("x3", "received", 1);
 	insert.run("x4", "spam", 0);
 	assert.deepEqual((await call("GET", "im/mail/unread", { token: sam })).data, { count: 2 });
+});
+
+test("mail cards: share a mail into chats, and only room members read it on the share page", async (t) => {
+	const { database, env, call, raw, login, addUser, pushes, objects } = await fixture(t);
+	addUser("u2", "ana@one.test", "Ana");
+	addUser("u3", "bob@one.test", "Bob");
+	database.db.prepare("INSERT INTO domains (id, user_id, hostname, zone_id, created_at) VALUES ('d1', 'u1', 'one.test', 'z', 1)").run();
+	database.db.prepare("INSERT INTO mailboxes (id, user_id, domain_id, local_part, created_at) VALUES ('m1', 'u1', 'd1', 'sam', 1)").run();
+	database.db.prepare(
+		"INSERT INTO messages (id, user_id, mailbox_id, direction, from_addr, to_addr, subject, snippet, html_body, status, read, created_at) VALUES ('x1', 'u1', 'm1', 'inbound', '\"Lee\" <lee@b.test>', 'sam@one.test', 'Quarterly plan', 'Numbers attached', ?, 'received', 1, 1700000000)",
+	).run('<p onclick="steal()">Hi<script>alert(1)</script><img src="cid:logo@b" onerror="x()"><a href="javascript:alert(1)">go</a></p><meta http-equiv="refresh" content="0;url=https://evil.test">');
+	const attach = database.db.prepare("INSERT INTO message_attachments (id, message_id, filename, content_type, size, disposition, content_id, r2_key, created_at) VALUES (?, 'x1', ?, ?, ?, ?, ?, ?, 1)");
+	attach.run("a1", "logo.png", "image/png", 3, "inline", "<logo@b>", "att/a1");
+	attach.run("a2", "plan.xlsx", "application/vnd.ms-excel", 4, "attachment", null, "att/a2");
+	objects.set("att/a2", { bytes: new Uint8Array([1, 2, 3, 4]) });
+
+	const sam = (await login()).data.token;
+	const privateRoom = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
+	const samUser = database.db.prepare("SELECT * FROM users WHERE id = 'u1'").get();
+	const targets = await listShareTargets(env, "u1", "https://mail.one.test");
+	assert.deepEqual(new Set(targets.map((target) => target.roomId)), new Set(["1", privateRoom]));
+
+	pushes.length = 0;
+	assert.deepEqual(await shareMailToChats(env, samUser, "x1", ["1", privateRoom], "https://mail.one.test"), { shared: 2 });
+	const cards = pushes.filter((push) => push.type === "receiveMessage" && push.data.message.type === 19);
+	assert.deepEqual(new Set(cards.filter((push) => push.data.message.roomId === "1").map((push) => push.userId)), new Set(["u1", "u2", "u3"]), "the sharer's own client hears too");
+	const card = cards.find((push) => push.userId === "u2" && push.data.message.roomId === privateRoom).data.message.body;
+	assert.equal(card.subject, "Quarterly plan");
+	assert.equal(card.from, "lee@b.test");
+	assert.equal(card.fromName, "Lee");
+	assert.equal(card.date, 1700000000000);
+	assert.equal(card.snippet, "Numbers attached");
+	assert.equal(card.attachmentCount, 1, "inline images are not counted");
+	assert.match(card.url, /^https:\/\/mail\.one\.test\/api\/im\/mail\/share\/[a-f0-9]{32}$/);
+	const ana = (await login("ana@one.test")).data.token;
+	const anaSession = (await call("GET", "im/chat/contact/list", { token: ana })).data.find((session) => session.roomId === privateRoom);
+	assert.equal(anaSession.text, "[邮件] Quarterly plan");
+
+	await assert.rejects(() => shareMailToChats(env, database.db.prepare("SELECT * FROM users WHERE id = 'u2'").get(), "x1", ["1"], "https://mail.one.test"), { status: 404 }, "only people who can read the mail share it");
+	await assert.rejects(() => shareMailToChats(env, samUser, "x1", [], "https://mail.one.test"), { status: 400 });
+
+	const cookie = async (userId) => `ep_session=${encodeURIComponent(await createSession(env, userId))}`;
+	assert.equal((await raw("GET", card.url)).headers.get("Location"), `https://mail.one.test/login?next=${encodeURIComponent(new URL(card.url).pathname)}`);
+	const page = await raw("GET", card.url, { headers: { Cookie: await cookie("u2") } });
+	assert.equal(page.status, 200, "Ana reads it without access to Sam's mailbox");
+	assert.match(page.headers.get("Content-Security-Policy"), /sandbox/);
+	const html = await page.text();
+	assert.ok(html.includes("Quarterly plan") && html.includes("plan.xlsx"));
+	assert.ok(!/<script|onclick|onerror|javascript:|http-equiv/i.test(html.replace(/<style>[\s\S]*?<\/style>/, "")), "scripts, handlers and refresh are removed");
+	assert.ok(html.includes(`${card.url}/attachments/a1`), "inline images point at the share");
+	const download = await raw("GET", `${card.url}/attachments/a2`, { headers: { Cookie: await cookie("u2") } });
+	assert.equal(download.status, 200);
+	assert.deepEqual([...new Uint8Array(await download.arrayBuffer())], [1, 2, 3, 4]);
+	assert.match(download.headers.get("Content-Disposition"), /^attachment;/);
+	assert.equal((await raw("GET", card.url, { headers: { Cookie: await cookie("u3") } })).status, 403, "Bob is not in the private chat");
+
+	database.db.prepare("DELETE FROM messages WHERE id = 'x1'").run();
+	assert.equal((await raw("GET", card.url, { headers: { Cookie: await cookie("u2") } })).status, 404);
 });
 
 test("route helpers", () => {

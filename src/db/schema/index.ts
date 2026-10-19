@@ -1035,6 +1035,24 @@ export const imFiles = sqliteTable(
 );
 
 /**
+ * A mail shared into a HuLa chat. Members of `room_id` may read the mail through the share for as long as they stay in
+ * the room, whether or not they can open the mailbox it lives in; the sharer's access was checked when it was shared.
+ */
+export const imMailShares = sqliteTable(
+	"im_mail_shares",
+	{
+		id: text("id").primaryKey(),
+		messageId: text("message_id")
+			.notNull()
+			.references(() => messages.id, { onDelete: "cascade" }),
+		roomId: text("room_id").notNull(),
+		sharedBy: text("shared_by").notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [index("im_mail_shares_room_idx").on(table.roomId)],
+);
+
+/**
  * Video meetings on Cloudflare RealtimeKit. RealtimeKit has no schedule of its own, so the time, the invitees and the
  * link back to a chat live here; `sequence` is the iCalendar SEQUENCE the next invitation for the meeting carries.
  */
@@ -1118,6 +1136,7 @@ export const schema = {
 	imMessages,
 	imPresence,
 	imFiles,
+	imMailShares,
 	imMeetings,
 	imMeetingParticipants,
 };
