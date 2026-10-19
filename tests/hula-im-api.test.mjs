@@ -112,8 +112,26 @@ test("signs in with the mailflare email and password and answers in HuLa's envel
 	assert.equal(me.code, 200);
 	assert.deepEqual(
 		{ uid: me.data.uid, account: me.data.account, name: me.data.name, avatar: me.data.avatar, userStateId: me.data.userStateId },
-		{ uid: "u1", account: "sam@one.test", name: "Sam", avatar: "", userStateId: "1" },
+		{ uid: "u1", account: "sam@one.test", name: "Sam", avatar: "https://mail.one.test/api/im/avatar/u1", userStateId: "1" },
 	);
+});
+
+test("people and groups without a picture get a generated avatar, the same one every time", async (t) => {
+	const { raw } = await fixture(t);
+	const first = await raw("GET", "https://mail.one.test/api/im/avatar/u1");
+	assert.equal(first.status, 200);
+	assert.equal(first.headers.get("Content-Type"), "image/svg+xml");
+	const svg = await first.text();
+	assert.match(svg, /^<svg[\s\S]*<\/svg>$/);
+	assert.doesNotMatch(svg, /(?:href|src)\s*=\s*["']https?:|url\(\s*["']?https?:/, "nothing to load from elsewhere");
+	assert.match(svg, /CC0 1\.0/, "keeps the set's license attribution");
+	assert.equal(await (await raw("GET", "https://mail.one.test/api/im/avatar/u1")).text(), svg);
+	assert.notEqual(await (await raw("GET", "https://mail.one.test/api/im/avatar/u2")).text(), svg, "seeded by the account id");
+	const cached = await raw("GET", "https://mail.one.test/api/im/avatar/u1", { headers: { "If-None-Match": first.headers.get("ETag") } });
+	assert.equal(cached.status, 304);
+	const group = await raw("GET", "https://mail.one.test/api/im/room-avatar/1");
+	assert.equal(group.status, 200);
+	assert.match(await group.text(), /^<svg/);
 });
 
 test("rejects a wrong password and asks for the authenticator code when MFA is on", async (t) => {
@@ -320,6 +338,7 @@ test("groups: create, invite, rename, admins, remove and leave", async (t) => {
 	assert.deepEqual({ name: kimView.name, memberNum: kimView.memberNum, unreadCount: kimView.unreadCount }, { name: "Sam、Kim、Lee", memberNum: 3, unreadCount: 1 });
 	const detail = (await call("GET", "im/room/group/detail", { token: kim, query: { id: roomId } })).data;
 	assert.deepEqual({ roleId: detail.roleId, memberNum: detail.memberNum, groupName: detail.groupName }, { roleId: 3, memberNum: 3, groupName: "Sam、Kim、Lee" });
+	assert.equal(detail.avatar, `https://mail.one.test/api/im/room-avatar/${roomId}`, "a group without a picture gets a generated one");
 
 	assert.equal((await call("POST", "im/room/updateRoomInfo", { token: kim, body: { id: roomId, name: "Team" } })).code, 403);
 	assert.equal((await call("POST", "im/room/updateRoomInfo", { token: sam, body: { id: roomId, name: "Team" } })).code, 200);
@@ -587,7 +606,7 @@ test("search: chat in the user's rooms and mail in their mailboxes, Chinese word
 	assert.deepEqual(two.chat.list.map((hit) => hit.msgId), [meeting], "a two-character word inside a sentence; Lee's room stays hidden");
 	assert.deepEqual(
 		{ ...two.chat.list[0], sendTime: 0 },
-		{ msgId: meeting, roomId: samKim, roomType: 2, detailId: "u2", roomName: "Kim", roomAvatar: "", fromUid: "u1", fromName: "Sam", fromAvatar: "", type: 1, text: "明天下午三点开会讨论预算", sendTime: 0 },
+		{ msgId: meeting, roomId: samKim, roomType: 2, detailId: "u2", roomName: "Kim", roomAvatar: "https://mail.one.test/api/im/avatar/u2", fromUid: "u1", fromName: "Sam", fromAvatar: "https://mail.one.test/api/im/avatar/u1", type: 1, text: "明天下午三点开会讨论预算", sendTime: 0 },
 	);
 	assert.deepEqual((await search(lee, { keyword: "开会", scope: "chat" })).chat.list.map((hit) => hit.roomId), [leeKim]);
 	assert.deepEqual((await search(sam, { keyword: "开会讨论", scope: "chat" })).chat.list.map((hit) => hit.msgId), [meeting], "longer terms go through the trigram index");

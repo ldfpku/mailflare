@@ -29,7 +29,7 @@ import { requireUploadedImFiles } from "./files";
 import { imFileIdFromUrl } from "./files-utils";
 import { imSearchTextOverride } from "./search-utils";
 import { fileRoomMessage, unfileRoomMessage } from "./room-files";
-import { IM_DEFAULT_USER_STATE_ID, imAvatarUrl } from "./users-utils";
+import { IM_DEFAULT_USER_STATE_ID, imAvatarUrl, imRoomAvatarUrl } from "./users-utils";
 
 /**
  * Rooms, members and messages for the HuLa API, in D1 through raw SQL (the
@@ -78,14 +78,12 @@ interface SessionRow {
 	peer_id: string | null;
 	peer_name: string | null;
 	peer_email: string | null;
-	peer_avatar_key: string | null;
 }
 
 interface PersonRow {
 	user_id: string;
 	email: string;
 	name: string;
-	avatar_key: string | null;
 	last_sign_in_at: number | null;
 	online: number | null;
 	last_opt_time: number | null;
@@ -179,7 +177,7 @@ const SESSION_SELECT = `
 		(SELECT COUNT(*) FROM im_messages x WHERE x.room_id = r.id AND x.id > m.last_read_msg_id AND x.from_uid <> m.user_id) AS unread_count,
 		lm.type AS lm_type, lm.body AS lm_body, lm.from_uid AS lm_from_uid, lm.recalled_by AS lm_recalled_by,
 		lu.name AS lm_sender_name, lu.email AS lm_sender_email, ru.name AS lm_recaller_name, ru.email AS lm_recaller_email,
-		peer.id AS peer_id, peer.name AS peer_name, peer.email AS peer_email, peer.avatar_key AS peer_avatar_key
+		peer.id AS peer_id, peer.name AS peer_name, peer.email AS peer_email
 	FROM im_room_members m
 	JOIN im_rooms r ON r.id = m.room_id
 	LEFT JOIN im_messages lm ON lm.id = r.last_msg_id
@@ -191,7 +189,7 @@ const SESSION_SELECT = `
 
 function toSession(row: SessionRow, viewerUid: string, origin: string) {
 	const isGroup = row.type === IM_ROOM_TYPE.GROUP;
-	const peer = row.peer_id ? { id: row.peer_id, name: row.peer_name ?? "", email: row.peer_email ?? "", avatar_key: row.peer_avatar_key } : null;
+	const peer = row.peer_id ? { id: row.peer_id, name: row.peer_name ?? "", email: row.peer_email ?? "" } : null;
 	const text = sessionPreview({
 		row:
 			row.lm_type === null || row.lm_body === null || row.lm_from_uid === null
@@ -210,7 +208,7 @@ function toSession(row: SessionRow, viewerUid: string, origin: string) {
 		type: row.type,
 		hotFlag: row.hot_flag,
 		name: isGroup ? row.name : imUserName(peer),
-		avatar: isGroup ? row.avatar : peer ? imAvatarUrl({ id: peer.id, avatarKey: peer.avatar_key }, origin) : "",
+		avatar: isGroup ? imRoomAvatarUrl(row, origin) : peer ? imAvatarUrl(peer, origin) : "",
 		account: isGroup ? row.id : (peer?.email ?? ""),
 		text,
 		unreadCount: Number(row.unread_count) || 0,
@@ -293,14 +291,14 @@ export async function updateMemberFlags(env: Env, userId: string, roomId: unknow
 
 // People ---------------------------------------------------------------------
 
-const PERSON_COLUMNS = "u.id AS user_id, u.email, u.name, u.avatar_key, u.last_sign_in_at, p.online, p.last_opt_time";
+const PERSON_COLUMNS = "u.id AS user_id, u.email, u.name, u.last_sign_in_at, p.online, p.last_opt_time";
 
 function toPerson(row: PersonRow, origin: string) {
 	return {
 		uid: row.user_id,
 		account: row.email,
 		name: imUserName({ name: row.name, email: row.email }),
-		avatar: imAvatarUrl({ id: row.user_id, avatarKey: row.avatar_key }, origin),
+		avatar: imAvatarUrl({ id: row.user_id }, origin),
 		activeStatus: row.online ? IM_ONLINE : IM_OFFLINE,
 		lastOptTime: row.last_opt_time ?? (row.last_sign_in_at ? row.last_sign_in_at * 1000 : 0),
 		locPlace: "",
@@ -384,12 +382,12 @@ async function renderMessages(env: Env, viewerUid: string, rows: ImMessageRow[],
 		userIds.add(row.from_uid);
 		if (row.recalled_by) userIds.add(row.recalled_by);
 	}
-	const userRows = await selectIn<ImUserRow>(env, (placeholders) => `SELECT id, email, name, avatar_key FROM users WHERE id IN (${placeholders})`, [...userIds]);
+	const userRows = await selectIn<ImUserRow>(env, (placeholders) => `SELECT id, email, name FROM users WHERE id IN (${placeholders})`, [...userIds]);
 	const users = new Map(userRows.map((row) => [row.id, row]));
 	const roomIds = [...new Set(rows.map((row) => row.room_id))];
 	const roomRows = await selectIn<{ id: string; type: number }>(env, (placeholders) => `SELECT id, type FROM im_rooms WHERE id IN (${placeholders})`, roomIds);
 	const roomTypes = new Map(roomRows.map((row) => [row.id, row.type]));
-	const avatarUrl = (user: ImUserRow) => imAvatarUrl({ id: user.id, avatarKey: user.avatar_key }, origin);
+	const avatarUrl = (user: ImUserRow) => imAvatarUrl(user, origin);
 	return rows.map((row) =>
 		toImMessage(row, { viewerUid, isGroup: roomTypes.get(row.room_id) === IM_ROOM_TYPE.GROUP, users, replies, avatarUrl }),
 	);
@@ -599,7 +597,7 @@ export async function recallMessage(env: Env, userId: string, input: { msgId?: u
 async function activeUsers(env: Env, uids: unknown, excluding: string): Promise<ImUserRow[]> {
 	const ids = Array.isArray(uids) ? [...new Set(uids.filter((uid): uid is string => typeof uid === "string" && uid !== excluding))] : [];
 	if (ids.length > IM_GROUP_MEMBER_LIMIT) throw new ImChatError(400, `群成员不能超过${IM_GROUP_MEMBER_LIMIT}人`);
-	return selectIn<ImUserRow>(env, (placeholders) => `SELECT u.id, u.email, u.name, u.avatar_key FROM users u WHERE ${ACTIVE_USER} AND u.id IN (${placeholders})`, ids);
+	return selectIn<ImUserRow>(env, (placeholders) => `SELECT u.id, u.email, u.name FROM users u WHERE ${ACTIVE_USER} AND u.id IN (${placeholders})`, ids);
 }
 
 async function userName(env: Env, userId: string): Promise<string> {
@@ -720,7 +718,7 @@ export async function updateRoomInfo(env: Env, userId: string, input: { id?: unk
 }
 
 /** HuLa's `GroupDetailReq`. */
-export async function groupDetail(env: Env, userId: string, roomId: unknown) {
+export async function groupDetail(env: Env, userId: string, roomId: unknown, origin: string) {
 	const member = await requireGroupMember(env, roomId, userId);
 	const row = await db(env)
 		.prepare(
@@ -735,7 +733,7 @@ export async function groupDetail(env: Env, userId: string, roomId: unknown) {
 	return {
 		roomId: row.id,
 		groupName: row.name,
-		avatar: row.avatar,
+		avatar: imRoomAvatarUrl(row, origin),
 		account: row.id,
 		roleId: member.role,
 		memberNum: Number(row.member_count),
@@ -747,7 +745,7 @@ export async function groupDetail(env: Env, userId: string, roomId: unknown) {
 }
 
 /** The caller's groups in HuLa's `GroupListReq` shape (`im_room` in Rust). */
-export async function listGroups(env: Env, userId: string) {
+export async function listGroups(env: Env, userId: string, origin: string) {
 	await ensureAllStaffRoom(env);
 	const result = await db(env)
 		.prepare(
@@ -756,5 +754,5 @@ export async function listGroups(env: Env, userId: string) {
 		)
 		.bind(userId, IM_ROOM_TYPE.GROUP)
 		.all<{ id: string; name: string; avatar: string; remark: string }>();
-	return result.results.map((row) => ({ id: row.id, roomId: row.id, groupId: row.id, roomName: row.name, avatar: row.avatar, remark: row.remark }));
+	return result.results.map((row) => ({ id: row.id, roomId: row.id, groupId: row.id, roomName: row.name, avatar: imRoomAvatarUrl(row, origin), remark: row.remark }));
 }

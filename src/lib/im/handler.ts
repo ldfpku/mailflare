@@ -8,6 +8,7 @@ import { allowDeviceLoginAttempt } from "@/lib/auth/rate-limit";
 import { getAvatarImageResponse } from "@/lib/avatar-images";
 import { RequestBodyTooLargeError } from "@/lib/http/errors";
 import { readJsonBody } from "@/lib/http/request";
+import { defaultAvatarResponse, defaultGroupAvatarSvg, defaultPersonAvatarSvg } from "./default-avatar-utils";
 import { IM_CODE, IM_MFA_REQUIRED_MESSAGE, imFail, imOk } from "./response";
 import { issueImTokens, resolveImAccessToken, revokeImPair, rotateImRefreshToken, type ImUser } from "./tokens";
 import { IM_USER_STATES, toImUserInfo } from "./users-utils";
@@ -75,6 +76,7 @@ const publicRoutes: ImRouteTable<PublicContext> = {
 	"POST web/session": ({ request, env }) => issueWebSessionTokens(request, env),
 	"GET system/anyTenant/config/init": initConfig,
 	"GET avatar/:uid": avatar,
+	"GET room-avatar/:id": ({ request }, params) => defaultAvatarResponse(request, defaultGroupAvatarSvg(params.id), `room-${params.id}`),
 	// Chat files: the upload URL carries a single-use token and the download URL an unguessable id (see files.ts).
 	"PUT files/:id/:name": ({ request, env, url }, params) => receiveImUpload(env, request, params.id, url.searchParams.get("token")),
 	"GET files/:id/:name": ({ request, env }, params) => serveImFile(env, request, params.id),
@@ -177,8 +179,8 @@ const userRoutes: ImRouteTable<ImContext> = {
 
 	"GET im/room/group/list": groupList,
 	"GET im/room/group/listMember": async ({ env, user, url, origin }) => imOk(await listMembers(env, user.id, url.searchParams.get("roomId"), origin)),
-	"GET im/room/group/detail": async ({ env, user, url }) => imOk(await groupDetail(env, user.id, url.searchParams.get("id"))),
-	"GET im/room/group/info": async ({ env, user, url }) => imOk(await groupDetail(env, user.id, url.searchParams.get("id"))),
+	"GET im/room/group/detail": async ({ env, user, url, origin }) => imOk(await groupDetail(env, user.id, url.searchParams.get("id"), origin)),
+	"GET im/room/group/info": async ({ env, user, url, origin }) => imOk(await groupDetail(env, user.id, url.searchParams.get("id"), origin)),
 	"POST im/room/group": async ({ request, env, user, origin }) => {
 		const { roomId, delivery } = await createGroup(env, user.id, (await readBody(request)).uidList, origin);
 		await deliver(env, delivery);
@@ -362,12 +364,12 @@ async function avatar({ request, env }: PublicContext, params: Record<string, st
 		.from(users)
 		.where(eq(users.id, params.uid))
 		.limit(1);
-	if (!user?.avatarKey || user.disabled) return new Response("Not found", { status: 404 });
-	return getAvatarImageResponse(request, env.BUCKET, user.avatarKey);
+	if (user?.avatarKey && !user.disabled) return getAvatarImageResponse(request, env.BUCKET, user.avatarKey);
+	return defaultAvatarResponse(request, defaultPersonAvatarSvg(params.uid), params.uid);
 }
 
-async function groupList({ env, user, url }: ImContext): Promise<Response> {
-	const groups = await listGroups(env, user.id);
+async function groupList({ env, user, url, origin }: ImContext): Promise<Response> {
+	const groups = await listGroups(env, user.id, origin);
 	// The Rust side pages with `current`/`size` and expects `{ records, total, size }`; the web side wants the bare list.
 	if (!url.searchParams.has("current")) return imOk(groups);
 	const size = Math.min(Math.max(Number(url.searchParams.get("size")) || 20, 1), 200);

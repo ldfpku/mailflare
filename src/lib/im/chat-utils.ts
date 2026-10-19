@@ -30,7 +30,6 @@ export interface ImUserRow {
 	id: string;
 	email: string;
 	name: string;
-	avatar_key: string | null;
 }
 
 export interface ImMessageRow {
