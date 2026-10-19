@@ -97,3 +97,19 @@ export type ChatShareDialogProps = {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 };
+
+export type MailTodoDraft = {
+	title: string;
+	/** Epoch milliseconds, or null. */
+	dueAt: number | null;
+	points: string[];
+	notes: string;
+	mailId: string;
+	mailSubject: string;
+};
+
+export type MailTodoDialogProps = {
+	messageId: string;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+};

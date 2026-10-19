@@ -2,7 +2,7 @@
 
 import { createElement, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, Ban, BellOff, Clock, FileCode2, Forward, Mail, MailOpen, MessageSquareShare, MoreVertical, Reply, ReplyAll, ShieldAlert, Trash2 } from "lucide-react";
+import { Archive, Ban, BellOff, Clock, FileCode2, Forward, ListTodo, Mail, MailOpen, MessageSquareShare, MoreVertical, Reply, ReplyAll, ShieldAlert, Trash2 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { useCompose } from "@/components/compose/compose-context";
 import { MessageSourceDialog } from "@/components/messages/message-source-dialog";
@@ -10,6 +10,7 @@ import { useDismissible } from "@/components/use-dismissible";
 import { useMessageListVisibility } from "@/components/messages/message-list-visibility";
 import { MessageSnoozeDialog } from "./message-snooze-dialog";
 import { ChatShareDialog } from "./chat-share-dialog";
+import { MailTodoDialog } from "./mail-todo-dialog";
 import { useIsMobile } from "@/components/sidebar-mobile-utils";
 import { useHotkeys, useShortcuts } from "@/components/shortcuts";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,7 @@ export function MessageActions({
 	const [sourceOpen, setSourceOpen] = useState(false);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
 	const [chatShareOpen, setChatShareOpen] = useState(false);
+	const [todoOpen, setTodoOpen] = useState(false);
 
 	const runAction = useCallback(async (action: BulkMessageAction) => {
 		setMoreOpen(false);
@@ -432,6 +434,14 @@ export function MessageActions({
 							<MessageSquareShare className="h-4 w-4" />
 							{t("chatShare.action")}
 						</button>
+						<button
+							type="button"
+							className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100"
+							onClick={() => { setMoreOpen(false); setTodoOpen(true); }}
+						>
+							<ListTodo className="h-4 w-4" />
+							{t("mailTodo.action")}
+						</button>
 						{direction === "inbound" && status === "received" && (
 							<button
 								type="button"
@@ -495,6 +505,7 @@ export function MessageActions({
 			<MessageSourceDialog messageId={messageId} open={sourceOpen} onOpenChange={setSourceOpen} />
 			<MessageSnoozeDialog messageId={messageId} open={snoozeOpen} onOpenChange={setSnoozeOpen} />
 			<ChatShareDialog messageId={messageId} open={chatShareOpen} onOpenChange={setChatShareOpen} />
+			<MailTodoDialog messageId={messageId} open={todoOpen} onOpenChange={setTodoOpen} />
 
 			<span className="flex-1" />
 		</div>

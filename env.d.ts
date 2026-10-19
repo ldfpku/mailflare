@@ -8,6 +8,8 @@ interface CloudflareEnv {
 	AI_MODEL?: string;
 	AI_BASE_URL?: string;
 	AI_API_KEY?: string;
+	/** Workers AI model (`@cf/...`) for chat summaries and mail to-dos; defaults to the assistant's Workers AI model. */
+	IM_AI_MODEL?: string;
 	// The outbound queue also carries webhook retries so that scheduled redelivery needs no extra binding.
 	OUTBOUND_QUEUE: Queue<
 		| import("./src/lib/email/send").OutboundQueueMessage

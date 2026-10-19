@@ -10,6 +10,7 @@ import { escapeHtml, htmlToPlainText, textToHtml, wrapQuotedHtml } from "@/compo
 import type {
   BlockMessageContactInput,
   ChatShareTarget,
+  MailTodoDraft,
   ForwardDraftInput,
   MoveMessageActionItem,
   ReplyableMessage,
@@ -336,4 +337,41 @@ export async function shareMessageToChats(messageId: string, roomIds: string[]):
 export function filterChatShareTargets(targets: ChatShareTarget[], query: string): ChatShareTarget[] {
 	const needle = query.trim().toLowerCase();
 	return needle ? targets.filter((target) => target.name.toLowerCase().includes(needle)) : targets;
+}
+
+/** Asks Workers AI for a to-do drafted from the message (title, deadline, points). */
+export async function draftMessageTodo(messageId: string): Promise<MailTodoDraft> {
+	const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/todo`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ draft: true }),
+	});
+	const data = (await response.json().catch(() => ({}))) as { draft?: MailTodoDraft; error?: string };
+	if (!response.ok || !data.draft) throw new Error(data.error || "Could not draft a to-do");
+	return data.draft;
+}
+
+/** Saves the to-do to 我的待办 in chat. */
+export async function saveMessageTodo(messageId: string, todo: { title: string; notes: string; dueAt: number | null }): Promise<void> {
+	const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/todo`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(todo),
+	});
+	const data = (await response.json().catch(() => ({}))) as { error?: string };
+	if (!response.ok) throw new Error(data.error || "Could not save the to-do");
+}
+
+/** `datetime-local` value for epoch milliseconds, in the browser's time zone. */
+export function toDateTimeLocal(at: number | null): string {
+	if (at === null) return "";
+	const date = new Date(at);
+	const pad = (value: number) => String(value).padStart(2, "0");
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function fromDateTimeLocal(value: string): number | null {
+	if (!value) return null;
+	const at = new Date(value).getTime();
+	return Number.isFinite(at) ? at : null;
 }
