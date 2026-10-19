@@ -22,6 +22,8 @@ const REALTIMEKIT_VERSION = "2.0.2";
 /** RealtimeKit's capture preset for meetings (`qvga`, `vga`, `hd`, `fhd`); the presets' own default is `vga`. */
 const MEETING_VIDEO_QUALITY = "hd";
 const VENDOR = `/vendor/realtimekit/${REALTIMEKIT_VERSION}`;
+/** /vendor is cached as immutable: bump this whenever the patched core changes (scripts/vendor-realtimekit.mjs). */
+const CORE_REVISION = "2";
 const REALTIMEKIT_HOSTS = "https://*.realtime.cloudflare.com";
 /** Matches the stack the vendoring script writes into the UI Kit. */
 const FONT_STACK = `"Barlow", "Noto Sans SC", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif`;
@@ -156,7 +158,7 @@ const ZH: Record<string, string> = {
 const SCREEN_LOCK_MESSAGE = "smj-screenshare-lock";
 
 export function renderMeetingPage(id: string, hostPreset = "group_call_host"): string {
-	const config = JSON.stringify({ id, hostPreset, videoQuality: MEETING_VIDEO_QUALITY, lockMessage: SCREEN_LOCK_MESSAGE, core: `${VENDOR}/core`, ui: `${VENDOR}/ui`, font: FONT_STACK, zh: ZH }).replace(/</g, "\\u003c");
+	const config = JSON.stringify({ id, hostPreset, videoQuality: MEETING_VIDEO_QUALITY, lockMessage: SCREEN_LOCK_MESSAGE, core: `${VENDOR}/core`, coreRevision: CORE_REVISION, ui: `${VENDOR}/ui`, font: FONT_STACK, zh: ZH }).replace(/</g, "\\u003c");
 	return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -300,7 +302,7 @@ async function participantToken() {
 async function start() {
 	const token = await participantToken();
 	if (!token) return;
-	const [loader] = await Promise.all([import(config.ui + "/loader/index.es2017.js"), loadScript(config.core + "/browser.js")]);
+	const [loader] = await Promise.all([import(config.ui + "/loader/index.es2017.js"), loadScript(config.core + "/browser.js?r=" + config.coreRevision)]);
 	loader.defineCustomElements();
 	const element = document.getElementById("meeting");
 	try {
