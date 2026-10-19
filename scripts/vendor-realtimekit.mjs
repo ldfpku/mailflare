@@ -55,12 +55,16 @@ function patchGoogleFonts(directory) {
  * only used until the first switch. It also compares against CSS pixels, so on a
  * high-DPI screen a large tile still drops to 320x180. Patched so layer 0 is the
  * half-size encoding and layer 1 the full one, tiles are measured in device
- * pixels, and the downswitch threshold (2.4x) leaves room for the factor-of-two
- * jump between layers, so a tile does not flip back and forth.
+ * pixels, and the thresholds are 1.1x up and 2.4x down: a tile wider than about
+ * 580 device pixels gets the full layer and one narrower than about 530 drops
+ * to half, whichever layer it had before (with the stock 0.8x up, a tile that
+ * shrank during a screen share and grew back kept the half layer for good).
+ * The gap between them is wider than the factor-of-two jump between layers,
+ * so a tile does not flip back and forth.
  */
 const CORE_PATCHES = [
 	['preferredRid:e===0?"q":"h"', 'preferredRid:e===0?"h":"f"'],
-	["const pD=.8,mD=1.2;", "const pD=.8,mD=2.4;"],
+	["const pD=.8,mD=1.2;", "const pD=1.1,mD=2.4;"],
 	["const o=n/r,c=i/e,d=Math.max(o,c);", "const dpr=window.devicePixelRatio||1,o=n/(r*dpr),c=i/(e*dpr),d=Math.max(o,c);"],
 ];
 
