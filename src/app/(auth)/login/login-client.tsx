@@ -24,9 +24,10 @@ export function LoginClient({ adding = false }: { adding?: boolean }) {
 
   function finish(redirect?: string) {
     // `?next=/meet/<id>` brings someone who opened a meeting link back to the meeting after signing in,
-    // and `?next=/api/im/mail/share/<id>` someone who opened a mail shared into a chat.
+    // `?next=/api/im/mail/share/<id>` someone who opened a mail shared into a chat, and `?next=/im/` someone
+    // who opened the web chat client, which signs in with this session.
     const next = new URLSearchParams(window.location.search).get("next");
-    if (next && (/^\/meet\/[a-z2-7]{16}$/.test(next) || /^\/api\/im\/mail\/share\/[a-f0-9]{32}$/.test(next))) {
+    if (next && (/^\/meet\/[a-z2-7]{16}$/.test(next) || /^\/api\/im\/mail\/share\/[a-f0-9]{32}$/.test(next) || next === "/im/")) {
       window.location.assign(next);
       return;
     }
