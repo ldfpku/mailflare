@@ -20,6 +20,8 @@
 /out/
 
 # production
+# HuLa web client, built by scripts/build-im-web.mjs
+/public/im
 /build
 /dist
 /data

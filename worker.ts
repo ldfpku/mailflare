@@ -14,6 +14,8 @@ import { resolveImSocketToken } from "./src/lib/im/tokens";
 import { handleMeetingRequest, isMeetingPath } from "./src/lib/meetings/http";
 import { handleImRequest } from "./src/lib/im/handler";
 import { IM_MAIL_SHARE_PATH } from "./src/lib/im/mail-share-utils";
+import { serveImWebApp } from "./src/lib/im/web-app";
+import { isImWebAppPath } from "./src/lib/im/web-app-utils";
 import { getSessionTokenFromRequest } from "./src/lib/realtime/utils";
 import { inboundAttachmentLimitReasonFromRaw } from "./src/lib/email/inbound-attachments";
 import { hasValidSessionMutationOrigin } from "./src/lib/auth/origin";
@@ -72,6 +74,8 @@ export default {
 		if (isMeetingPath(url.pathname)) return handleMeetingRequest(request, env);
 		// Mail shared into a chat is sender-controlled HTML: its page must keep its own sandboxed CSP, not the app's.
 		if (url.pathname.startsWith(IM_MAIL_SHARE_PATH)) return handleImRequest(request, env);
+		// HuLa's web build: its files are static assets, any other path below /im is a client-side route.
+		if (isImWebAppPath(url.pathname)) return serveImWebApp(request, env);
 
 		return vinextHandler.fetch(request, env, ctx);
 	},

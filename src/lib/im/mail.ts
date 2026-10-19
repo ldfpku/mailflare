@@ -51,7 +51,9 @@ export async function redeemMailSsoLink(env: Env, request: Request, code: string
 	const token = await createSession(env, row.user_id);
 	const secure = url.protocol === "https:" ? "; Secure" : "";
 	const cookie = `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`;
-	return redirect(`${url.origin}${safeNextPath(url.searchParams.get("next"))}`, cookie);
+	// Without a target, open the inbox rather than the public home page.
+	const next = safeNextPath(url.searchParams.get("next"));
+	return redirect(`${url.origin}${next === "/" ? "/inbox" : next}`, cookie);
 }
 
 function redirect(location: string, cookie: string | null): Response {

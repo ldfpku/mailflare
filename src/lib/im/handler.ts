@@ -43,6 +43,7 @@ import { serveMailShare } from "./mail-share";
 import { disableRoomMailbox, enableRoomMailbox, getRoomMailbox } from "./room-mailbox";
 import { notifyImUsers } from "./notify";
 import { rtcRoutes } from "./meeting-routes";
+import { issueWebSessionTokens } from "./web-app";
 
 /**
  * The HuLa-compatible API under `/api/im/*`. HuLa's client was written for
@@ -67,6 +68,8 @@ const LOGIN_BODY_LIMIT = 16 * 1024;
 const publicRoutes: ImRouteTable<PublicContext> = {
 	"POST oauth/anyTenant/login": login,
 	"POST oauth/anyTenant/refresh": refresh,
+	// The web client at /im trades the mail web session cookie for chat tokens (see web-app.ts).
+	"POST web/session": ({ request, env }) => issueWebSessionTokens(request, env),
 	"GET system/anyTenant/config/init": initConfig,
 	"GET avatar/:uid": avatar,
 	// Chat files: the upload URL carries a single-use token and the download URL an unguessable id (see files.ts).
