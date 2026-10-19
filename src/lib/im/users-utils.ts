@@ -38,8 +38,15 @@ export function toImUserInfo(user: ImUserSource, origin: string) {
 /**
  * HuLa renders avatars in plain `<img>` tags that cannot carry the token
  * header, so `/api/im/avatar/<uid>` serves a user's own avatar without
- * authentication, the way a mail client shows a sender's picture.
+ * authentication, the way a mail client shows a sender's picture. Without an
+ * upload it serves a generated one (`default-avatar-utils.ts`), so every
+ * account has a URL.
  */
-export function imAvatarUrl(user: Pick<ImUserSource, "id" | "avatarKey">, origin: string): string {
-	return user.avatarKey ? `${origin}/api/im/avatar/${encodeURIComponent(user.id)}` : "";
+export function imAvatarUrl(user: Pick<ImUserSource, "id">, origin: string): string {
+	return `${origin}/api/im/avatar/${encodeURIComponent(user.id)}`;
+}
+
+/** A group's own picture, or the generated one for its room id. */
+export function imRoomAvatarUrl(room: { id: string; avatar: string }, origin: string): string {
+	return room.avatar || `${origin}/api/im/room-avatar/${encodeURIComponent(room.id)}`;
 }

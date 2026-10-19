@@ -7,7 +7,7 @@ import { parseSearchQuery } from "@/lib/search/query-utils";
 import { IM_ROOM_TYPE, imUserName, messageText, type ImMessageRow } from "./chat-utils";
 import { CJK_RE, buildChatTextQuery, searchExcerpt, type ImSearchParams } from "./search-utils";
 import type { ImUser } from "./tokens";
-import { imAvatarUrl } from "./users-utils";
+import { imAvatarUrl, imRoomAvatarUrl } from "./users-utils";
 
 /**
  * One search box over chat and mail (`GET im/search`). Chat results come from
@@ -29,10 +29,8 @@ interface ChatHitRow extends ImMessageRow {
 	peer_id: string | null;
 	peer_name: string | null;
 	peer_email: string | null;
-	peer_avatar_key: string | null;
 	sender_name: string | null;
 	sender_email: string | null;
-	sender_avatar_key: string | null;
 }
 
 export interface ImSearchSection<T> {
@@ -82,8 +80,8 @@ async function searchChat(env: Env, userId: string, params: ImSearchParams, orig
 		env.DB.prepare(
 			`SELECT x.id, x.room_id, x.from_uid, x.type, x.body, x.reply_msg_id, x.recalled_by, x.recalled_at, x.created_at,
 				r.type AS room_type, r.name AS room_name, r.avatar AS room_avatar,
-				peer.id AS peer_id, peer.name AS peer_name, peer.email AS peer_email, peer.avatar_key AS peer_avatar_key,
-				u.name AS sender_name, u.email AS sender_email, u.avatar_key AS sender_avatar_key
+				peer.id AS peer_id, peer.name AS peer_name, peer.email AS peer_email,
+				u.name AS sender_name, u.email AS sender_email
 			${from}
 			JOIN im_rooms r ON r.id = x.room_id
 			LEFT JOIN im_room_members pm ON r.type = ${IM_ROOM_TYPE.SINGLE} AND pm.room_id = r.id AND pm.user_id <> m.user_id
@@ -98,7 +96,7 @@ async function searchChat(env: Env, userId: string, params: ImSearchParams, orig
 
 	const list = rows.map((row) => {
 		const isGroup = row.room_type === IM_ROOM_TYPE.GROUP;
-		const peer = row.peer_id ? { id: row.peer_id, name: row.peer_name ?? "", email: row.peer_email ?? "", avatar_key: row.peer_avatar_key } : null;
+		const peer = row.peer_id ? { id: row.peer_id, name: row.peer_name ?? "", email: row.peer_email ?? "" } : null;
 		const sender = row.sender_email === null ? null : { name: row.sender_name ?? "", email: row.sender_email };
 		return {
 			msgId: String(row.id),
@@ -107,10 +105,10 @@ async function searchChat(env: Env, userId: string, params: ImSearchParams, orig
 			// What HuLa opens a session by: the group id, or the other person in a one-to-one room.
 			detailId: isGroup ? row.room_id : (peer?.id ?? ""),
 			roomName: isGroup ? row.room_name : imUserName(peer),
-			roomAvatar: isGroup ? row.room_avatar : peer ? imAvatarUrl({ id: peer.id, avatarKey: peer.avatar_key }, origin) : "",
+			roomAvatar: isGroup ? imRoomAvatarUrl({ id: row.room_id, avatar: row.room_avatar }, origin) : peer ? imAvatarUrl(peer, origin) : "",
 			fromUid: row.from_uid,
 			fromName: imUserName(sender),
-			fromAvatar: sender ? imAvatarUrl({ id: row.from_uid, avatarKey: row.sender_avatar_key }, origin) : "",
+			fromAvatar: sender ? imAvatarUrl({ id: row.from_uid }, origin) : "",
 			type: row.type,
 			text: searchExcerpt(messageText(row), query.highlights),
 			sendTime: row.created_at,
