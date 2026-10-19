@@ -4,6 +4,14 @@
  * from the URL fragment (HuLa opens `/meet/<id>#t=<token>` after joining with
  * its own credentials) or from `/api/meetings/<id>/join` with the web session;
  * without a session the page sends the user to sign in and back.
+ *
+ * Screen sharing is the UI Kit's own button. The host may switch on "仅主持人可共享屏幕":
+ * the host's page broadcasts the lock, and every other page stops a share already
+ * running and refuses new ones. The presets cannot be changed from here
+ * (`participants.updatePermissions` has no effect with `group_call_host`), so this is
+ * enforced by the page every participant runs; a participant preset with screenshare
+ * NOT_ALLOWED would make it binding. Latecomers get the lock again when they join;
+ * it lasts as long as the host stays in the meeting.
  */
 const REALTIMEKIT_VERSION = "2.0.2";
 const CDN = "https://cdn.jsdelivr.net/npm";
@@ -133,8 +141,11 @@ const ZH: Record<string, string> = {
 	"breakout_rooms.main_room": "主会场",
 };
 
-export function renderMeetingPage(id: string): string {
-	const config = JSON.stringify({ id, core: `${CDN}/@cloudflare/realtimekit@${REALTIMEKIT_VERSION}`, ui: `${CDN}/@cloudflare/realtimekit-ui@${REALTIMEKIT_VERSION}`, zh: ZH }).replace(/</g, "\\u003c");
+/** Broadcast type of the host's screen share lock. */
+const SCREEN_LOCK_MESSAGE = "smj-screenshare-lock";
+
+export function renderMeetingPage(id: string, hostPreset = "group_call_host"): string {
+	const config = JSON.stringify({ id, hostPreset, lockMessage: SCREEN_LOCK_MESSAGE, core: `${CDN}/@cloudflare/realtimekit@${REALTIMEKIT_VERSION}`, ui: `${CDN}/@cloudflare/realtimekit-ui@${REALTIMEKIT_VERSION}`, zh: ZH }).replace(/</g, "\\u003c");
 	return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -153,6 +164,10 @@ header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; bord
 .spacer { flex: 1; }
 button, a.button { font: inherit; font-size: 13px; border: 1px solid var(--smj-line); background: #fff; color: var(--smj-navy); padding: 6px 12px; border-radius: 6px; cursor: pointer; text-decoration: none; }
 button.primary { background: var(--smj-blue); border-color: var(--smj-blue); color: #fff; }
+.lock { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.lock[hidden], .notice[hidden] { display: none; }
+.lock input { accent-color: var(--smj-blue); margin: 0; }
+.notice { font-size: 13px; color: var(--smj-muted); white-space: nowrap; }
 main { flex: 1; min-height: 0; position: relative; }
 /* The UI Kit lays out its grid and control bar as a flex column; display: block collapses the video area to zero height. */
 rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; }
@@ -167,6 +182,8 @@ rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; 
 	<span class="title" id="title">视频会议</span>
 	<span class="meta" id="meta"></span>
 	<span class="spacer"></span>
+	<label class="lock" id="lock" hidden><input type="checkbox" id="lock-input">仅主持人可共享屏幕</label>
+	<span class="notice" id="lock-notice" hidden>主持人已限制共享屏幕</span>
 	<a class="button" id="calendar" href="/api/meetings/${id}/meeting.ics" download="meeting.ics">加入日历</a>
 	<button type="button" id="copy">复制会议链接</button>
 </header>
@@ -212,13 +229,20 @@ function loadScript(src) {
 	});
 }
 
+// From /join or the link HuLa opens; the preset name is the fallback for older links.
+let joinedAsHost = false;
+
 async function participantToken() {
 	const fragment = new URLSearchParams(location.hash.slice(1));
 	const token = fragment.get("t");
 	if (token) {
 		// The token is a credential: keep it out of history, bookmarks and copied links.
 		history.replaceState(null, "", location.pathname);
-		try { describe(JSON.parse(fragment.get("m") || "null")); } catch {}
+		try {
+			const meta = JSON.parse(fragment.get("m") || "null");
+			describe(meta);
+			joinedAsHost = meta?.host === true;
+		} catch {}
 		return token;
 	}
 	const response = await fetch("/api/meetings/" + config.id + "/join", { method: "POST", credentials: "same-origin" });
@@ -229,6 +253,7 @@ async function participantToken() {
 	const data = await response.json().catch(() => ({}));
 	if (!response.ok) { show(data.error || "无法加入会议", response.status >= 500); return null; }
 	describe(data.meeting);
+	joinedAsHost = data.host === true;
 	return data.authToken;
 }
 
@@ -254,6 +279,53 @@ async function start() {
 	element.meeting = meeting;
 	statusBox.hidden = true;
 	meeting.self.on("roomLeft", () => { element.hidden = true; show("你已离开会议", true); });
+	setupScreenLock(meeting);
+}
+
+function setupScreenLock(meeting) {
+	const isHost = joinedAsHost || meeting.self.presetName === config.hostPreset;
+	const lockLabel = document.getElementById("lock");
+	const lockInput = document.getElementById("lock-input");
+	const notice = document.getElementById("lock-notice");
+	let locked = false;
+	const announce = () => meeting.participants.broadcastMessage(config.lockMessage, { locked }).catch((error) => console.warn("broadcast", error));
+
+	if (isHost) {
+		lockLabel.hidden = false;
+		lockInput.addEventListener("change", () => {
+			locked = lockInput.checked;
+			void announce();
+		});
+		// Latecomers missed the broadcast.
+		meeting.participants.joined.on("participantJoined", () => {
+			if (locked) void announce();
+		});
+		return;
+	}
+
+	// The UI Kit's share button calls enableScreenShare: refuse it while locked.
+	const enable = meeting.self.enableScreenShare.bind(meeting.self);
+	meeting.self.enableScreenShare = async (...args) => {
+		if (locked) {
+			notice.animate([{ color: "#d5304f" }, { color: "" }], { duration: 1200 });
+			return;
+		}
+		return enable(...args);
+	};
+	let stopping = false;
+	const enforce = async () => {
+		if (!locked || stopping || !meeting.self.screenShareEnabled) return;
+		stopping = true;
+		try { await meeting.self.disableScreenShare(); } catch (error) { console.warn("disableScreenShare", error); }
+		finally { stopping = false; }
+	};
+	meeting.participants.on("broadcastedMessage", ({ type, payload }) => {
+		if (type !== config.lockMessage) return;
+		locked = payload && payload.locked === true;
+		notice.hidden = !locked;
+		void enforce();
+	});
+	meeting.self.on("screenShareUpdate", () => void enforce());
 }
 
 start().catch((error) => {

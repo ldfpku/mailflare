@@ -247,7 +247,11 @@ test("the meeting page allows camera and microphone, and web joins need a sessio
 	assert.equal(page.status, 200);
 	assert.match(page.headers.get("Permissions-Policy"), /camera=\(self\), microphone=\(self\)/);
 	assert.match(page.headers.get("Content-Security-Policy"), /cdn\.jsdelivr\.net\/npm\/@cloudflare\//);
-	assert.match(await page.text(), /realtimekit-ui@2\.0\.2/);
+	const html = await page.text();
+	assert.match(html, /realtimekit-ui@2\.0\.2/);
+	assert.match(page.headers.get("Permissions-Policy"), /display-capture=\(self\)/, "screen sharing stays allowed");
+	assert.match(html, /仅主持人可共享屏幕/);
+	assert.match(html, /"hostPreset":"group_call_host"/, "the page compares presets with the configured host preset");
 
 	const anonymous = await handleMeetingRequest(new Request("https://mail.one.test/api/meetings/abcdefghijklmnop/join", { method: "POST" }), env);
 	assert.equal(anonymous.status, 401);

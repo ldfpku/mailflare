@@ -3,7 +3,7 @@ import { getUserFromSession } from "@/lib/auth/session";
 import { getSessionTokenFromRequest } from "@/lib/realtime/utils";
 import { MEETING_ID_PATTERN, MeetingError } from "./meeting-utils";
 import { MEETING_PAGE_HEADERS, renderMeetingPage } from "./page";
-import { RealtimeKitNotConfiguredError } from "./realtimekit";
+import { getRealtimeKitConfig, RealtimeKitNotConfiguredError } from "./realtimekit";
 import { getMeetingIcs, joinMeeting } from "./service";
 
 /**
@@ -28,7 +28,7 @@ export async function handleMeetingRequest(request: Request, env: CloudflareEnv)
 	const page = /^\/meet\/([a-z2-7]{16})\/?$/.exec(url.pathname);
 	if (page) {
 		if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
-		return new Response(renderMeetingPage(page[1]), { headers: MEETING_PAGE_HEADERS });
+		return new Response(renderMeetingPage(page[1], getRealtimeKitConfig(env)?.hostPreset), { headers: MEETING_PAGE_HEADERS });
 	}
 
 	const api = /^\/api\/meetings\/([^/]+)\/(join|meeting\.ics)$/.exec(url.pathname);
