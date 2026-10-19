@@ -21,6 +21,8 @@ export type DriveItemDto = {
 	updatedAt: string;
 	/** Set for files that come from an email rather than from Drive. */
 	source?: { messageId: string; subject: string; direction: "inbound" | "outbound"; canDelete: boolean };
+	/** Set for a group chat's folder (`fileCount`) and the files in it (`fileId`), listed under Group files. */
+	group?: { roomId: string; roomName: string; fileCount?: number; fileId?: string; canRemove?: boolean };
 };
 
 export type DriveCrumb = { id: string; name: string };

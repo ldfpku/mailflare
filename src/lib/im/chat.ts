@@ -28,6 +28,7 @@ import {
 import { requireUploadedImFiles } from "./files";
 import { imFileIdFromUrl } from "./files-utils";
 import { imSearchTextOverride } from "./search-utils";
+import { fileRoomMessage, unfileRoomMessage } from "./room-files";
 import { IM_DEFAULT_USER_STATE_ID, imAvatarUrl } from "./users-utils";
 
 /**
@@ -482,6 +483,7 @@ export async function sendMessage(
 	const member = await requireMember(env, input.roomId, userId);
 	const type = Number(input.msgType);
 	let body: unknown;
+	let fileIds: string[] = [];
 	if (type === IM_MSG_TYPE.TEXT) {
 		body = parseTextBody(input.body);
 		if (!body) throw new ImChatError(400, "消息内容为空或超过长度限制");
@@ -490,6 +492,7 @@ export async function sendMessage(
 		if (!media) throw new ImChatError(400, "文件消息无效");
 		await requireUploadedImFiles(env, media.fileIds);
 		body = media.body;
+		fileIds = media.fileIds;
 	} else {
 		throw new ImChatError(400, "暂不支持该类型的消息");
 	}
@@ -500,6 +503,7 @@ export async function sendMessage(
 	}
 	const clientMsgId = typeof input.id === "string" && input.id && input.id.length <= 64 ? input.id : null;
 	const row = await insertMessage(env, { roomId: member.room_id, fromUid: userId, clientMsgId, type, body, replyMsgId });
+	if (fileIds.length && member.room_type === IM_ROOM_TYPE.GROUP) await fileRoomMessage(env, row, body as Record<string, unknown>, fileIds[0]);
 	const [message] = await renderMessages(env, userId, [row], origin);
 	// The sender's client already shows its own message; a second copy over the socket would race its id swap.
 	const recipients = (await roomMemberIds(env, member.room_id)).filter((id) => id !== userId);
@@ -513,6 +517,21 @@ export async function sendMessage(
 export async function postMailCard(env: Env, userId: string, roomId: unknown, body: unknown, origin: string): Promise<ImDelivery> {
 	const member = await requireMember(env, roomId, userId);
 	const row = await insertMessage(env, { roomId: member.room_id, fromUid: userId, clientMsgId: null, type: IM_MSG_TYPE.MAIL_CARD, body, replyMsgId: null });
+	const [message] = await renderMessages(env, userId, [row], origin);
+	return { message, recipients: await roomMemberIds(env, member.room_id) };
+}
+
+/**
+ * Posts a file message the sender's client did not upload itself (a Drive file sent from the picker), so the sender
+ * is among the recipients too. The body must already point at an uploaded chat file.
+ */
+export async function postMediaMessage(env: Env, userId: string, roomId: unknown, type: number, body: Record<string, unknown>, origin: string): Promise<ImDelivery> {
+	const member = await requireMember(env, roomId, userId);
+	const media = parseMediaBody(type, body, (url) => imFileIdFromUrl(url, origin));
+	if (!media) throw new ImChatError(400, "文件消息无效");
+	await requireUploadedImFiles(env, media.fileIds);
+	const row = await insertMessage(env, { roomId: member.room_id, fromUid: userId, clientMsgId: null, type, body: media.body, replyMsgId: null });
+	if (member.room_type === IM_ROOM_TYPE.GROUP) await fileRoomMessage(env, row, media.body, media.fileIds[0]);
 	const [message] = await renderMessages(env, userId, [row], origin);
 	return { message, recipients: await roomMemberIds(env, member.room_id) };
 }
@@ -571,6 +590,7 @@ export async function recallMessage(env: Env, userId: string, input: { msgId?: u
 		throw new ImChatError(403, "超过2分钟的消息不能撤回");
 	}
 	await db(env).prepare("UPDATE im_messages SET recalled_by = ?, recalled_at = ? WHERE id = ?").bind(userId, Date.now(), row.id).run();
+	await unfileRoomMessage(env, row.id);
 	return { event: { msgId: String(row.id), roomId: row.room_id, recallUid: userId }, recipients: await roomMemberIds(env, row.room_id) };
 }
 

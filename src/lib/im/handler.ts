@@ -43,6 +43,7 @@ import { serveMailShare } from "./mail-share";
 import { disableRoomMailbox, enableRoomMailbox, getRoomMailbox } from "./room-mailbox";
 import { searchImAndMail } from "./search";
 import { parseImSearchParams } from "./search-utils";
+import { listDriveForPicker, listRoomFiles, removeRoomFile, saveRoomFileToDrive, sendDriveFileToRoom } from "./room-files";
 import { notifyImUsers } from "./notify";
 import { rtcRoutes } from "./meeting-routes";
 import { issueWebSessionTokens } from "./web-app";
@@ -223,6 +224,32 @@ const userRoutes: ImRouteTable<ImContext> = {
 		if (!params) return imFail(IM_CODE.BAD_REQUEST, "请输入搜索内容");
 		return imOk(await searchImAndMail(env, user, params, origin));
 	},
+	// Group files, the group's folder in Drive (see room-files.ts), and the Drive picker for sending a Drive file.
+	"GET im/room/files": async ({ env, user, url, origin }) =>
+		imOk(
+			await listRoomFiles(
+				env,
+				user.id,
+				{
+					roomId: url.searchParams.get("roomId"),
+					cursor: url.searchParams.get("cursor"),
+					pageSize: url.searchParams.get("pageSize"),
+					keyword: url.searchParams.get("keyword"),
+				},
+				origin,
+			),
+		),
+	"POST im/room/files/remove": async ({ request, env, user }) => {
+		await removeRoomFile(env, user.id, await readBody(request));
+		return imOk(true);
+	},
+	"POST im/room/files/saveToDrive": async ({ request, env, user }) => imOk(await saveRoomFileToDrive(env, user.id, await readBody(request))),
+	"POST im/room/files/fromDrive": async ({ request, env, user, origin }) => {
+		const delivery = await sendDriveFileToRoom(env, user.id, await readBody(request), origin);
+		await deliver(env, delivery);
+		return imOk(delivery.message);
+	},
+	"GET im/drive/items": async ({ env, user, url }) => imOk(await listDriveForPicker(env, user.id, url.searchParams.get("parentId"))),
 	"GET im/room/announcement/list": ({ url }) => imOk({ records: [], total: "0", size: url.searchParams.get("size") ?? "0" }),
 };
 

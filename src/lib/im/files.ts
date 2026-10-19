@@ -133,3 +133,49 @@ export async function requireUploadedImFiles(env: Env, ids: string[]): Promise<v
 		if (!file?.uploaded_at) throw new ImChatError(400, "文件未上传完成");
 	}
 }
+
+/**
+ * Copies a stored object to a new key without holding it in memory. Workers' R2 only takes a stream of known
+ * length, which `FixedLengthStream` gives it; the B2 and Node buckets read any stream.
+ */
+export async function copyBucketObject(env: Env, fromKey: string, toKey: string, contentType: string): Promise<number> {
+	const object = await env.BUCKET.get(fromKey);
+	if (!object?.body) throw new ImChatError(404, "文件不存在");
+	let body: ReadableStream = object.body;
+	const Fixed = (globalThis as { FixedLengthStream?: new (length: number) => TransformStream }).FixedLengthStream;
+	if (Fixed && typeof object.size === "number") {
+		const fixed = new Fixed(object.size);
+		object.body.pipeTo(fixed.writable).catch(() => undefined);
+		body = fixed.readable;
+	}
+	const stored = await env.BUCKET.put(toKey, body, { httpMetadata: { contentType } });
+	return stored?.size ?? object.size ?? 0;
+}
+
+/** A chat file made from an object already in the bucket (a Drive file sent into a chat); returns its download URL. */
+export async function createImFileFromObject(
+	env: Env,
+	userId: string,
+	sourceKey: string,
+	fileName: unknown,
+	origin: string,
+): Promise<{ id: string; url: string; fileName: string; size: number; contentType: string }> {
+	const name = sanitizeImFileName(fileName);
+	const id = randomHex(16);
+	const contentType = imFileContentType(name);
+	const size = await copyBucketObject(env, sourceKey, imFileObjectKey(id), contentType);
+	const now = Date.now();
+	await env.DB.prepare(
+		"INSERT INTO im_files (id, uploader_id, object_key, file_name, content_type, size, uploaded_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+	)
+		.bind(id, userId, imFileObjectKey(id), name, contentType, size, now, now)
+		.run();
+	return { id, url: imFileUrl(origin, id, name), fileName: name, size, contentType };
+}
+
+/** The stored object behind an uploaded chat file. */
+export async function findUploadedImFile(env: Env, id: string): Promise<{ objectKey: string; fileName: string; contentType: string; size: number } | null> {
+	const file = await findFile(env, id);
+	if (!file?.uploaded_at || file.size === null) return null;
+	return { objectKey: file.object_key, fileName: file.file_name, contentType: file.content_type, size: file.size };
+}

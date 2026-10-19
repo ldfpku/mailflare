@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test, { after } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -21,6 +21,7 @@ await build({
 			export { parseImPairId, imPairSessionIds } from "./src/lib/im/tokens-utils.ts";
 			export { listShareTargets, shareMailToChats, postRoomMailCard } from "./src/lib/im/mail-share.ts";
 			export { countUnreadMail } from "./src/lib/im/mail.ts";
+			export { listDriveGroupFolders, listDriveGroupFiles, serveRoomFileForDrive } from "./src/lib/im/room-files.ts";
 		`,
 		resolveDir: root,
 		sourcefile: "hula-im-test-entry.ts",
@@ -38,7 +39,7 @@ await build({
 const {
 	SqliteDatabase, applyMigrations, hashPassword, createSession, deleteUserSessions, handleImRequest,
 	resolveImSocketToken, findImRoute, imApiPath, parseImPairId, imPairSessionIds, listShareTargets, shareMailToChats,
-	postRoomMailCard, countUnreadMail,
+	postRoomMailCard, countUnreadMail, listDriveGroupFolders, listDriveGroupFiles, serveRoomFileForDrive,
 } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 
 async function fixture(t) {
@@ -605,6 +606,122 @@ test("search: chat in the user's rooms and mail in their mailboxes, Chinese word
 
 	assert.equal((await call("GET", "im/search", { token: sam, query: { keyword: "  " } })).code, 400);
 	assert.equal((await call("GET", "im/search", { query: { keyword: "合同" } })).code, 401);
+});
+
+test("group files: filed from the chat, readable only by current members, and linked with Drive", async (t) => {
+	const { database, env, call, raw, login, addUser, pushes, objects } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	addUser("u4", "max@one.test", "Max");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	const lee = (await login("lee@one.test")).data.token;
+	const max = (await login("max@one.test")).data.token;
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+	const upload = async (token, fileName, bytes) => {
+		const cred = (await call("GET", "system/anyTenant/ossToken", { token, query: { fileName } })).data;
+		await raw("PUT", cred.uploadUrl, { body: bytes, headers: { "Content-Length": String(bytes.byteLength) } });
+		return cred.downloadUrl;
+	};
+	const pdf = new Uint8Array([37, 80, 68, 70, 1, 2, 3]);
+	const reportUrl = await upload(sam, "upload.pdf", pdf);
+	assert.equal((await call("POST", "im/chat/msg", { token: sam, body: { roomId, msgType: 4, body: { url: reportUrl, size: 7, fileName: "季度报告.pdf" } } })).code, 200);
+	const photoUrl = await upload(kim, "photo.png", new Uint8Array([137, 80, 78, 71]));
+	assert.equal((await call("POST", "im/chat/msg", { token: kim, body: { roomId, msgType: 3, body: { url: photoUrl, size: 4, width: 2, height: 2 } } })).code, 200);
+	const voiceUrl = await upload(kim, "voice.mp3", new Uint8Array([1, 2]));
+	await call("POST", "im/chat/msg", { token: kim, body: { roomId, msgType: 5, body: { url: voiceUrl, size: 2, second: 1 } } });
+	const single = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
+	await call("POST", "im/chat/msg", { token: sam, body: { roomId: single, msgType: 4, body: { url: reportUrl, size: 7, fileName: "private.pdf" } } });
+
+	const kimView = await call("GET", "im/room/files", { token: kim, query: { roomId } });
+	assert.equal(kimView.code, 200);
+	assert.deepEqual(kimView.data.list.map((file) => [file.fileName, file.msgType, file.uploaderName, file.canRemove]), [["photo.png", 3, "Kim", true], ["季度报告.pdf", 4, "Sam", false]], "voice notes and private chats are not filed");
+	assert.equal(kimView.data.total, 2);
+	assert.equal(kimView.data.totalSize, 11);
+	assert.equal(kimView.data.list[1].url, reportUrl);
+	assert.equal((await call("GET", "im/room/files", { token: kim, query: { roomId, keyword: "报告" } })).data.list.length, 1);
+	assert.equal((await call("GET", "im/room/files", { token: kim, query: { roomId, pageSize: "1" } })).data.isLast, false);
+	assert.equal((await call("GET", "im/room/files", { token: sam, query: { roomId: single } })).code, 400, "only groups have a file list");
+
+	// Outsiders get 403 everywhere and cannot post a Drive file into the group.
+	assert.equal((await call("GET", "im/room/files", { token: max, query: { roomId } })).code, 403);
+	assert.equal((await call("POST", "im/room/files/saveToDrive", { token: max, body: { roomId, id: kimView.data.list[1].id } })).code, 403);
+	assert.equal((await call("POST", "im/room/files/remove", { token: max, body: { roomId, id: kimView.data.list[1].id } })).code, 403);
+	assert.equal((await call("POST", "im/room/files/fromDrive", { token: max, body: { roomId, driveItemId: "drv_x" } })).code, 403);
+	assert.equal((await listDriveGroupFolders(env, "u4")).some((folder) => folder.group.roomId === roomId), false);
+	await assert.rejects(listDriveGroupFiles(env, "u4", roomId), { status: 403 });
+
+	// The Drive view lists the group as a folder and serves its files to members only.
+	const folders = await listDriveGroupFolders(env, "u2");
+	assert.deepEqual(folders.filter((folder) => folder.group.roomId === roomId).map((folder) => [folder.kind, folder.group.fileCount]), [["folder", 2]]);
+	const driveFiles = (await listDriveGroupFiles(env, "u2", roomId)).items;
+	const reportItem = driveFiles.find((item) => item.name === "季度报告.pdf");
+	const served = await serveRoomFileForDrive(env, new Request("https://mail.one.test/x"), "u2", roomId, reportItem.group.fileId);
+	assert.equal(served.status, 200);
+	assert.equal(served.headers.get("Content-Type"), "application/pdf");
+	assert.deepEqual(new Uint8Array(await served.arrayBuffer()), pdf);
+	assert.equal((await serveRoomFileForDrive(env, new Request("https://mail.one.test/x"), "u4", roomId, reportItem.group.fileId)).status, 404);
+
+	// Leaving the group takes the folder away at once; joining shows the whole history.
+	assert.equal((await call("DELETE", "im/room/group/member/exit", { token: kim, body: { roomId } })).code, 200);
+	assert.equal((await call("GET", "im/room/files", { token: kim, query: { roomId } })).code, 403, "a former member cannot list the files");
+	assert.equal((await listDriveGroupFolders(env, "u2")).some((folder) => folder.group.roomId === roomId), false);
+	assert.equal((await serveRoomFileForDrive(env, new Request("https://mail.one.test/x"), "u2", roomId, reportItem.group.fileId)).status, 404);
+	assert.equal((await call("POST", "im/room/group/member", { token: sam, body: { roomId, uidList: ["u4"] } })).code, 200);
+	assert.equal((await call("GET", "im/room/files", { token: max, query: { roomId } })).data.total, 2, "a new member sees what was sent before");
+
+	// Lee picks a file from their own Drive and sends it into the group.
+	database.db.prepare("INSERT INTO drive_items (id, owner_id, parent_id, kind, name, size, content_type, created_at, updated_at) VALUES ('drv_dir', 'u3', NULL, 'folder', '项目', 0, 'application/x-directory', 1, 1)").run();
+	database.db.prepare("INSERT INTO drive_items (id, owner_id, parent_id, kind, name, r2_key, size, content_type, created_at, updated_at) VALUES ('drv_plan', 'u3', 'drv_dir', 'file', '计划.txt', 'drive/u3/drv_plan', 5, 'text/plain', 1, 1)").run();
+	objects.set("drive/u3/drv_plan", { bytes: new Uint8Array([104, 101, 108, 108, 111]), contentType: "text/plain" });
+	const top = (await call("GET", "im/drive/items", { token: lee })).data;
+	assert.deepEqual(top.items.map((item) => [item.name, item.kind]), [["项目", "folder"]]);
+	const inside = (await call("GET", "im/drive/items", { token: lee, query: { parentId: "drv_dir" } })).data;
+	assert.deepEqual(inside.items.map((item) => [item.name, item.sendable]), [["计划.txt", true]]);
+	assert.deepEqual(inside.path, [{ id: "drv_dir", name: "项目" }]);
+	assert.equal((await call("GET", "im/drive/items", { token: max, query: { parentId: "drv_dir" } })).code, 404, "nobody else's folders");
+	assert.equal((await call("POST", "im/room/files/fromDrive", { token: max, body: { roomId, driveItemId: "drv_plan" } })).code, 404, "members can only send Drive files they can open");
+	pushes.length = 0;
+	const sent = await call("POST", "im/room/files/fromDrive", { token: lee, body: { roomId, driveItemId: "drv_plan" } });
+	assert.equal(sent.code, 200);
+	assert.equal(sent.data.message.type, 4);
+	assert.equal(sent.data.message.body.fileName, "计划.txt");
+	assert.deepEqual(new Set(pushes.map((push) => push.userId)), new Set(["u1", "u3", "u4"]), "the sender's own client gets it too");
+	assert.deepEqual(new Uint8Array(await (await raw("GET", sent.data.message.body.url)).arrayBuffer()), new Uint8Array([104, 101, 108, 108, 111]), "the bytes were copied into a chat file");
+	const afterSend = (await call("GET", "im/room/files", { token: max, query: { roomId } })).data;
+	assert.equal(afterSend.list[0].fileName, "计划.txt");
+
+	// Saving a group file copies it into the top of the member's own Drive.
+	const saved = await call("POST", "im/room/files/saveToDrive", { token: max, body: { roomId, id: afterSend.list.at(-1).id } });
+	assert.equal(saved.code, 200);
+	const row = database.db.prepare("SELECT owner_id, parent_id, name, size, r2_key FROM drive_items WHERE id = ?").get(saved.data.id);
+	assert.deepEqual({ ...row, r2_key: undefined }, { owner_id: "u4", parent_id: null, name: "季度报告.pdf", size: 7, r2_key: undefined });
+	assert.deepEqual(objects.get(row.r2_key).bytes, pdf);
+
+	// Removing: the sender or a manager; recalling the message removes its file too.
+	const reportId = afterSend.list.find((file) => file.fileName === "季度报告.pdf").id;
+	assert.equal((await call("POST", "im/room/files/remove", { token: max, body: { roomId, id: reportId } })).code, 403);
+	assert.equal((await call("POST", "im/room/files/remove", { token: sam, body: { roomId, id: reportId } })).code, 200);
+	assert.equal((await call("PUT", "im/chat/msg/recall", { token: lee, body: { roomId, msgId: sent.data.message.id } })).code, 200);
+	assert.deepEqual((await call("GET", "im/room/files", { token: max, query: { roomId } })).data.list.map((file) => file.fileName), ["photo.png"]);
+});
+
+test("group files: migration 0073 files what groups already sent", async (t) => {
+	const { database, call, raw, login, addUser } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const sam = (await login()).data.token;
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+	const cred = (await call("GET", "system/anyTenant/ossToken", { token: sam, query: { fileName: "clip.mp4" } })).data;
+	await raw("PUT", cred.uploadUrl, { body: new Uint8Array([1, 2, 3]), headers: { "Content-Length": "3" } });
+	await call("POST", "im/chat/msg", { token: sam, body: { roomId, msgType: 6, body: { url: cred.downloadUrl, size: 3, filename: "会议录像.mp4" } } });
+	const recalled = await call("POST", "im/chat/msg", { token: sam, body: { roomId, msgType: 4, body: { url: cred.downloadUrl, size: 3, fileName: "old.mp4" } } });
+	await call("PUT", "im/chat/msg/recall", { token: sam, body: { roomId, msgId: recalled.data.message.id } });
+	database.db.prepare("DELETE FROM im_room_files").run();
+	const backfill = readFileSync(join(root, "drizzle/migrations/0073_add_im_room_files.sql"), "utf8").split("--> statement-breakpoint").at(-1);
+	database.db.exec(backfill);
+	const rows = database.db.prepare("SELECT room_id, file_name, msg_type, size, uploader_id FROM im_room_files").all();
+	assert.deepEqual(rows.map((row) => ({ ...row })), [{ room_id: roomId, file_name: "会议录像.mp4", msg_type: 6, size: 3, uploader_id: "u1" }]);
 });
 
 test("route helpers", () => {
