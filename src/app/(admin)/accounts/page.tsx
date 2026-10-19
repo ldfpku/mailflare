@@ -2,7 +2,7 @@
 
 import { mobilePrimaryActionClass } from "@/components/page-header-utils";
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -43,6 +43,8 @@ export default function AccountsPage() {
 	const [message, setMessage] = useState<string | null>(null);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [deleteOpen, setDeleteOpen] = useState(false);
+	/** Accounts the delete dialog acts on: the selection, or the one row whose delete button was pressed. */
+	const [deleteTargets, setDeleteTargets] = useState<Account[]>([]);
 	const [restoringId, setRestoringId] = useState<string | null>(null);
 
 	async function loadAccounts() {
@@ -104,13 +106,24 @@ export default function AccountsPage() {
 		}
 	}
 
+	function openDelete(targets: Account[]) {
+		setDeleteTargets(targets);
+		setDeleteOpen(true);
+	}
+
+	const selectedAccounts = accounts.filter((account) => selected.has(account.id));
+
 	return <div className="space-y-6">
 		<div className="flex items-center justify-between gap-4"><div><h1 className="text-2xl md:text-3xl font-medium text-neutral-900">{t("accounts.title")}</h1><p className="mt-2 text-sm text-neutral-500">{t("accounts.description")}</p></div>{canManage && <Button className={mobilePrimaryActionClass} onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" />{t("accounts.new")}</Button>}</div>
 		{message && !createOpen && <p role="alert" className="text-sm text-red-600">{message}</p>}
+		{selected.size > 0 && <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-100 bg-white px-4 py-3 shadow-sm">
+			<span className="text-sm font-medium text-neutral-800">{t("common.selectedCount", { count: selected.size })}</span>
+			<span className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setSelected(new Set())}><X className="h-4 w-4" />{t("accounts.clearSelection")}</Button><Button variant="destructive" size="sm" onClick={() => openDelete(selectedAccounts)}><Trash2 className="h-4 w-4" />{t("accounts.deleteSelected")}</Button></span>
+		</div>}
 		<div className="relative">
-			<AccountsTable accounts={accounts} currentUserId={currentUser?.id} isPrimaryAdmin={!!currentUser?.isPrimaryAdmin} loading={loading} selected={selected} onSelectedChange={setSelected} onDeleteSelected={() => setDeleteOpen(true)} onRestore={restoreAccount} restoringId={restoringId} />
+			<AccountsTable accounts={accounts} currentUserId={currentUser?.id} isPrimaryAdmin={!!currentUser?.isPrimaryAdmin} loading={loading} selected={selected} onSelectedChange={setSelected} onDeleteSelected={() => openDelete(selectedAccounts)} onDelete={(account) => openDelete([account])} onRestore={restoreAccount} restoringId={restoringId} />
 		</div>
-		<DeleteAccountsDialog open={deleteOpen} onOpenChange={setDeleteOpen} accounts={accounts.filter((account) => selected.has(account.id))} candidates={accounts} onDeleted={async () => { setDeleteOpen(false); setSelected(new Set()); await loadAccounts(); }} />
+		<DeleteAccountsDialog open={deleteOpen} onOpenChange={setDeleteOpen} accounts={deleteTargets} candidates={accounts} permanentOnly={deleteTargets.length > 0 && deleteTargets.every((account) => !!account.deletedAt)} onDeleted={async () => { setDeleteOpen(false); setSelected(new Set()); setDeleteTargets([]); await loadAccounts(); }} />
 		<Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent className="max-h-[calc(100dvh-4rem)] w-[min(640px,calc(100vw-32px))] overflow-y-auto"><DialogHeader><DialogTitle>{t("accounts.addTitle")}</DialogTitle><DialogDescription>{t("accounts.addDescription")}</DialogDescription></DialogHeader><form onSubmit={createAccount}><fieldset disabled={saving} className="space-y-4">
 			<div className="space-y-2"><Label htmlFor="account-username">{t("auth.email")}</Label><div className="flex h-10 overflow-hidden rounded-md border border-neutral-200 bg-white"><Input id="account-username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder={t("accounts.username")} className="min-w-0 flex-1 rounded-none border-0 shadow-none" required /><span className="flex items-center text-sm text-neutral-500">@</span><Select aria-label={t("accounts.domain")} value={domainId} onChange={(event) => setDomainId(event.target.value)} containerClassName="min-w-0 max-w-[55%] shrink-0 rounded-none border-0 px-0" className="bg-transparent px-3 text-sm" required><option value="">{t("accounts.selectDomain")}</option>{domains.map((domain) => <option key={domain.id} value={domain.id}>{domain.hostname}</option>)}</Select></div></div>
 			<div className="space-y-2"><Label htmlFor="account-password">{t("auth.password")}</Label><Input id="account-password" type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required /></div>
