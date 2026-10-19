@@ -10,6 +10,9 @@ import { resolveRtcRelay } from "./rtc";
  * an idle connection lets the object hibernate instead of waking every 10s.
  */
 export class ImUserHub extends DurableObject<CloudflareEnv> {
+	/** The last online write, so an offline write cannot land before it. */
+	private presenceWrite: Promise<unknown> = Promise.resolve();
+
 	constructor(ctx: DurableObjectState, env: CloudflareEnv) {
 		super(ctx, env);
 		ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(IM_HEARTBEAT_REQUEST, IM_HEARTBEAT_RESPONSE));
@@ -33,7 +36,9 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 				connectedAt: Date.now(),
 			};
 			server.serializeAttachment(attachment);
-			await setPresence(this.env, userId, true).catch(() => undefined);
+			// The upgrade answers at once; the presence write must not hold up the client's handshake.
+			this.presenceWrite = setPresence(this.env, userId, true).catch(() => undefined);
+			this.ctx.waitUntil(this.presenceWrite);
 			return new Response(null, { status: 101, webSocket: client });
 		}
 
@@ -109,6 +114,7 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 		const open = this.ctx.getWebSockets().filter((socket) => socket !== closing && socket.readyState === WebSocket.OPEN);
 		if (open.length) return;
 		const userId = (closing.deserializeAttachment() as ImSocketAttachment | null)?.userId;
+		await this.presenceWrite;
 		if (userId) await setPresence(this.env, userId, false).catch(() => undefined);
 	}
 }

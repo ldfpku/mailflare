@@ -61,13 +61,19 @@ export default {
 			if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
 				return new Response("Expected WebSocket upgrade", { status: 426 });
 			}
+			const startedAt = Date.now();
 			const user = await resolveImSocketToken(env, url.searchParams.get("Token"));
 			if (!user) return new Response("Unauthorized", { status: 401 });
+			const authMs = Date.now() - startedAt;
 
 			const hubRequest = new Request("https://mailflare-im/connect", request);
 			hubRequest.headers.set("X-Mailflare-Im-User", user.id);
 			hubRequest.headers.set("X-Mailflare-Im-Client", url.searchParams.get("clientId")?.slice(0, 200) ?? "");
-			return env.IM_HUB.getByName(user.id).fetch(hubRequest);
+			const response = await env.IM_HUB.getByName(user.id).fetch(hubRequest);
+			// Clients give up on a handshake after 15s; a slow one should show in the Worker logs.
+			const totalMs = Date.now() - startedAt;
+			if (totalMs > 2000) console.warn(`[im/ws] slow upgrade: auth ${authMs}ms, hub ${totalMs - authMs}ms, status ${response.status}`);
+			return response;
 		}
 
 		// Meeting pages set their own CSP and Permissions-Policy (camera, microphone), which the Next headers forbid.
