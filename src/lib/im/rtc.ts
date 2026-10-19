@@ -49,9 +49,9 @@ export async function generateIceServers(env: CloudflareEnv): Promise<RTCIceServ
 		method: "POST",
 		headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
 		body: JSON.stringify({ ttl: TURN_CREDENTIAL_TTL_SECONDS }),
-	});
-	if (!response.ok) {
-		console.warn(`Cloudflare TURN credentials failed (${response.status})`);
+	}).catch(() => null);
+	if (!response?.ok) {
+		console.warn(`Cloudflare TURN credentials failed (${response?.status ?? "network"})`);
 		return RTC_FALLBACK_ICE_SERVERS;
 	}
 	const body = (await response.json().catch(() => null)) as { iceServers?: RTCIceServerLike[] } | null;
