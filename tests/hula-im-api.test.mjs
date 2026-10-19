@@ -53,7 +53,21 @@ async function fixture(t) {
 			},
 		}),
 	};
-	const env = { DB: database, MAILFLARE_RUNTIME: "node", APP_URL: "https://mail.one.test", IM_HUB };
+	const objects = new Map();
+	const BUCKET = {
+		put: async (key, value, options) => {
+			const bytes = new Uint8Array(await new Response(value).arrayBuffer());
+			objects.set(key, { bytes, contentType: options?.httpMetadata?.contentType });
+			return { key, size: bytes.byteLength };
+		},
+		get: async (key, options) => {
+			const stored = objects.get(key);
+			if (!stored) return null;
+			const { offset = 0, length = stored.bytes.byteLength - offset } = options?.range ?? {};
+			return { body: new Response(stored.bytes.slice(offset, offset + length)).body, size: stored.bytes.byteLength };
+		},
+	};
+	const env = { DB: database, MAILFLARE_RUNTIME: "node", APP_URL: "https://mail.one.test", IM_HUB, BUCKET };
 	globalThis.__mailflareNodeEnv = env;
 	t.after(() => { delete globalThis.__mailflareNodeEnv; });
 	const call = async (method, path, { body, token, query } = {}) => {
@@ -76,7 +90,8 @@ async function fixture(t) {
 	const addUser = (id, email, name) =>
 		database.db.prepare("INSERT INTO users (id, email, password_hash, name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)")
 			.run(id, email, hashPassword("right-password"), name, "user", 1);
-	return { database, env, call, login, expireAccess, addUser, pushes };
+	const raw = (method, url, init = {}) => handleImRequest(new Request(url, { method, ...init }), env);
+	return { database, env, call, raw, login, expireAccess, addUser, pushes, objects };
 }
 
 test("signs in with the mailflare email and password and answers in HuLa's envelope", async (t) => {
@@ -334,6 +349,53 @@ test("session settings are per member", async (t) => {
 	await call("POST", "im/chat/msg", { token: kim, body: { roomId: "1", msgType: 1, body: { content: "全员通知" } } });
 	assert.equal((await call("GET", "im/chat/contact/detail", { token: sam, query: { id: "1" } })).data.hide, false, "a new message shows a hidden session again");
 	assert.equal((await call("GET", "im/chat/contact/detail", { token: sam, query: { id: "1" } })).data.text, "Kim:全员通知");
+});
+
+test("files: upload once with the presigned URL, serve with ranges, and send as image and file messages", async (t) => {
+	const { call, raw, login, addUser, pushes, objects } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	const sam = (await login()).data.token;
+	assert.deepEqual((await call("GET", "system/anyTenant/storage/provider", { token: sam })).data, { provider: "minio" });
+	assert.equal((await call("GET", "system/anyTenant/ossToken", { query: { fileName: "x.png" } })).code, 401);
+
+	const cred = (await call("GET", "system/anyTenant/ossToken", { token: sam, query: { scene: "CHAT", fileName: "../截图 1.png" } })).data;
+	assert.match(cred.downloadUrl, /^https:\/\/mail\.one\.test\/api\/im\/files\/[a-f0-9]{32}\/%E6%88%AA%E5%9B%BE%201\.png$/);
+	assert.ok(cred.uploadUrl.startsWith(`${cred.downloadUrl}?token=`));
+
+	const png = new Uint8Array([137, 80, 78, 71, 1, 2, 3, 4, 5, 6]);
+	assert.equal((await raw("GET", cred.downloadUrl)).status, 404, "nothing to serve before the upload");
+	assert.equal((await raw("PUT", `${cred.downloadUrl}?token=wrong`, { body: png, headers: { "Content-Length": "10" } })).status, 403);
+	assert.equal((await raw("PUT", cred.uploadUrl, { body: png, headers: { "Content-Length": "10", "Content-Type": "application/octet-stream" } })).status, 200);
+	assert.equal((await raw("PUT", cred.uploadUrl, { body: png, headers: { "Content-Length": "10" } })).status, 409, "upload links are single-use");
+	assert.equal(objects.size, 1);
+
+	const served = await raw("GET", cred.downloadUrl);
+	assert.equal(served.status, 200);
+	assert.equal(served.headers.get("Content-Type"), "image/png", "the type comes from the name, not the uploader");
+	assert.deepEqual(new Uint8Array(await served.arrayBuffer()), png);
+	const ranged = await raw("GET", cred.downloadUrl, { headers: { Range: "bytes=2-4" } });
+	assert.equal(ranged.status, 206);
+	assert.equal(ranged.headers.get("Content-Range"), "bytes 2-4/10");
+	assert.deepEqual(new Uint8Array(await ranged.arrayBuffer()), png.slice(2, 5));
+	assert.equal((await raw("HEAD", cred.downloadUrl)).headers.get("Content-Length"), "10");
+
+	const room = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
+	const image = await call("POST", "im/chat/msg", { token: sam, body: { id: "img-1", roomId: room, msgType: 3, body: { url: cred.downloadUrl, size: 10, width: 640, height: 480, path: "C:/secret" } } });
+	assert.equal(image.code, 200);
+	assert.deepEqual(image.data.message.body, { url: cred.downloadUrl, size: 10, width: 640, height: 480 });
+	assert.equal(pushes.at(-1).data.message.type, 3);
+	const session = (await call("GET", "im/chat/contact/detail", { token: sam, query: { id: room } })).data;
+	assert.equal(session.text, "[图片]");
+
+	const foreign = await call("POST", "im/chat/msg", { token: sam, body: { roomId: room, msgType: 3, body: { url: "https://evil.test/a.png" } } });
+	assert.equal(foreign.code, 400, "bodies may only point at our own files");
+	const pending = (await call("GET", "system/anyTenant/ossToken", { token: sam, query: { fileName: "report.pdf" } })).data;
+	assert.equal((await call("POST", "im/chat/msg", { token: sam, body: { roomId: room, msgType: 4, body: { url: pending.downloadUrl, fileName: "report.pdf" } } })).code, 400, "the file must be uploaded first");
+	await raw("PUT", pending.uploadUrl, { body: png, headers: { "Content-Length": "10" } });
+	const file = await call("POST", "im/chat/msg", { token: sam, body: { roomId: room, msgType: 4, body: { url: pending.downloadUrl, fileName: "report.pdf", size: 10 } } });
+	assert.equal(file.code, 200);
+	assert.equal((await call("GET", "im/chat/contact/detail", { token: sam, query: { id: room } })).data.text, "[文件] report.pdf");
+	assert.equal((await raw("GET", `${pending.downloadUrl}?download=1`)).headers.get("Content-Type"), "application/octet-stream");
 });
 
 test("route helpers", () => {

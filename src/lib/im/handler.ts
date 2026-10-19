@@ -37,6 +37,7 @@ import {
 	type ImDelivery,
 } from "./chat";
 import { IM_ALL_STAFF_ROOM_ID, IM_ROOM_TYPE, ImChatError, parseImMessageId } from "./chat-utils";
+import { createImUpload, receiveImUpload, serveImFile } from "./files";
 import { notifyImUsers } from "./notify";
 
 /**
@@ -64,11 +65,18 @@ const publicRoutes: ImRouteTable<PublicContext> = {
 	"POST oauth/anyTenant/refresh": refresh,
 	"GET system/anyTenant/config/init": initConfig,
 	"GET avatar/:uid": avatar,
+	// Chat files: the upload URL carries a single-use token and the download URL an unguessable id (see files.ts).
+	"PUT files/:id/:name": ({ request, env, url }, params) => receiveImUpload(env, request, params.id, url.searchParams.get("token")),
+	"GET files/:id/:name": ({ request, env }, params) => serveImFile(env, request, params.id),
+	"HEAD files/:id/:name": ({ request, env }, params) => serveImFile(env, request, params.id),
 };
 
 const userRoutes: ImRouteTable<ImContext> = {
 	"POST oauth/check": () => imOk(true),
 	"POST oauth/anyUser/logout": logout,
+	// HuLa's MinIO upload path: a presigned PUT URL plus the URL to send in the message.
+	"GET system/anyTenant/storage/provider": () => imOk({ provider: "minio" }),
+	"GET system/anyTenant/ossToken": async ({ env, user, url, origin }) => imOk(await createImUpload(env, user.id, url.searchParams.get("fileName"), origin)),
 	"GET im/user/userInfo": ({ user, origin }) => imOk(toImUserInfo(user, origin)),
 	"GET im/user/state/list": () => imOk(IM_USER_STATES),
 	"GET im/user/emoji/list": () => imOk([]),

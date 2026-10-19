@@ -11,7 +11,10 @@ export const IM_ALL_STAFF_ROOM_NAME = "全员群";
 export const IM_ROOM_TYPE = { GROUP: 1, SINGLE: 2 } as const;
 export const IM_ROLE = { OWNER: 1, ADMIN: 2, MEMBER: 3 } as const;
 /** The subset of HuLa's MsgEnum this server stores. */
-export const IM_MSG_TYPE = { TEXT: 1, RECALL: 2, SYSTEM: 8 } as const;
+export const IM_MSG_TYPE = { TEXT: 1, RECALL: 2, IMAGE: 3, FILE: 4, VOICE: 5, VIDEO: 6, EMOJI: 7, SYSTEM: 8 } as const;
+
+/** Message types whose body points at an uploaded chat file. */
+export const IM_MEDIA_TYPES: ReadonlySet<number> = new Set([IM_MSG_TYPE.IMAGE, IM_MSG_TYPE.FILE, IM_MSG_TYPE.VOICE, IM_MSG_TYPE.VIDEO, IM_MSG_TYPE.EMOJI]);
 export const IM_ONLINE = 1;
 export const IM_OFFLINE = 2;
 
@@ -87,6 +90,64 @@ export function stripHtml(value: string): string {
 		.trim();
 }
 
+const MEDIA_LABELS: Record<number, string> = {
+	[IM_MSG_TYPE.IMAGE]: "[图片]",
+	[IM_MSG_TYPE.FILE]: "[文件]",
+	[IM_MSG_TYPE.VOICE]: "[语音]",
+	[IM_MSG_TYPE.VIDEO]: "[视频]",
+	[IM_MSG_TYPE.EMOJI]: "[表情]",
+};
+
+const finiteNumber = (value: unknown, max = Number.MAX_SAFE_INTEGER) => {
+	const number = Number(value);
+	return Number.isFinite(number) && number >= 0 ? Math.min(Math.round(number), max) : 0;
+};
+
+const shortText = (value: unknown, limit: number) => (typeof value === "string" ? value.trim().slice(0, limit) : "");
+
+/**
+ * Validates an image, file, voice, video or emoji body and keeps only the
+ * fields HuLa renders. `fileIdOf` maps a URL to the chat file it names, or null
+ * for anything that is not one of ours. Returns the body and the files it uses.
+ */
+export function parseMediaBody(
+	type: number,
+	body: unknown,
+	fileIdOf: (url: unknown) => string | null,
+): { body: Record<string, unknown>; fileIds: string[] } | null {
+	if (!IM_MEDIA_TYPES.has(type) || !body || typeof body !== "object") return null;
+	const input = body as Record<string, unknown>;
+	const urlId = fileIdOf(input.url);
+	if (!urlId) return null;
+	const fileIds = [urlId];
+	const size = finiteNumber(input.size);
+	switch (type) {
+		case IM_MSG_TYPE.IMAGE:
+			return { body: { url: input.url, size, width: finiteNumber(input.width, 100000), height: finiteNumber(input.height, 100000) }, fileIds };
+		case IM_MSG_TYPE.FILE:
+			return { body: { url: input.url, size, fileName: shortText(input.fileName, 200) || "file" }, fileIds };
+		case IM_MSG_TYPE.VOICE:
+			return { body: { url: input.url, size, second: finiteNumber(input.second, 3600) }, fileIds };
+		case IM_MSG_TYPE.VIDEO: {
+			const parsed: Record<string, unknown> = { url: input.url, size, filename: shortText(input.filename, 200) };
+			if (input.thumbUrl !== undefined && input.thumbUrl !== "") {
+				const thumbId = fileIdOf(input.thumbUrl);
+				if (!thumbId) return null;
+				fileIds.push(thumbId);
+				Object.assign(parsed, {
+					thumbUrl: input.thumbUrl,
+					thumbSize: finiteNumber(input.thumbSize),
+					thumbWidth: finiteNumber(input.thumbWidth, 100000),
+					thumbHeight: finiteNumber(input.thumbHeight, 100000),
+				});
+			}
+			return { body: parsed, fileIds };
+		}
+		default:
+			return { body: { url: input.url }, fileIds };
+	}
+}
+
 /** The recall notice depends on who reads it, so it is written per viewer instead of stored. */
 export function recallNotice(options: {
 	viewerUid: string;
@@ -106,6 +167,11 @@ export function recallNotice(options: {
 export function messageText(row: Pick<ImMessageRow, "type" | "body">): string {
 	const body = parseStoredBody(row.body);
 	if (row.type === IM_MSG_TYPE.SYSTEM) return typeof body === "string" ? body : "";
+	if (row.type === IM_MSG_TYPE.FILE) {
+		const name = body && typeof body === "object" ? (body as { fileName?: unknown }).fileName : null;
+		return typeof name === "string" && name ? `[文件] ${name}` : "[文件]";
+	}
+	if (MEDIA_LABELS[row.type]) return MEDIA_LABELS[row.type];
 	if (body && typeof body === "object" && typeof (body as { content?: unknown }).content === "string") {
 		return stripHtml((body as { content: string }).content);
 	}
