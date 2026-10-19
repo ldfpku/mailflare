@@ -1,19 +1,22 @@
 @import "tailwindcss";
+@import "./brand-fonts.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-	--color-neutral-500: #6b6b6b;
-	--background: #f6f8fc;
-	--foreground: #202124;
+	--background: #e9edf5;
+	--foreground: #2b3752;
 	--card: #ffffff;
-	--muted: #eef3fb;
-	--border: #dadce0;
+	--muted: #f2f5fa;
+	--border: #dce1ea;
 	--primary: #034fbc;
 	--primary-foreground: #ffffff;
+	--font-brand: "Barlow", "Noto Sans SC", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+	--font-data: "IBM Plex Mono", "Noto Sans SC", ui-monospace, monospace;
+	--font-display: "Barlow Semi Condensed", "Noto Sans SC", "Microsoft YaHei", sans-serif;
 }
 
-/* SMJ brand (BIS v1.5, B12-B14): blue-600 is SMJ Blue, blue-900 is Well Navy,
+/* SMJ brand (BIS v1.7, B12-B14): blue-600 is SMJ Blue, blue-900 is Well Navy,
    blue-100 is Light Blue and blue-400 is Chart Blue. Signal orange is not used for text. */
 @theme {
 	--color-blue-50: #edf2fb;
@@ -27,27 +30,59 @@
 	--color-blue-800: #06327a;
 	--color-blue-900: #0a1f54;
 	--color-blue-950: #071539;
+	/* Neutrals are BIS steel tones (B13): 100 Steel White, 300 Blade Silver, 500 Steel Gray, 700 Graphite, 900 Well Navy */
+	--color-neutral-50: #f2f5fa;
+	--color-neutral-100: #e9edf5;
+	--color-neutral-200: #dce1ea;
+	--color-neutral-300: #b7becb;
+	--color-neutral-400: #8a93a3;
+	--color-neutral-500: #636c7e;
+	--color-neutral-600: #4a5469;
+	--color-neutral-700: #2b3752;
+	--color-neutral-800: #1a2a55;
+	--color-neutral-900: #0a1f54;
+	--color-neutral-950: #071539;
+	--color-gray-50: #f2f5fa;
+	--color-gray-100: #e9edf5;
+	--color-gray-200: #dce1ea;
+	--color-gray-300: #b7becb;
+	--color-gray-400: #8a93a3;
+	--color-gray-500: #636c7e;
+	--color-gray-600: #4a5469;
+	--color-gray-700: #2b3752;
+	--color-gray-800: #1a2a55;
+	--color-gray-900: #0a1f54;
+	--color-gray-950: #071539;
+	/* BIS is square and flat (B14, C5): controls 2px, cards and overlays 4px; rounded-full stays for avatars and dots */
+	--radius-xs: 2px;
+	--radius-sm: 2px;
+	--radius-md: 2px;
+	--radius-lg: 4px;
+	--radius-xl: 4px;
+	--radius-2xl: 4px;
+	--radius-3xl: 6px;
+	--radius-4xl: 6px;
 }
 
 @theme inline {
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
-	--font-sans: var(--font-geist-sans);
-	--no-font-mono: var(--font-geist-mono);
+	--font-sans: var(--font-brand);
+	--font-mono: var(--font-data);
 }
 
 body {
 	background: var(--background);
 	color: var(--foreground);
-	font-family: var(--font-geist-sans), system-ui, sans-serif;
+	font-family: var(--font-brand);
 }
 
 pre {
-	font-family: var(--font-geist-sans), system-ui, sans-serif;
+	font-family: var(--font-brand);
 }
 
 .text {
-	font-family: var(--font-geist-sans), system-ui, sans-serif;
+	font-family: var(--font-brand);
 }
 
 @keyframes dialog-overlay-show {
@@ -238,80 +273,96 @@ button {
 	cursor: pointer;
 }
 
+/* BIS buttons are square (B14). Text buttons and nav pills written as rounded-full (anything with
+   real horizontal padding or full width) get the 2px control radius; round icon buttons, avatars,
+   dots and recipient chips keep rounded-full. */
+.rounded-full:is(.px-3, .px-4, .px-5, .px-6, .px-7, .px-8, .w-full) {
+	border-radius: var(--radius-sm);
+}
+
+/* BIS B14: links and the keyboard focus ring use SMJ Blue, 2px solid with a 2px gap */
+:focus-visible {
+	outline: 2px solid #034fbc;
+	outline-offset: 2px;
+}
+.dark :focus-visible {
+	outline-color: #7a9fe2;
+}
+
 /* ── Dark theme ──────────────────────────────────────────────────────────────
    Screens use the Tailwind palette directly (bg-white, text-neutral-900, bg-blue-50…). Rather than
    editing every component, the dark theme remaps the palette variables under .dark: neutrals follow
-   Gmail's dark palette (#202124, #303134, #3c4043, #9aa0a6, #e8eaed…) and accents are inverted
+   a Well Navy ramp (BIS B12: #071539, #0a1f54, #13295f, #2b3752, #b7becb, #e9edf5…) and accents are inverted
    (50↔950, 100↔900…). The exceptions come right after. The .dark class is set on <html>
    (theme-utils.ts). */
 .dark {
 	color-scheme: dark;
-	--background: #202124;
-	--foreground: #e8eaed;
-	--card: #292a2d;
-	--muted: #303134;
-	--border: #3c4043;
+	--background: #071539;
+	--foreground: #e9edf5;
+	--card: #0a1f54;
+	--muted: #13295f;
+	--border: #2b3752;
 	--primary: #7a9fe2;
-	--primary-foreground: #202124;
-	--color-white: #292a2d;
+	--primary-foreground: #071539;
+	--color-white: #0a1f54;
 	--color-black: #000;
-	--color-neutral-50: #303134;
-	--color-neutral-100: #35363a;
-	--color-neutral-200: #3c4043;
-	--color-neutral-300: #5f6368;
-	--color-neutral-400: #9aa0a6;
-	--color-neutral-500: #a8aeb4;
-	--color-neutral-600: #bdc1c6;
-	--color-neutral-700: #dadce0;
-	--color-neutral-800: #e8eaed;
-	--color-neutral-900: #f1f3f4;
+	--color-neutral-50: #0f2560;
+	--color-neutral-100: #13295f;
+	--color-neutral-200: #2b3752;
+	--color-neutral-300: #3a4a6e;
+	--color-neutral-400: #8a93a3;
+	--color-neutral-500: #9aa3b5;
+	--color-neutral-600: #b7becb;
+	--color-neutral-700: #d2d8e3;
+	--color-neutral-800: #e9edf5;
+	--color-neutral-900: #f2f5fa;
 	--color-neutral-950: #ffffff;
-	--color-gray-50: #303134;
-	--color-gray-100: #35363a;
-	--color-gray-200: #3c4043;
-	--color-gray-300: #5f6368;
-	--color-gray-400: #80868b;
-	--color-gray-500: #9aa0a6;
-	--color-gray-600: #bdc1c6;
-	--color-gray-700: #dadce0;
-	--color-gray-800: #e8eaed;
-	--color-gray-900: #f1f3f4;
+	--color-gray-50: #0f2560;
+	--color-gray-100: #13295f;
+	--color-gray-200: #2b3752;
+	--color-gray-300: #3a4a6e;
+	--color-gray-400: #8a93a3;
+	--color-gray-500: #9aa3b5;
+	--color-gray-600: #b7becb;
+	--color-gray-700: #d2d8e3;
+	--color-gray-800: #e9edf5;
+	--color-gray-900: #f2f5fa;
 	--color-gray-950: #ffffff;
-	--color-stone-50: #303134;
-	--color-stone-100: #35363a;
-	--color-stone-200: #3c4043;
-	--color-stone-300: #5f6368;
-	--color-stone-400: #80868b;
-	--color-stone-500: #9aa0a6;
-	--color-stone-600: #bdc1c6;
-	--color-stone-700: #dadce0;
-	--color-stone-800: #e8eaed;
-	--color-stone-900: #f1f3f4;
+	--color-stone-50: #0f2560;
+	--color-stone-100: #13295f;
+	--color-stone-200: #2b3752;
+	--color-stone-300: #3a4a6e;
+	--color-stone-400: #8a93a3;
+	--color-stone-500: #9aa3b5;
+	--color-stone-600: #b7becb;
+	--color-stone-700: #d2d8e3;
+	--color-stone-800: #e9edf5;
+	--color-stone-900: #f2f5fa;
 	--color-stone-950: #ffffff;
-	--color-zinc-50: #303134;
-	--color-zinc-100: #35363a;
-	--color-zinc-200: #3c4043;
-	--color-zinc-300: #5f6368;
-	--color-zinc-400: #80868b;
-	--color-zinc-500: #9aa0a6;
-	--color-zinc-600: #bdc1c6;
-	--color-zinc-700: #dadce0;
-	--color-zinc-800: #e8eaed;
-	--color-zinc-900: #f1f3f4;
+	--color-zinc-50: #0f2560;
+	--color-zinc-100: #13295f;
+	--color-zinc-200: #2b3752;
+	--color-zinc-300: #3a4a6e;
+	--color-zinc-400: #8a93a3;
+	--color-zinc-500: #9aa3b5;
+	--color-zinc-600: #b7becb;
+	--color-zinc-700: #d2d8e3;
+	--color-zinc-800: #e9edf5;
+	--color-zinc-900: #f2f5fa;
 	--color-zinc-950: #ffffff;
-	--color-slate-50: #303134;
-	--color-slate-100: #35363a;
-	--color-slate-200: #3c4043;
-	--color-slate-300: #5f6368;
-	--color-slate-400: #80868b;
-	--color-slate-500: #9aa0a6;
-	--color-slate-600: #bdc1c6;
-	--color-slate-700: #dadce0;
-	--color-slate-800: #e8eaed;
-	--color-slate-900: #f1f3f4;
+	--color-slate-50: #0f2560;
+	--color-slate-100: #13295f;
+	--color-slate-200: #2b3752;
+	--color-slate-300: #3a4a6e;
+	--color-slate-400: #8a93a3;
+	--color-slate-500: #9aa3b5;
+	--color-slate-600: #b7becb;
+	--color-slate-700: #d2d8e3;
+	--color-slate-800: #e9edf5;
+	--color-slate-900: #f2f5fa;
 	--color-slate-950: #ffffff;
-	--color-blue-50: #2c3d57;
-	--color-blue-100: #33486a;
+	--color-blue-50: #13295f;
+	--color-blue-100: #1b3a80;
 	/* SMJ blues, inverted for dark surfaces */
 	--color-blue-200: #03419b;
 	--color-blue-300: #034fbc;
@@ -506,12 +557,12 @@ button {
 .dark .bg-pink-600 { background-color: oklch(59.2% 0.249 0.584); }
 .dark .bg-orange-600 { background-color: oklch(64.6% 0.222 41.116); }
 /* Fixed-hex backgrounds (page, panels) and their hover: variants (inbox rows, mailbox selector) */
-.dark .bg-\[\#f6f8fc\], .dark .bg-\[\#f7f9fc\] { background-color: #202124; }
-.dark .bg-\[\#f2f6fc\], .dark .bg-\[\#f1f4fa\], .dark .bg-\[\#f0f3f9\] { background-color: #303134; }
-.dark .bg-\[\#eef3fb\], .dark .bg-\[\#eaf1fb\], .dark .bg-\[\#e6ecf6\] { background-color: #383a3e; }
+.dark .bg-\[\#f6f8fc\], .dark .bg-\[\#f7f9fc\] { background-color: #071539; }
+.dark .bg-\[\#f2f6fc\], .dark .bg-\[\#f1f4fa\], .dark .bg-\[\#f0f3f9\] { background-color: #0f2560; }
+.dark .bg-\[\#eef3fb\], .dark .bg-\[\#eaf1fb\], .dark .bg-\[\#e6ecf6\] { background-color: #13295f; }
 .dark .hover\:bg-\[\#f2f6fc\]:hover,
-.dark .bg-\[\#f2f6fc\] { background-color: #35363a; }
-.dark .hover\:bg-\[\#e6ecf6\]:hover { background-color: #3c4043; }
+.dark .bg-\[\#f2f6fc\] { background-color: #13295f; }
+.dark .hover\:bg-\[\#e6ecf6\]:hover { background-color: #1b3a80; }
 /* Soft shadows turn dark */
 .dark .shadow-neutral-200, .dark .shadow-neutral-300 { --tw-shadow-color: rgb(0 0 0 / 0.6); }
 /* HTML emails assume a white background: keep them on light "paper" inside the dark theme */

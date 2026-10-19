@@ -47,7 +47,7 @@ export function NavItem({ link, iconClassName, labelClassName, wrap }: Props) {
   if (!Icon) return null;
   const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
   const classes = cn(
-    "flex h-9 items-center gap-3 rounded-r-full text-sm text-neutral-700 transition-colors max-md:min-h-11 max-md:text-base",
+    "flex h-9 items-center gap-3 rounded-r-lg text-sm text-neutral-700 transition-colors max-md:min-h-11 max-md:text-base",
     minimal && "relative mx-auto w-10 justify-center rounded-full px-0",
     active ? "bg-blue-100 text-blue-900 font-semibold" : "hover:bg-neutral-200/60",
     dragOver && "bg-blue-50 text-blue-900 ring-1 ring-blue-200",
