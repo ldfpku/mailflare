@@ -177,7 +177,7 @@ export async function sendDriveFileToRoom(
 	const item = typeof input.driveItemId === "string" && input.driveItemId ? await getDriveItem(db, input.driveItemId) : null;
 	const role = item ? await getDriveRole(db, userId, item) : null;
 	if (!item || !role || item.kind !== "file" || item.uploadId) throw new ImChatError(404, "网盘文件不存在");
-	if (item.size > IM_FILE_LIMIT_BYTES) throw new ImChatError(400, "文件超过100MB，不能发到聊天");
+	if (item.size > IM_FILE_LIMIT_BYTES) throw new ImChatError(400, "文件超过500MB，不能发到聊天");
 	const file = await createImFileFromObject(env, userId, item.r2Key ?? driveObjectKey(item.ownerId, item.id), item.name, origin);
 	return postMediaMessage(env, userId, input.roomId, IM_MSG_TYPE.FILE, { url: file.url, size: file.size, fileName: item.name }, origin);
 }

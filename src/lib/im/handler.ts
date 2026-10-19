@@ -10,7 +10,8 @@ import { RequestBodyTooLargeError } from "@/lib/http/errors";
 import { readJsonBody } from "@/lib/http/request";
 import { defaultAvatarResponse, defaultGroupAvatarSvg, defaultPersonAvatarSvg } from "./default-avatar-utils";
 import { IM_CODE, IM_MFA_REQUIRED_MESSAGE, imFail, imOk } from "./response";
-import { issueImTokens, resolveImAccessToken, revokeImPair, rotateImRefreshToken, type ImUser } from "./tokens";
+import { issueImTokens, resolveImAccessToken, resolveImSocketToken, revokeImPair, rotateImRefreshToken, type ImUser } from "./tokens";
+import { IM_WS_TICKET_TTL_MS, formatImWsTicket } from "./ws-ticket-utils";
 import { IM_USER_STATES, toImUserInfo } from "./users-utils";
 import { findImRoute, imApiPath, type ImRouteTable } from "./handler-utils";
 import {
@@ -38,7 +39,15 @@ import {
 	type ImDelivery,
 } from "./chat";
 import { IM_ALL_STAFF_ROOM_ID, IM_ROOM_TYPE, ImChatError, parseImMessageId } from "./chat-utils";
-import { createImUpload, preflightImFile, receiveImUpload, serveImFile } from "./files";
+import {
+	abortImMultipartUpload,
+	completeImMultipartUpload,
+	createImUpload,
+	preflightImFile,
+	receiveImUpload,
+	serveImFile,
+	startImMultipartUpload,
+} from "./files";
 import { countUnreadMail, createMailSsoLink, redeemMailSsoLink } from "./mail";
 import { serveMailShare } from "./mail-share";
 import { disableRoomMailbox, enableRoomMailbox, getRoomMailbox } from "./room-mailbox";
@@ -75,10 +84,18 @@ const publicRoutes: ImRouteTable<PublicContext> = {
 	// The web client at /im trades the mail web session cookie for chat tokens (see web-app.ts).
 	"POST web/session": ({ request, env }) => issueWebSessionTokens(request, env),
 	"GET system/anyTenant/config/init": initConfig,
+	// A one-time ticket for opening the chat socket, so the access token stays out of the socket URL (see ws-ticket-utils.ts).
+	"POST ws/ticket": wsTicket,
 	"GET avatar/:uid": avatar,
 	"GET room-avatar/:id": ({ request }, params) => defaultAvatarResponse(request, defaultGroupAvatarSvg(params.id), `room-${params.id}`),
 	// Chat files: the upload URL carries a single-use token and the download URL an unguessable id (see files.ts).
 	"PUT files/:id/:name": ({ request, env, url }, params) => receiveImUpload(env, request, params.id, url.searchParams.get("token")),
+	// Files over one part go up piece by piece: start (`&uploads`), PUT each part, then finish or abort with `&uploadId`.
+	"POST files/:id/:name": ({ request, env, url }, params) =>
+		url.searchParams.has("uploads")
+			? startImMultipartUpload(env, request, params.id, url.searchParams.get("token"))
+			: completeImMultipartUpload(env, request, params.id, url.searchParams.get("token")),
+	"DELETE files/:id/:name": ({ request, env, url }, params) => abortImMultipartUpload(env, request, params.id, url.searchParams.get("token")),
 	"GET files/:id/:name": ({ request, env }, params) => serveImFile(env, request, params.id),
 	"HEAD files/:id/:name": ({ request, env }, params) => serveImFile(env, request, params.id),
 	"OPTIONS files/:id/:name": ({ request }) => preflightImFile(request),
@@ -255,6 +272,19 @@ const userRoutes: ImRouteTable<ImContext> = {
 	"GET im/drive/items": async ({ env, user, url }) => imOk(await listDriveForPicker(env, user.id, url.searchParams.get("parentId"))),
 	"GET im/room/announcement/list": ({ url }) => imOk({ records: [], total: "0", size: url.searchParams.get("size") ?? "0" }),
 };
+
+/**
+ * Public because it accepts what the socket accepts: an expired access token
+ * still gets a ticket while its refresh token lives, as it used to open the socket.
+ */
+async function wsTicket({ request, env }: PublicContext): Promise<Response> {
+	const user = await resolveImSocketToken(env, request.headers.get("token"));
+	if (!user) return imFail(IM_CODE.UNAUTHORIZED, "请重新登录");
+	const response = await env.IM_HUB.getByName(user.id).fetch("https://mailflare-im/ticket", { method: "POST" });
+	if (!response.ok) throw new Error(`ws ticket: hub answered ${response.status}`);
+	const { secret } = (await response.json()) as { secret: string };
+	return imOk({ ticket: formatImWsTicket(user.id, secret), expiresIn: IM_WS_TICKET_TTL_MS / 1000 });
+}
 
 const EMPTY_CURSOR_PAGE = { list: [], cursor: "", isLast: true };
 

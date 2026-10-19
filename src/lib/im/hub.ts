@@ -3,6 +3,8 @@ import { setPresence } from "./chat";
 import { IM_HEARTBEAT_REQUEST, IM_HEARTBEAT_RESPONSE, type ImSocketAttachment, type ImSocketEvent } from "./hub-utils";
 import { notifyImUsers } from "./notify";
 import { resolveRtcRelay } from "./rtc";
+import { randomHex, sha256Hex } from "./files-utils";
+import { IM_WS_TICKET_STORAGE_PREFIX, IM_WS_TICKET_TTL_MS, staleImWsTickets } from "./ws-ticket-utils";
 
 /**
  * One per user: holds every HuLa client the user has open and speaks HuLa's
@@ -27,6 +29,10 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 			}
 			const userId = request.headers.get("X-Mailflare-Im-User");
 			if (!userId) return new Response("Unauthorized", { status: 401 });
+			// The Worker has already checked a legacy token; anything else must bring a ticket this hub issued.
+			if (request.headers.get("X-Mailflare-Im-Auth") !== "token" && !(await this.redeemTicket(request.headers.get("X-Mailflare-Im-Ticket")))) {
+				return new Response("Unauthorized", { status: 401 });
+			}
 			const pair = new WebSocketPair();
 			const [client, server] = [pair[0], pair[1]];
 			this.ctx.acceptWebSocket(server);
@@ -40,6 +46,10 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 			this.presenceWrite = setPresence(this.env, userId, true).catch(() => undefined);
 			this.ctx.waitUntil(this.presenceWrite);
 			return new Response(null, { status: 101, webSocket: client });
+		}
+
+		if (url.pathname === "/ticket" && request.method === "POST") {
+			return Response.json({ secret: await this.issueTicket() });
 		}
 
 		if (url.pathname === "/notify" && request.method === "POST") {
@@ -82,6 +92,27 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 		if (!relay) return;
 		await notifyImUsers(this.env, [relay.peerUid], relay.toPeer);
 		if (relay.toOwnOtherDevices) this.sendToOthers(socket, relay.toOwnOtherDevices);
+	}
+
+	/** Ticket secrets are stored hashed with their expiry; issuing one also clears out stale ones. */
+	private async issueTicket(): Promise<string> {
+		const secret = randomHex(24);
+		const now = Date.now();
+		const stored = await this.ctx.storage.list<number>({ prefix: IM_WS_TICKET_STORAGE_PREFIX });
+		const stale = staleImWsTickets([...stored.entries()], now);
+		if (stale.length) await this.ctx.storage.delete(stale);
+		await this.ctx.storage.put(`${IM_WS_TICKET_STORAGE_PREFIX}${await sha256Hex(secret)}`, now + IM_WS_TICKET_TTL_MS);
+		return secret;
+	}
+
+	/** True once per issued secret, within its lifetime. Storage calls hold the input gate, so two upgrades cannot both read the same ticket. */
+	private async redeemTicket(secret: string | null): Promise<boolean> {
+		if (!secret) return false;
+		const key = `${IM_WS_TICKET_STORAGE_PREFIX}${await sha256Hex(secret)}`;
+		const expiresAt = await this.ctx.storage.get<number>(key);
+		if (expiresAt === undefined) return false;
+		await this.ctx.storage.delete(key);
+		return expiresAt > Date.now();
 	}
 
 	private sendToOthers(origin: WebSocket, event: ImSocketEvent): void {

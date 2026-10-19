@@ -11,6 +11,7 @@ import { processWebhookRetry, type WebhookRetryMessage } from "./src/lib/email/w
 import { resolveIncomingMail, forwardMessage } from "./src/lib/email/incoming";
 import { getUserFromSession } from "./src/lib/auth/session";
 import { resolveImSocketToken } from "./src/lib/im/tokens";
+import { IM_WS_ACCEPT_LEGACY_TOKEN, parseImWsTicket } from "./src/lib/im/ws-ticket-utils";
 import { handleMeetingRequest, isMeetingPath } from "./src/lib/meetings/http";
 import { handleImRequest } from "./src/lib/im/handler";
 import { IM_MAIL_SHARE_PATH } from "./src/lib/im/mail-share-utils";
@@ -57,19 +58,31 @@ export default {
 		}
 
 		if (url.pathname === "/api/im/ws") {
-			// HuLa's client socket. It is a native app, so it sends no Origin and authenticates with its token.
+			// HuLa's client socket. It authenticates with a one-time ticket from /api/im/ws/ticket, which the
+			// user's hub checks and burns; desktop apps released before tickets still send their access token.
 			if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
 				return new Response("Expected WebSocket upgrade", { status: 426 });
 			}
 			const startedAt = Date.now();
-			const user = await resolveImSocketToken(env, url.searchParams.get("Token"));
-			if (!user) return new Response("Unauthorized", { status: 401 });
+			const ticket = parseImWsTicket(url.searchParams.get("ticket"));
+			let userId = ticket?.userId;
+			if (!ticket) {
+				const legacyToken = url.searchParams.get("Token");
+				const user = IM_WS_ACCEPT_LEGACY_TOKEN && legacyToken ? await resolveImSocketToken(env, legacyToken) : null;
+				if (!user) return new Response("Unauthorized", { status: 401 });
+				userId = user.id;
+				console.warn("[im/ws] legacy token in socket URL");
+			}
+			if (!userId) return new Response("Unauthorized", { status: 401 });
 			const authMs = Date.now() - startedAt;
 
 			const hubRequest = new Request("https://mailflare-im/connect", request);
-			hubRequest.headers.set("X-Mailflare-Im-User", user.id);
+			hubRequest.headers.set("X-Mailflare-Im-User", userId);
 			hubRequest.headers.set("X-Mailflare-Im-Client", url.searchParams.get("clientId")?.slice(0, 200) ?? "");
-			const response = await env.IM_HUB.getByName(user.id).fetch(hubRequest);
+			// Always set both, so a client cannot supply either header itself.
+			hubRequest.headers.set("X-Mailflare-Im-Auth", ticket ? "ticket" : "token");
+			hubRequest.headers.set("X-Mailflare-Im-Ticket", ticket?.secret ?? "");
+			const response = await env.IM_HUB.getByName(userId).fetch(hubRequest);
 			// Clients give up on a handshake after 15s; a slow one should show in the Worker logs.
 			const totalMs = Date.now() - startedAt;
 			if (totalMs > 2000) console.warn(`[im/ws] slow upgrade: auth ${authMs}ms, hub ${totalMs - authMs}ms, status ${response.status}`);
