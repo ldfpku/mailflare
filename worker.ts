@@ -11,6 +11,7 @@ import { processWebhookRetry, type WebhookRetryMessage } from "./src/lib/email/w
 import { resolveIncomingMail, forwardMessage } from "./src/lib/email/incoming";
 import { getUserFromSession } from "./src/lib/auth/session";
 import { resolveImSocketToken } from "./src/lib/im/tokens";
+import { handleMeetingRequest, isMeetingPath } from "./src/lib/meetings/http";
 import { getSessionTokenFromRequest } from "./src/lib/realtime/utils";
 import { inboundAttachmentLimitReasonFromRaw } from "./src/lib/email/inbound-attachments";
 import { hasValidSessionMutationOrigin } from "./src/lib/auth/origin";
@@ -64,6 +65,9 @@ export default {
 			hubRequest.headers.set("X-Mailflare-Im-Client", url.searchParams.get("clientId")?.slice(0, 200) ?? "");
 			return env.IM_HUB.getByName(user.id).fetch(hubRequest);
 		}
+
+		// Meeting pages set their own CSP and Permissions-Policy (camera, microphone), which the Next headers forbid.
+		if (isMeetingPath(url.pathname)) return handleMeetingRequest(request, env);
 
 		return vinextHandler.fetch(request, env, ctx);
 	},

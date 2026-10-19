@@ -23,6 +23,12 @@ export function LoginClient({ adding = false }: { adding?: boolean }) {
   const [code, setCode] = useState("");
 
   function finish(redirect?: string) {
+    // `?next=/meet/<id>` brings someone who opened a meeting link back to the meeting after signing in.
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next && /^\/meet\/[a-z2-7]{16}$/.test(next)) {
+      window.location.assign(next);
+      return;
+    }
     router.replace(redirect ?? "/inbox");
     router.refresh();
   }

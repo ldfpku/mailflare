@@ -39,6 +39,7 @@ import {
 import { IM_ALL_STAFF_ROOM_ID, IM_ROOM_TYPE, ImChatError, parseImMessageId } from "./chat-utils";
 import { createImUpload, receiveImUpload, serveImFile } from "./files";
 import { notifyImUsers } from "./notify";
+import { rtcRoutes } from "./meeting-routes";
 
 /**
  * The HuLa-compatible API under `/api/im/*`. HuLa's client was written for
@@ -212,7 +213,7 @@ export async function handleImRequest(request: Request, env: CloudflareEnv): Pro
 	const publicRoute = findImRoute(publicRoutes, request.method, path);
 	if (publicRoute) return publicRoute.handler(base, publicRoute.params);
 
-	const userRoute = findImRoute(userRoutes, request.method, path);
+	const userRoute = findImRoute(userRoutes, request.method, path) ?? findImRoute(rtcRoutes, request.method, path);
 	if (!userRoute) return imFail(IM_CODE.NOT_IMPLEMENTED, "暂未实现");
 
 	const auth = await resolveImAccessToken(env, request.headers.get("token"));

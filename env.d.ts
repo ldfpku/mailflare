@@ -58,6 +58,17 @@ interface CloudflareEnv {
 	INBOUND_WEBHOOK_SECRET?: string;
 	/** Cloudflare account id, needed for the Email Sending REST API off Workers. */
 	CF_ACCOUNT_ID?: string;
+	/** Cloudflare Realtime TURN key (dashboard → Realtime → TURN). Mints short-lived ICE credentials for HuLa calls. */
+	REALTIME_TURN_KEY_ID?: string;
+	REALTIME_TURN_KEY_API_TOKEN?: string;
+	/** Cloudflare RealtimeKit app for video meetings, and an API token with Realtime Admin. */
+	REALTIMEKIT_APP_ID?: string;
+	REALTIMEKIT_API_TOKEN?: string;
+	/** Account the RealtimeKit app belongs to; falls back to CF_ACCOUNT_ID. */
+	REALTIMEKIT_ACCOUNT_ID?: string;
+	/** Preset names for the meeting host and everyone else; default to the presets a dashboard-created app has. */
+	REALTIMEKIT_HOST_PRESET?: string;
+	REALTIMEKIT_PARTICIPANT_PRESET?: string;
 	/** Public origin of this install (https://mail.example.com) when it sits behind a proxy. */
 	APP_URL?: string;
 	/** VAPID public key (uncompressed P-256 point, URL-safe base64) for Web Push. */
