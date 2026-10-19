@@ -207,7 +207,7 @@ async function hostMailbox(env: Env, host: MeetingUser): Promise<{ id: string; a
 	return addresses.find((row) => row.address === host.email.toLowerCase()) ?? addresses[0] ?? null;
 }
 
-function icsFor(row: MeetingRow, host: MeetingUser, organizerEmail: string, attendees: MeetingUser[], content: { joinUrl: string }, method: "REQUEST" | "PUBLISH") {
+function icsFor(row: MeetingRow, host: MeetingUser, organizerEmail: string, attendees: MeetingUser[], content: { joinUrl: string }, method: "REQUEST" | "PUBLISH" | "CANCEL") {
 	return buildMeetingIcs({
 		uid: `${row.id}@smj-meeting`,
 		sequence: row.sequence,
@@ -302,12 +302,57 @@ export async function joinMeeting(env: Env, id: string, user: MeetingUser, origi
 	return { authToken: stored?.auth_token ?? participant.token, meeting, host };
 }
 
+/**
+ * The host cancels a meeting: it leaves everyone's list, can no longer be joined,
+ * and invitees of a meeting still ahead get a METHOD:CANCEL mail that removes it from their calendar.
+ */
+export async function cancelMeeting(env: Env, id: string, user: MeetingUser, origin: string): Promise<{ id: string; mailError: string | null }> {
+	const row = await findMeeting(env, id);
+	if (row.host_id !== user.id) throw new MeetingError(403, "只有发起人可以取消会议");
+	if (row.ended_at) return { id: row.id, mailError: null };
+	const now = Date.now();
+	await env.DB.prepare("UPDATE im_meetings SET ended_at = ?, sequence = sequence + 1 WHERE id = ?").bind(now, row.id).run();
+	const cancelled = { ...row, ended_at: now, sequence: row.sequence + 1 };
+
+	const invitees = toView(row, user.name, origin).inviteeIds;
+	if (!invitees.length || !row.starts_at || row.starts_at + row.duration_minutes * 60_000 < now) return { id: row.id, mailError: null };
+	try {
+		const host = (await getMeetingUser(env, row.host_id)) ?? user;
+		const mailbox = await hostMailbox(env, host);
+		if (!mailbox) throw new Error("发起人没有可用的邮箱");
+		const attendees = await activeUsers(env, invitees);
+		const content = { title: row.title, hostName: host.name, time: formatMeetingTime(row.starts_at, row.duration_minutes, host.timeZone), joinUrl: meetingUrl(origin, row.id) };
+		const ics = icsFor(cancelled, host, mailbox.address, attendees, content, "CANCEL");
+		await sendEmail(env, {
+			userId: host.id,
+			mailboxId: mailbox.id,
+			from: mailbox.address,
+			to: attendees.map((attendee) => formatEmailAddress(attendee.email, attendee.name)),
+			subject: `已取消：${row.title}`,
+			text: `${host.name} 取消了视频会议“${row.title}”（${content.time}）。`,
+			attachments: [
+				{
+					filename: "cancel.ics",
+					type: `${ICS_CONTENT_TYPE}; method=CANCEL`,
+					content: new TextEncoder().encode(ics).buffer as ArrayBuffer,
+					disposition: "attachment",
+				},
+			],
+		});
+		return { id: row.id, mailError: null };
+	} catch (error) {
+		const mailError = error instanceof Error ? error.message : String(error);
+		console.warn(`Meeting ${row.id}: cancellation not sent: ${mailError}`);
+		return { id: row.id, mailError };
+	}
+}
+
 /** Meetings the user hosts or was invited to, newest first, for HuLa's meeting list. */
 export async function listMeetings(env: Env, userId: string, origin: string, limit = 30): Promise<MeetingView[]> {
 	const result = await env.DB
 		.prepare(
 			`SELECT m.*, u.name AS host_name FROM im_meetings m LEFT JOIN users u ON u.id = m.host_id
-			WHERE m.host_id = ? OR EXISTS (SELECT 1 FROM json_each(m.invitee_ids) WHERE json_each.value = ?)
+			WHERE m.ended_at IS NULL AND (m.host_id = ? OR EXISTS (SELECT 1 FROM json_each(m.invitee_ids) WHERE json_each.value = ?))
 			ORDER BY COALESCE(m.starts_at, m.created_at) DESC LIMIT ?`,
 		)
 		.bind(userId, userId, limit)

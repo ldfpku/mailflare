@@ -194,6 +194,11 @@ test("meetings: unconfigured answers 501; a group meeting posts its link and reu
 	assert.deepEqual(listed.map((meeting) => meeting.id), [created.data.id]);
 	const ics = (await call("GET", "im/meeting/ics", { token: kim, query: { id: created.data.id } })).data;
 	assert.match(ics.body, /METHOD:PUBLISH/);
+
+	assert.equal((await call("POST", "im/meeting/cancel", { token: kim, body: { id: created.data.id } })).code, 403, "only the host cancels");
+	assert.equal((await call("POST", "im/meeting/cancel", { token: sam, body: { id: created.data.id } })).code, 200);
+	assert.deepEqual((await call("GET", "im/meeting/list", { token: kim })).data, [], "a cancelled meeting leaves the list");
+	assert.equal((await call("POST", "im/meeting/join", { token: kim, body: { id: created.data.id } })).code, 404, "and cannot be joined");
 });
 
 test("meeting input validation", () => {
