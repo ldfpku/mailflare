@@ -1,3 +1,4 @@
+import { DEFAULT_CLOUDFLARE_MODEL } from "@/lib/agent/provider-constants";
 import { IM_MSG_TYPE, stripHtml, type ImMessageRow } from "./chat-utils";
 
 /**
@@ -10,6 +11,19 @@ import { IM_MSG_TYPE, stripHtml, type ImMessageRow } from "./chat-utils";
 export const IM_SUMMARY_MAX_MESSAGES = 500;
 export const IM_SUMMARY_DEFAULT_MESSAGES = 100;
 /** Characters of transcript per model call; a longer chat is summarized in parts, then the parts are merged. */
+/**
+ * Asked when the first model fails or answers with nothing usable: another
+ * Cloudflare-hosted model that writes good Chinese and takes the same
+ * `reasoning_effort` switch.
+ */
+export const IM_AI_FALLBACK_MODEL = "@cf/deepseek-ai/deepseek-v4-flash-0731";
+
+/** The models to try in order: the chosen one, then a fallback unless it is the same model. */
+export function imAiModelChain(primary: string): string[] {
+	const fallback = primary === IM_AI_FALLBACK_MODEL ? DEFAULT_CLOUDFLARE_MODEL : IM_AI_FALLBACK_MODEL;
+	return [primary, fallback];
+}
+
 export const IM_SUMMARY_CHUNK_CHARS = 8_000;
 export const IM_SUMMARY_MAX_CHUNKS = 8;
 /** Characters of a mail body the to-do draft reads. */

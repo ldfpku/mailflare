@@ -154,6 +154,63 @@ test("a long chat is summarized in parts and the parts merged", async (t) => {
 	assert.equal(ai.calls.length, result.data.parts + 1);
 });
 
+test("reasoning is switched off, and an answer that is all thinking falls back to another Workers AI model", async (t) => {
+	const calls = [];
+	const binding = {
+		run: async (model, inputs) => {
+			calls.push({ model, inputs });
+			const thinking = calls.length === 1;
+			return {
+				choices: [{ message: { role: "assistant", content: thinking ? "" : "备用模型的摘要", reasoning_content: thinking ? "让我想想……" : null }, finish_reason: thinking ? "length" : "stop" }],
+				usage: { prompt_tokens: 10, completion_tokens: 1500 },
+			};
+		},
+	};
+	const { call, login } = await fixture(t, { binding });
+	const sam = await login("sam@one.test");
+	await call("POST", "im/chat/msg", { token: sam, body: { id: "s1", roomId: "1", msgType: 1, body: { content: "周五前交报告" } } });
+	const warnings = [];
+	t.mock.method(console, "warn", (...args) => warnings.push(args));
+	const result = await call("POST", "im/ai/summary", { token: sam, body: { roomId: "1" } });
+	assert.equal(result.code, 200, result.msg);
+	assert.equal(result.data.summary, "备用模型的摘要");
+	assert.equal(calls.length, 2);
+	assert.equal(calls[0].model, "@cf/deepseek-ai/deepseek-v4-pro-0813");
+	assert.equal(calls[1].model, mod.IM_AI_FALLBACK_MODEL);
+	assert.ok(calls.every((entry) => entry.inputs.reasoning_effort === null), "thinking would use up the output tokens");
+	assert.equal(warnings.length, 1, "the empty answer is logged");
+	assert.equal(warnings[0][1].finishReason, "length");
+});
+
+test("when no model answers, the person is told so instead of getting a blank", async (t) => {
+	const ai = fakeAi(() => "  ");
+	const { call, login } = await fixture(t, ai);
+	t.mock.method(console, "warn", () => {});
+	const sam = await login("sam@one.test");
+	await call("POST", "im/chat/msg", { token: sam, body: { id: "s1", roomId: "1", msgType: 1, body: { content: "大家好" } } });
+	const result = await call("POST", "im/ai/summary", { token: sam, body: { roomId: "1" } });
+	assert.equal(result.success, false);
+	assert.match(result.msg, /没有生成结果/);
+	assert.equal(ai.calls.length, 2);
+	assert.deepEqual(mod.imAiModelChain(mod.IM_AI_FALLBACK_MODEL), [mod.IM_AI_FALLBACK_MODEL, "@cf/deepseek-ai/deepseek-v4-pro-0813"]);
+});
+
+test("a to-do draft that is not JSON is asked of the fallback model before giving up", async (t) => {
+	const ai = fakeAi((messages, count) => (count === 1 ? "好的，这封邮件需要准备材料。" : '{"title":"准备材料","due":null,"points":[]}'));
+	const { database, call, login } = await fixture(t, ai);
+	t.mock.method(console, "warn", () => {});
+	database.db.prepare("INSERT INTO domains (id, user_id, hostname, zone_id, created_at) VALUES ('d1', 'u1', 'one.test', 'z', 1)").run();
+	database.db.prepare("INSERT INTO mailboxes (id, user_id, domain_id, local_part, created_at) VALUES ('m1', 'u1', 'd1', 'sam', 1)").run();
+	database.db.prepare(
+		"INSERT INTO messages (id, user_id, mailbox_id, direction, from_addr, to_addr, subject, text_body, status, read, created_at) VALUES ('x1', 'u1', 'm1', 'inbound', 'lee@b.test', 'sam@one.test', '材料', '请准备材料。', 'received', 1, 1792000000)",
+	).run();
+	const sam = await login("sam@one.test");
+	const draft = await call("POST", "im/ai/mailTodo", { token: sam, body: { mailId: "x1" } });
+	assert.equal(draft.code, 200, draft.msg);
+	assert.equal(draft.data.title, "准备材料");
+	assert.equal(ai.calls.length, 2);
+});
+
 test("without the AI binding the summary says so instead of failing", async (t) => {
 	const { call, login } = await fixture(t, null);
 	const sam = await login("sam@one.test");

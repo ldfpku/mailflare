@@ -9,6 +9,7 @@ import { getEmailAddress, getEmailDisplayName } from "@/lib/email/address";
 import { getMailboxAccessLevel } from "@/lib/mailboxes/access";
 import {
 	IM_SUMMARY_DEFAULT_MESSAGES,
+	imAiModelChain,
 	IM_SUMMARY_MAX_MESSAGES,
 	buildTranscript,
 	chunkTranscript,
@@ -47,22 +48,50 @@ async function imAiModel(env: Env, userId: string) {
 	if (!(await getAgentEnabled(env))) throw new ImChatError(403, "管理员已关闭 AI 功能");
 	if (!(await allowAgentRequest(env, `im-ai:${userId}`))) throw new ImChatError(400, "请求太频繁，请稍后再试");
 	const config = await getAgentProviderConfig(env);
-	const modelId = imAiModelId(env, config);
-	return { model: createWorkersAI({ binding: env.AI })(modelId), modelId, provider: "cloudflare", rates: config.rates[modelId] };
+	const modelIds = imAiModelChain(imAiModelId(env, config));
+	const workersAi = createWorkersAI({ binding: env.AI });
+	return modelIds.map((modelId) => ({ model: workersAi(modelId), modelId, provider: "cloudflare", rates: config.rates[modelId] }));
 }
 
-type ImAiModel = Awaited<ReturnType<typeof imAiModel>>;
+type ImAiModels = Awaited<ReturnType<typeof imAiModel>>;
 
-async function generate(env: Env, selection: ImAiModel, source: string, system: string, prompt: string, maxOutputTokens: number): Promise<string> {
-	let result;
-	try {
-		result = await generateText({ model: selection.model, system, prompt, maxOutputTokens, temperature: 0.2 });
-	} catch (error) {
-		console.error("[im-ai] Workers AI call failed", selection.modelId, error);
-		throw new ImChatError(400, "AI 暂时不可用，请稍后再试");
+/**
+ * Asks each model in turn until one gives a usable answer. Reasoning is
+ * switched off: the DeepSeek models think by default, and the thinking counts
+ * against `maxOutputTokens`, so a long chat used to come back with an empty
+ * answer. An empty, unusable or failed answer is logged and the next model is
+ * tried; when none answers, the caller gets a message instead of a blank.
+ */
+async function generate(
+	env: Env,
+	models: ImAiModels,
+	source: string,
+	system: string,
+	prompt: string,
+	maxOutputTokens: number,
+	usable: (text: string) => boolean = Boolean,
+): Promise<string> {
+	for (const selection of models) {
+		const started = Date.now();
+		try {
+			const result = await generateText({ model: selection.model, system, prompt, maxOutputTokens, temperature: 0.2, reasoning: "none", maxRetries: 0 });
+			await recordAiUsage({ env, details: selection, usage: result.usage, source });
+			const text = cleanModelText(result.text);
+			if (text && usable(text)) return text;
+			console.warn("[im-ai] unusable answer", {
+				source,
+				model: selection.modelId,
+				finishReason: result.finishReason,
+				outputTokens: result.usage.outputTokens,
+				reasoningChars: result.reasoningText?.length ?? 0,
+				textChars: result.text.length,
+				ms: Date.now() - started,
+			});
+		} catch (error) {
+			console.error("[im-ai] Workers AI call failed", { source, model: selection.modelId, ms: Date.now() - started }, error);
+		}
 	}
-	await recordAiUsage({ env, details: selection, usage: result.usage, source });
-	return cleanModelText(result.text);
+	throw new ImChatError(400, "AI 这次没有生成结果，请稍后重试");
 }
 
 // Chat summary ----------------------------------------------------------------
@@ -113,16 +142,16 @@ export async function summarizeRoom(env: Env, user: ImUser, input: { roomId?: un
 
 	const isGroup = room.type === IM_ROOM_TYPE.GROUP;
 	const { chunks, dropped } = chunkTranscript(lines);
-	const selection = await imAiModel(env, user.id);
+	const models = await imAiModel(env, user.id);
 	if (chunks.length === 1) {
-		const summary = await generate(env, selection, "im_summary", summarySystemPrompt(isGroup), `聊天记录：\n${chunks[0]}`, 900);
+		const summary = await generate(env, models, "im_summary", summarySystemPrompt(isGroup), `聊天记录：\n${chunks[0]}`, 1500);
 		return { summary, ...base, messageCount: base.messageCount - dropped, parts: 1, dropped };
 	}
 	const partials: string[] = [];
 	for (const [index, chunk] of chunks.entries()) {
-		partials.push(`第 ${index + 1} 段：\n${await generate(env, selection, "im_summary", partSystemPrompt(), `聊天记录（第 ${index + 1}/${chunks.length} 段）：\n${chunk}`, 600)}`);
+		partials.push(`第 ${index + 1} 段：\n${await generate(env, models, "im_summary", partSystemPrompt(), `聊天记录（第 ${index + 1}/${chunks.length} 段）：\n${chunk}`, 1000)}`);
 	}
-	const summary = await generate(env, selection, "im_summary", mergeSystemPrompt(isGroup), partials.join("\n\n"), 900);
+	const summary = await generate(env, models, "im_summary", mergeSystemPrompt(isGroup), partials.join("\n\n"), 1500);
 	return { summary, ...base, messageCount: base.messageCount - dropped, parts: chunks.length, dropped };
 }
 
@@ -155,14 +184,15 @@ export async function draftMailTodo(env: Env, user: Pick<ImUser, "id" | "role">,
 	const mail = await findReadableMail(env, user, input);
 	const subject = mail.subject?.trim() || "(无主题)";
 	const sender = getEmailDisplayName(mail.from_addr) || getEmailAddress(mail.from_addr) || mail.from_addr;
-	const selection = await imAiModel(env, user.id);
+	const models = await imAiModel(env, user.id);
 	const answer = await generate(
 		env,
-		selection,
+		models,
 		"im_mail_todo",
 		todoSystemPrompt(Date.now()),
 		todoUserPrompt({ subject, from: sender, date: mail.created_at * 1000, body: mailPlainText(mail.text_body, mail.html_body) }),
-		600,
+		1200,
+		(text) => parseTodoDraft(text, subject) !== null,
 	);
 	const draft = parseTodoDraft(answer, subject) ?? { title: `处理邮件：${subject}`.slice(0, 100), dueAt: null, points: [] };
 	return { ...draft, notes: pointsToNotes(draft.points), mailId: mail.id, mailSubject: subject };
