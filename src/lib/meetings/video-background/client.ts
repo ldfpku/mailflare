@@ -111,9 +111,9 @@ export async function setupVideoBackground(meeting: Meeting, elements: { button:
 		const current = new VideoBackgroundProcessor({
 			assetsBase: ASSETS,
 			canvas,
-			onDegrade: () => say("电脑性能有限，已自动降低背景处理帧率"),
+			onDegrade: () => say("设备性能有限，已自动降低背景处理帧率"),
 			onOverload: () => {
-				say("电脑性能不足，已关闭视频背景");
+				say("设备性能不足，已关闭视频背景");
 				void select("none");
 			},
 		});

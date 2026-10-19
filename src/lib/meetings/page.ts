@@ -170,7 +170,8 @@ export function renderMeetingPage(id: string, hostPreset = "group_call_host"): s
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#034fbc">
 <title>视频会议 · 斯米伽 SMJ</title>
 <style>
 :root { --smj-blue: #034fbc; --smj-navy: #1a2b4a; --smj-muted: #5b6b85; --smj-line: #e3e8f0; }
@@ -225,6 +226,20 @@ rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; 
 #bg-panel .bg-option span.on-image { position: absolute; left: 3px; bottom: 3px; padding: 1px 6px; border-radius: 2px; background: rgba(0,0,0,.45); font-size: 11px; }
 #bg-panel .bg-change { margin-top: 10px; padding: 0; border: 0; background: none; color: #7aa7e8; font-size: 12px; cursor: pointer; }
 #bg-toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 11; padding: 8px 14px; border-radius: 6px; background: rgba(26,43,74,.92); color: #fff; font-size: 13px; }
+body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+html, body { height: 100dvh; }
+/* Phones: the header wraps into a compact row of buttons, the background panel sits at the bottom. */
+@media (max-width: 640px), (max-height: 520px) and (pointer: coarse) {
+	header { gap: 6px 8px; padding: 8px 10px; }
+	.brand { font-size: 14px; }
+	.title { flex: 1; font-size: 14px; }
+	.meta { order: 1; flex-basis: 100%; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+	.spacer { display: none; }
+	.lock, .notice { order: 2; flex-basis: 100%; white-space: normal; }
+	header button, header a.button { order: 3; min-height: 36px; padding: 6px 10px; display: inline-flex; align-items: center; }
+	#bg-panel { top: auto; right: 12px; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); width: auto; max-width: none; }
+	#bg-toast { top: auto; bottom: calc(80px + env(safe-area-inset-bottom)); max-width: calc(100vw - 24px); }
+}
 </style>
 </head>
 <body>
