@@ -1,6 +1,8 @@
 // Copies the RealtimeKit browser build and UI Kit into public/vendor so the
-// meeting page loads nothing from a CDN, and patches out the UI Kit's Google
-// Fonts loader. The output is committed; rerun this only to change version:
+// meeting page loads nothing from a CDN, patches out the UI Kit's Google
+// Fonts loader, and patches how the core picks the received video quality.
+// The output is committed; rerun this only to change version, and bump
+// CORE_REVISION in src/lib/meetings/page.ts whenever the core file changes:
 //
 //   node scripts/vendor-realtimekit.mjs [version]
 import { execFileSync } from "node:child_process";
@@ -47,6 +49,30 @@ function patchGoogleFonts(directory) {
 	return patched;
 }
 
+/**
+ * The core picks each remote video's simulcast layer from its tile: layer 0 is
+ * the quarter-size encoding, layer 1 the half-size one, and the full encoding is
+ * only used until the first switch. It also compares against CSS pixels, so on a
+ * high-DPI screen a large tile still drops to 320x180. Patched so layer 0 is the
+ * half-size encoding and layer 1 the full one, tiles are measured in device
+ * pixels, and the downswitch threshold (2.4x) leaves room for the factor-of-two
+ * jump between layers, so a tile does not flip back and forth.
+ */
+const CORE_PATCHES = [
+	['preferredRid:e===0?"q":"h"', 'preferredRid:e===0?"h":"f"'],
+	["const pD=.8,mD=1.2;", "const pD=.8,mD=2.4;"],
+	["const o=n/r,c=i/e,d=Math.max(o,c);", "const dpr=window.devicePixelRatio||1,o=n/(r*dpr),c=i/(e*dpr),d=Math.max(o,c);"],
+];
+
+function patchCore(path) {
+	let source = readFileSync(path, "utf8");
+	for (const [from, to] of CORE_PATCHES) {
+		if (source.split(from).length !== 2) throw new Error(`Could not patch the RealtimeKit core: ${from}`);
+		source = source.replace(from, to);
+	}
+	writeFileSync(path, source);
+}
+
 const work = mkdtempSync(join(tmpdir(), "realtimekit-"));
 try {
 	const core = unpack("@cloudflare/realtimekit", join(work, "core"));
@@ -62,6 +88,7 @@ try {
 		if (existsSync(join(core, license))) cpSync(join(core, license), join(output, "core", license));
 	}
 
+	patchCore(join(output, "core", "browser.js"));
 	const patched = patchGoogleFonts(join(output, "ui", "dist", "esm"));
 	console.log(`[realtimekit] ${version} copied to public/vendor/realtimekit/${version} (${patched} font loaders patched)`);
 } finally {
