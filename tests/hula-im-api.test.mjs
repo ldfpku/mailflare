@@ -53,6 +53,7 @@ async function fixture(t) {
 		getByName: (userId) => ({
 			fetch: async (url, init) => {
 				if (url.endsWith("/notify")) pushes.push({ userId, ...JSON.parse(init.body) });
+				if (url.endsWith("/ticket")) return Response.json({ secret: "d".repeat(48) });
 				return new Response(null, { status: 204 });
 			},
 		}),
@@ -70,7 +71,31 @@ async function fixture(t) {
 			const { offset = 0, length = stored.bytes.byteLength - offset } = options?.range ?? {};
 			return { body: new Response(stored.bytes.slice(offset, offset + length)).body, size: stored.bytes.byteLength };
 		},
+		delete: async (key) => void objects.delete(key),
+		createMultipartUpload: async (key, options) => {
+			const uploadId = `mp-${multipart.size + 1}`;
+			multipart.set(uploadId, { key, parts: new Map(), contentType: options?.httpMetadata?.contentType });
+			return { uploadId };
+		},
+		resumeMultipartUpload: (key, uploadId) => ({
+			uploadPart: async (partNumber, value) => {
+				const upload = multipart.get(uploadId);
+				if (!upload || upload.key !== key) throw new Error("NoSuchUpload");
+				upload.parts.set(partNumber, new Uint8Array(await new Response(value).arrayBuffer()));
+				return { partNumber, etag: `etag-${partNumber}` };
+			},
+			complete: async (parts) => {
+				const upload = multipart.get(uploadId);
+				if (!upload || parts.some((part) => part.etag !== `etag-${part.partNumber}` || !upload.parts.has(part.partNumber))) throw new Error("InvalidPart");
+				const bytes = new Uint8Array(await new Blob(parts.map((part) => upload.parts.get(part.partNumber))).arrayBuffer());
+				objects.set(key, { bytes, contentType: upload.contentType });
+				multipart.delete(uploadId);
+				return { key, size: bytes.byteLength };
+			},
+			abort: async () => void multipart.delete(uploadId),
+		}),
 	};
+	const multipart = new Map();
 	const env = { DB: database, MAILFLARE_RUNTIME: "node", APP_URL: "https://mail.one.test", IM_HUB, BUCKET };
 	globalThis.__mailflareNodeEnv = env;
 	t.after(() => { delete globalThis.__mailflareNodeEnv; });
@@ -95,7 +120,7 @@ async function fixture(t) {
 		database.db.prepare("INSERT INTO users (id, email, password_hash, name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)")
 			.run(id, email, hashPassword("right-password"), name, "user", 1);
 	const raw = (method, url, init = {}) => handleImRequest(new Request(url, { method, ...init }), env);
-	return { database, env, call, raw, login, expireAccess, addUser, pushes, objects };
+	return { database, env, call, raw, login, expireAccess, addUser, pushes, objects, multipart };
 }
 
 test("signs in with the mailflare email and password and answers in HuLa's envelope", async (t) => {
@@ -114,6 +139,20 @@ test("signs in with the mailflare email and password and answers in HuLa's envel
 		{ uid: me.data.uid, account: me.data.account, name: me.data.name, avatar: me.data.avatar, userStateId: me.data.userStateId },
 		{ uid: "u1", account: "sam@one.test", name: "Sam", avatar: "https://mail.one.test/api/im/avatar/u1", userStateId: "1" },
 	);
+});
+
+test("trades the access token for a one-time socket ticket, like the socket used to accept it", async (t) => {
+	const { call, login, expireAccess } = await fixture(t);
+	const { data } = await login();
+	const issued = await call("POST", "ws/ticket", { token: data.token });
+	assert.equal(issued.code, 200);
+	assert.equal(issued.data.ticket, `u1.${"d".repeat(48)}`);
+	assert.equal(issued.data.expiresIn, 60);
+
+	// An expired access token still gets one while its refresh token lives; the refresh token itself never does.
+	assert.equal((await call("POST", "ws/ticket", { token: expireAccess(data.token) })).code, 200);
+	assert.equal((await call("POST", "ws/ticket", { token: data.refreshToken })).code, 401);
+	assert.equal((await call("POST", "ws/ticket")).code, 401);
 });
 
 test("people and groups without a picture get a generated avatar, the same one every time", async (t) => {
@@ -426,6 +465,49 @@ test("files: upload once with the presigned URL, serve with ranges, and send as 
 	assert.equal(file.code, 200);
 	assert.equal((await call("GET", "im/chat/contact/detail", { token: sam, query: { id: room } })).data.text, "[文件] report.pdf");
 	assert.equal((await raw("GET", `${pending.downloadUrl}?download=1`)).headers.get("Content-Type"), "application/octet-stream");
+});
+
+test("files over one part go up in parts and become one file", async (t) => {
+	const { call, raw, login, objects, multipart } = await fixture(t);
+	const sam = (await login()).data.token;
+	const cred = (await call("GET", "system/anyTenant/ossToken", { token: sam, query: { fileName: "video.mp4" } })).data;
+	const partSize = 32 * 1024 * 1024;
+	const size = partSize + 5;
+	const bytes = new Uint8Array(size);
+	bytes[0] = 7;
+	bytes[size - 1] = 9;
+
+	assert.equal((await raw("POST", `${cred.downloadUrl}?token=wrong&uploads&size=${size}`)).status, 403);
+	assert.equal((await raw("POST", `${cred.uploadUrl}&uploads&size=${600 * 1024 * 1024}`)).status, 413, "500 MB at most");
+	assert.equal((await raw("PUT", cred.uploadUrl, { body: bytes.slice(0, 1), headers: { "Content-Length": String(101 * 1024 * 1024) } })).status, 413, "one PUT carries 100 MB at most");
+	const started = await (await raw("POST", `${cred.uploadUrl}&uploads&size=${size}`)).json();
+	assert.deepEqual({ partSize: started.partSize, parts: started.parts }, { partSize, parts: 2 });
+
+	const put = (partNumber, body) =>
+		raw("PUT", `${cred.uploadUrl}&uploadId=${started.uploadId}&partNumber=${partNumber}`, { body, headers: { "Content-Length": String(body.byteLength) } });
+	assert.equal((await put(3, bytes.slice(0, 5))).status, 400, "only the parts of the declared size");
+	assert.equal((await put(1, bytes.slice(0, partSize - 1))).status, 400, "every part but the last is exactly partSize");
+	const first = await (await put(1, bytes.slice(0, partSize))).json();
+	const second = await (await put(2, bytes.slice(partSize))).json();
+	assert.equal((await raw("GET", cred.downloadUrl)).status, 404, "nothing is served before it completes");
+	assert.equal((await call("POST", "im/chat/msg", { token: sam, body: { roomId: "1", msgType: 4, body: { url: cred.downloadUrl, fileName: "video.mp4" } } })).code, 400);
+
+	const complete = (parts) => raw("POST", `${cred.uploadUrl}&uploadId=${started.uploadId}`, { body: JSON.stringify({ parts }), headers: { "Content-Type": "application/json" } });
+	assert.equal((await complete([first])).status, 400, "every part must be listed");
+	assert.equal((await complete([second, first])).status, 200);
+	assert.equal((await complete([first, second])).status, 409, "the link is spent once the file is complete");
+	assert.equal(multipart.size, 0);
+	const served = await raw("GET", cred.downloadUrl, { headers: { Range: `bytes=${size - 2}-${size - 1}` } });
+	assert.equal(served.headers.get("Content-Range"), `bytes ${size - 2}-${size - 1}/${size}`);
+	assert.deepEqual(new Uint8Array(await served.arrayBuffer()), new Uint8Array([0, 9]));
+	assert.equal(objects.size, 1);
+
+	// An abandoned upload can be dropped and started again.
+	const other = (await call("GET", "system/anyTenant/ossToken", { token: sam, query: { fileName: "b.bin" } })).data;
+	const again = await (await raw("POST", `${other.uploadUrl}&uploads&size=${size}`)).json();
+	assert.equal((await raw("DELETE", `${other.uploadUrl}&uploadId=${again.uploadId}`)).status, 204);
+	assert.equal(multipart.size, 0);
+	assert.equal((await raw("PUT", `${other.uploadUrl}&uploadId=${again.uploadId}&partNumber=2`, { body: bytes.slice(0, 5), headers: { "Content-Length": "5" } })).status, 404);
 });
 
 test("mail: one-time web sign-in link, inbox unread count", async (t) => {

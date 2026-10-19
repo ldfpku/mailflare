@@ -5,9 +5,15 @@
  * at `/api/im/files/<id>/<name>` on our own origin.
  */
 
-/** Workers accept request bodies up to 100 MB on the Free and Pro plans. */
-export const IM_FILE_LIMIT_BYTES = 100 * 1024 * 1024;
+/** The largest chat file, the same 500 MB HuLa's client checks before it uploads. */
+export const IM_FILE_LIMIT_BYTES = 500 * 1024 * 1024;
+/** Workers accept request bodies up to 100 MB on the Free and Pro plans, so one PUT carries at most that. */
+export const IM_SINGLE_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
+/** Larger files go up in parts of this size (R2 needs every part but the last to be the same size). */
+export const IM_UPLOAD_PART_BYTES = 32 * 1024 * 1024;
 export const IM_UPLOAD_TTL_MS = 30 * 60 * 1000;
+/** A part-by-part upload may run longer than the link's half hour once it has started. */
+export const IM_MULTIPART_UPLOAD_TTL_MS = 6 * 60 * 60 * 1000;
 export const IM_FILE_NAME_LIMIT = 120;
 export const IM_FILES_PATH = "/api/im/files/";
 
@@ -131,4 +137,21 @@ export function digestsMatch(a: string, b: string): boolean {
 	let difference = 0;
 	for (let index = 0; index < a.length; index++) difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
 	return difference === 0;
+}
+
+/** The size every part of a declared file must have, or null when `partNumber` is not one of its parts. */
+export function imUploadPartSize(totalSize: number, partNumber: number, partSize = IM_UPLOAD_PART_BYTES): number | null {
+	const parts = Math.ceil(totalSize / partSize);
+	if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > parts) return null;
+	return partNumber < parts ? partSize : totalSize - (parts - 1) * partSize;
+}
+
+/** The part list a client sends to finish an upload: every part once, in order, each with its ETag. */
+export function parseImUploadParts(value: unknown, totalSize: number, partSize = IM_UPLOAD_PART_BYTES): Array<{ partNumber: number; etag: string }> | null {
+	const list = (value as { parts?: unknown } | null)?.parts;
+	const expected = Math.ceil(totalSize / partSize);
+	if (!Array.isArray(list) || list.length !== expected) return null;
+	const parts = list.map((part) => ({ partNumber: Number(part?.partNumber), etag: typeof part?.etag === "string" ? part.etag : "" }));
+	parts.sort((a, b) => a.partNumber - b.partNumber);
+	return parts.every((part, index) => part.partNumber === index + 1 && part.etag && part.etag.length <= 200) ? parts : null;
 }
