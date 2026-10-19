@@ -35,10 +35,11 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
 	const access = await requireTeamAdmin(request);
 	if (access.error) return access.error;
-	const body = (await request.json().catch(() => null)) as { ids?: unknown; transferToId?: unknown } | null;
+	const body = (await request.json().catch(() => null)) as { ids?: unknown; transferToId?: unknown; permanent?: unknown } | null;
 	const ids = Array.isArray(body?.ids) ? body.ids.filter((id): id is string => typeof id === "string" && !!id) : [];
 	const transferToId = typeof body?.transferToId === "string" ? body.transferToId : null;
-	const result = await deleteAccounts(access.env, access.user!, { ids, transferToId });
+	const permanent = body?.permanent === true;
+	const result = await deleteAccounts(access.env, access.user!, { ids, transferToId, permanent });
 	if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 	return NextResponse.json({ ok: true, deleted: result.deleted });
 }

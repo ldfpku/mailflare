@@ -12,14 +12,14 @@ import { getAccountPurgeDate, getAccountStatus } from "@/lib/accounts/deletion-u
 import { formatAccountDate, formatAccountDateTime } from "./utils";
 import type { AccountsTableProps } from "./accounts-table-types";
 
-const COLUMNS = "grid grid-cols-[auto_minmax(0,1fr)_1.75rem] items-center gap-x-4 md:grid-cols-[auto_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_1.75rem]";
+const COLUMNS = "grid grid-cols-[auto_minmax(0,1fr)_4rem] items-center gap-x-4 md:grid-cols-[auto_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_4rem]";
 const STATUS_STYLES = {
 	active: "bg-green-600/10 text-green-800",
 	disabled: "bg-neutral-100 text-neutral-600",
 	pendingDeletion: "bg-red-100 text-red-700",
 };
 
-export function AccountsTable({ accounts, currentUserId, isPrimaryAdmin, loading, selected, onSelectedChange, onDeleteSelected, onRestore, restoringId }: AccountsTableProps) {
+export function AccountsTable({ accounts, currentUserId, isPrimaryAdmin, loading, selected, onSelectedChange, onDeleteSelected, onDelete, onRestore, restoringId }: AccountsTableProps) {
 	const { t } = useLanguage();
 	const isSelectable = (account: AccountsTableProps["accounts"][number]) =>
 		!account.isPrimaryAdmin && account.id !== currentUserId && !account.deletedAt && (isPrimaryAdmin || account.role !== "admin");
@@ -65,14 +65,18 @@ export function AccountsTable({ accounts, currentUserId, isPrimaryAdmin, loading
 			</>;
 			const rowClass = `${COLUMNS} px-5 py-3 border-b border-neutral-100 last:border-b-0`;
 			const checkbox = <Checkbox aria-label={t("accounts.selectOne", { name: account.name })} checked={selected.has(account.id)} disabled={!isSelectable(account)} onChange={(event) => toggle(account.id, event.target.checked)} />;
-			const restoreButton = !account.deletedAt ? <span /> : <span className="flex justify-end"><Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={t("accounts.restore")} aria-label={t("accounts.restoreAccount", { name: account.name })} disabled={locked || restoringId === account.id} onClick={() => onRestore(account)}><RotateCcw className="h-4 w-4" /></Button></span>;
+			const deleteButton = (permanent: boolean) => <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600 hover:bg-red-50 hover:text-red-700" title={t(permanent ? "accounts.purgeNow" : "accounts.delete")} aria-label={t(permanent ? "accounts.purgeAccount" : "accounts.deleteAccount", { name: account.name })} onClick={() => onDelete(account)}><Trash2 className="h-4 w-4" /></Button>;
+			const restoreButton = <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={t("accounts.restore")} aria-label={t("accounts.restoreAccount", { name: account.name })} disabled={locked || restoringId === account.id} onClick={() => onRestore(account)}><RotateCcw className="h-4 w-4" /></Button>;
+			const actions = account.deletedAt
+				? <span className="flex justify-end gap-1">{restoreButton}{!locked && deleteButton(true)}</span>
+				: <span className="flex justify-end">{isSelectable(account) && deleteButton(false)}</span>;
 			if (account.deletedAt) {
-				return <div key={account.id} className={`${rowClass} opacity-80`}>{checkbox}<div className="contents">{identity}</div>{restoreButton}</div>;
+				return <div key={account.id} className={`${rowClass} opacity-80`}>{checkbox}<div className="contents">{identity}</div>{actions}</div>;
 			}
 			if (locked) {
-				return <div key={account.id} aria-disabled="true" title={t("accounts.lockedAdmin")} className={`${rowClass} cursor-not-allowed opacity-50`}>{checkbox}<div className="contents">{identity}</div>{restoreButton}</div>;
+				return <div key={account.id} aria-disabled="true" title={t("accounts.lockedAdmin")} className={`${rowClass} cursor-not-allowed opacity-50`}>{checkbox}<div className="contents">{identity}</div>{actions}</div>;
 			}
-			return <div key={account.id} className={`${rowClass} hover:bg-neutral-50`}>{checkbox}<Link href={`/accounts/${account.id}`} className="contents">{identity}</Link>{restoreButton}</div>;
+			return <div key={account.id} className={`${rowClass} hover:bg-neutral-50`}>{checkbox}<Link href={`/accounts/${account.id}`} className="contents">{identity}</Link>{actions}</div>;
 		})}
 	</div>;
 }

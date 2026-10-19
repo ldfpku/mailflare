@@ -7,6 +7,7 @@ import { deleteDriveItems } from "@/lib/drive/access";
 import { driveObjectKey } from "@/lib/drive/utils";
 import { newId } from "@/lib/ids";
 import { removeMailboxDomainRouting } from "@/lib/mailboxes/domain-addresses";
+import { purgeImUser, suspendImUsers } from "@/lib/im/account-cleanup";
 import { avatarKeyFor } from "@/app/api/profile/avatar/utils";
 import { getAccountPurgeCutoff } from "./deletion-utils";
 import type { DeleteAccountsInput, DeleteAccountsResult } from "./deletion-types";
@@ -41,8 +42,10 @@ export async function transferAccountData(env: CloudflareEnv, fromId: string, fr
 }
 
 /**
- * Soft-deletes accounts: they are disabled, signed out and stamped with `deletedAt`. They can be restored until the
- * scheduled purge removes them after the retention window. Optionally hands their Drive and calendar data to another account.
+ * Soft-deletes accounts: they are disabled, signed out (HuLa included) and stamped with `deletedAt`. They can be
+ * restored until the scheduled purge removes them after the retention window. Optionally hands their Drive and
+ * calendar data to another account. With `permanent`, the accounts and their data are removed right away instead,
+ * which also applies to accounts already waiting for the purge.
  */
 export async function deleteAccounts(env: CloudflareEnv, actor: SessionUser, input: DeleteAccountsInput): Promise<DeleteAccountsResult> {
 	if (!canManageUsers(actor)) return { ok: false, status: 403, error: "You do not have permission to manage users" };
@@ -56,7 +59,7 @@ export async function deleteAccounts(env: CloudflareEnv, actor: SessionUser, inp
 		if (target.id === actor.id) return { ok: false, status: 400, error: "You cannot delete your own account" };
 		if (target.isPrimaryAdmin) return { ok: false, status: 403, error: "The primary admin cannot be deleted" };
 		if (!isPrimaryAdmin(actor) && target.role === "admin") return { ok: false, status: 403, error: "Only the primary admin can manage admin accounts" };
-		if (target.deletedAt) return { ok: false, status: 409, error: `${target.email} is already deleted` };
+		if (target.deletedAt && !input.permanent) return { ok: false, status: 409, error: `${target.email} is already deleted` };
 	}
 	const transferToId = input.transferToId || null;
 	if (transferToId) {
@@ -71,9 +74,21 @@ export async function deleteAccounts(env: CloudflareEnv, actor: SessionUser, inp
 	}
 	const now = new Date();
 	for (const group of chunks(ids)) {
-		await db.update(users).set({ deletedAt: now, disabled: true }).where(inArray(users.id, group));
+		await db.update(users).set({ deletedAt: now, disabled: true }).where(and(inArray(users.id, group), isNull(users.deletedAt)));
 		await db.delete(sessions).where(inArray(sessions.userId, group));
 	}
+	await suspendImUsers(env, ids);
+	if (!input.permanent) return { ok: true, deleted: ids.length };
+	const failed: string[] = [];
+	for (const target of targets) {
+		try {
+			await purgeAccount(env, target);
+		} catch (error) {
+			console.error("Account purge failed", { userId: target.id, error });
+			failed.push(target.email);
+		}
+	}
+	if (failed.length) return { ok: false, status: 500, error: `Could not permanently delete ${failed.join(", ")}; they stay deleted and can be retried` };
 	return { ok: true, deleted: ids.length };
 }
 
@@ -90,6 +105,7 @@ export async function restoreAccount(env: CloudflareEnv, actor: SessionUser, id:
 
 async function purgeAccount(env: CloudflareEnv, account: typeof users.$inferSelect): Promise<void> {
 	const db = getDb(env);
+	await purgeImUser(env, account.id);
 	const owned = await db.select().from(mailboxes).where(eq(mailboxes.userId, account.id));
 	for (const mailbox of owned) {
 		try {
