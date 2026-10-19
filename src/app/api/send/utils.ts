@@ -1,5 +1,7 @@
 import type { AttachmentContent } from "@/lib/email/attachment-types";
+import { decodeBase64Content } from "@/lib/email/attachments";
 import { readFormDataBody, readJsonBody } from "@/lib/http/request";
+import { sendEmailSchema } from "@/lib/validators";
 import type { SendRequestPayload } from "./types";
 
 const MAX_SEND_REQUEST_SIZE = 30 * 1024 * 1024;
@@ -15,9 +17,22 @@ export function isPastSchedule(value: string | undefined, now = Date.now()): boo
 	return !Number.isFinite(time) || time < now - 60_000;
 }
 
+/** JSON bodies carry files as `contentBase64` (the shape `sendEmailSchema` documents); decode them like /api/v1/send does. */
+export function decodeJsonAttachments(value: unknown): AttachmentContent[] {
+	const parsed = sendEmailSchema.shape.attachments.safeParse(value);
+	if (!parsed.success) throw new Error("Invalid attachments");
+	return (parsed.data ?? []).map((attachment) => ({
+		filename: attachment.filename,
+		type: attachment.type,
+		content: decodeBase64Content(attachment.contentBase64),
+		disposition: "attachment",
+	}));
+}
+
 export async function parseSendRequest(request: Request): Promise<SendRequestPayload> {
 	if (!request.headers.get("content-type")?.includes("multipart/form-data")) {
-		return readJsonBody<SendRequestPayload>(request, MAX_SEND_REQUEST_SIZE);
+		const body = await readJsonBody<Omit<SendRequestPayload, "attachments"> & { attachments?: unknown }>(request, MAX_SEND_REQUEST_SIZE);
+		return { ...body, attachments: decodeJsonAttachments(body.attachments) };
 	}
 
 	const form = await readFormDataBody(request, MAX_SEND_REQUEST_SIZE);
