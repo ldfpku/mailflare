@@ -4,6 +4,7 @@ import {
 	IM_ALL_STAFF_ROOM_NAME,
 	IM_GROUP_MEMBER_LIMIT,
 	IM_GROUP_NAME_LIMIT,
+	IM_MEDIA_TYPES,
 	IM_MSG_TYPE,
 	IM_OFFLINE,
 	IM_ONLINE,
@@ -15,6 +16,7 @@ import {
 	defaultGroupName,
 	imUserName,
 	parseImMessageId,
+	parseMediaBody,
 	parseTextBody,
 	sessionPreview,
 	singleRoomKey,
@@ -23,6 +25,8 @@ import {
 	type ImMessageRow,
 	type ImUserRow,
 } from "./chat-utils";
+import { requireUploadedImFiles } from "./files";
+import { imFileIdFromUrl } from "./files-utils";
 import { IM_DEFAULT_USER_STATE_ID, imAvatarUrl } from "./users-utils";
 
 /**
@@ -467,16 +471,26 @@ export async function sendMessage(
 	origin: string,
 ): Promise<ImDelivery> {
 	const member = await requireMember(env, input.roomId, userId);
-	if (input.msgType !== IM_MSG_TYPE.TEXT) throw new ImChatError(400, "暂不支持该类型的消息");
-	const body = parseTextBody(input.body);
-	if (!body) throw new ImChatError(400, "消息内容为空或超过长度限制");
-	let replyMsgId = parseImMessageId((input.body as { replyMsgId?: unknown }).replyMsgId);
+	const type = Number(input.msgType);
+	let body: unknown;
+	if (type === IM_MSG_TYPE.TEXT) {
+		body = parseTextBody(input.body);
+		if (!body) throw new ImChatError(400, "消息内容为空或超过长度限制");
+	} else if (IM_MEDIA_TYPES.has(type)) {
+		const media = parseMediaBody(type, input.body, (url) => imFileIdFromUrl(url, origin));
+		if (!media) throw new ImChatError(400, "文件消息无效");
+		await requireUploadedImFiles(env, media.fileIds);
+		body = media.body;
+	} else {
+		throw new ImChatError(400, "暂不支持该类型的消息");
+	}
+	let replyMsgId = parseImMessageId((input.body as { replyMsgId?: unknown } | null)?.replyMsgId);
 	if (replyMsgId !== null) {
 		const reply = await db(env).prepare("SELECT id FROM im_messages WHERE id = ? AND room_id = ?").bind(replyMsgId, member.room_id).first();
 		if (!reply) replyMsgId = null;
 	}
 	const clientMsgId = typeof input.id === "string" && input.id && input.id.length <= 64 ? input.id : null;
-	const row = await insertMessage(env, { roomId: member.room_id, fromUid: userId, clientMsgId, type: IM_MSG_TYPE.TEXT, body, replyMsgId });
+	const row = await insertMessage(env, { roomId: member.room_id, fromUid: userId, clientMsgId, type, body, replyMsgId });
 	const [message] = await renderMessages(env, userId, [row], origin);
 	// The sender's client already shows its own message; a second copy over the socket would race its id swap.
 	const recipients = (await roomMemberIds(env, member.room_id)).filter((id) => id !== userId);

@@ -1013,6 +1013,27 @@ export const imPresence = sqliteTable("im_presence", {
 	lastOptTime: integer("last_opt_time").notNull(),
 });
 
+/**
+ * Files sent in HuLa chats. The id is the unguessable part of the download URL; the upload token is single-use and
+ * short-lived, and only its hash is kept.
+ */
+export const imFiles = sqliteTable(
+	"im_files",
+	{
+		id: text("id").primaryKey(),
+		uploaderId: text("uploader_id").notNull(),
+		objectKey: text("object_key").notNull(),
+		fileName: text("file_name").notNull(),
+		contentType: text("content_type").notNull(),
+		size: integer("size"),
+		uploadTokenHash: text("upload_token_hash"),
+		uploadExpiresAt: integer("upload_expires_at"),
+		uploadedAt: integer("uploaded_at"),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [index("im_files_uploader_idx").on(table.uploaderId, table.createdAt)],
+);
+
 export const schema = {
 	users,
 	domains,
@@ -1058,4 +1079,5 @@ export const schema = {
 	imRoomMembers,
 	imMessages,
 	imPresence,
+	imFiles,
 };
