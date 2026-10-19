@@ -1034,6 +1034,44 @@ export const imFiles = sqliteTable(
 	(table) => [index("im_files_uploader_idx").on(table.uploaderId, table.createdAt)],
 );
 
+/**
+ * Video meetings on Cloudflare RealtimeKit. RealtimeKit has no schedule of its own, so the time, the invitees and the
+ * link back to a chat live here; `sequence` is the iCalendar SEQUENCE the next invitation for the meeting carries.
+ */
+export const imMeetings = sqliteTable(
+	"im_meetings",
+	{
+		id: text("id").primaryKey(),
+		rtkMeetingId: text("rtk_meeting_id").notNull(),
+		title: text("title").notNull(),
+		hostId: text("host_id").notNull(),
+		roomId: text("room_id"),
+		/** JSON array of user ids. */
+		inviteeIds: text("invitee_ids").notNull().default("[]"),
+		startsAt: integer("starts_at"),
+		durationMinutes: integer("duration_minutes").notNull().default(60),
+		sequence: integer("sequence").notNull().default(0),
+		createdAt: integer("created_at").notNull(),
+		endedAt: integer("ended_at"),
+	},
+	(table) => [index("im_meetings_host_idx").on(table.hostId, table.createdAt)],
+);
+
+/** One RealtimeKit participant per user and meeting; its auth token is reused for every join. */
+export const imMeetingParticipants = sqliteTable(
+	"im_meeting_participants",
+	{
+		meetingId: text("meeting_id")
+			.notNull()
+			.references(() => imMeetings.id, { onDelete: "cascade" }),
+		userId: text("user_id").notNull(),
+		rtkParticipantId: text("rtk_participant_id").notNull(),
+		authToken: text("auth_token").notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.meetingId, table.userId] })],
+);
+
 export const schema = {
 	users,
 	domains,
@@ -1080,4 +1118,6 @@ export const schema = {
 	imMessages,
 	imPresence,
 	imFiles,
+	imMeetings,
+	imMeetingParticipants,
 };

@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { setPresence } from "./chat";
 import { IM_HEARTBEAT_REQUEST, IM_HEARTBEAT_RESPONSE, type ImSocketAttachment, type ImSocketEvent } from "./hub-utils";
+import { notifyImUsers } from "./notify";
+import { resolveRtcRelay } from "./rtc";
 
 /**
  * One per user: holds every HuLa client the user has open and speaks HuLa's
@@ -58,10 +60,34 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 	async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
 		// A heartbeat that missed the auto-response (different spacing, binary frame) still gets its pong.
 		const text = typeof message === "string" ? message : new TextDecoder().decode(message);
+		let frame: unknown;
 		try {
-			if ((JSON.parse(text) as { type?: unknown }).type === "2") socket.send(IM_HEARTBEAT_RESPONSE);
+			frame = JSON.parse(text);
 		} catch {
-			// Delivery acknowledgements and anything else are ignored until message sync needs them.
+			return;
+		}
+		if ((frame as { type?: unknown } | null)?.type === "2") {
+			socket.send(IM_HEARTBEAT_RESPONSE);
+			return;
+		}
+		// Call setup and WebRTC signals are relayed to the other party; delivery acknowledgements and anything else are ignored.
+		const userId = (socket.deserializeAttachment() as ImSocketAttachment | null)?.userId;
+		if (!userId) return;
+		const relay = await resolveRtcRelay(this.env, userId, frame).catch(() => null);
+		if (!relay) return;
+		await notifyImUsers(this.env, [relay.peerUid], relay.toPeer);
+		if (relay.toOwnOtherDevices) this.sendToOthers(socket, relay.toOwnOtherDevices);
+	}
+
+	private sendToOthers(origin: WebSocket, event: ImSocketEvent): void {
+		const body = JSON.stringify(event);
+		for (const socket of this.ctx.getWebSockets()) {
+			if (socket === origin) continue;
+			try {
+				socket.send(body);
+			} catch {
+				// A socket that is closing is cleaned up by webSocketClose.
+			}
 		}
 	}
 
