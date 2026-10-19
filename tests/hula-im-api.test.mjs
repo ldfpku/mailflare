@@ -538,6 +538,75 @@ test("group mailbox: managers give a group an address, and its mail arrives as c
 	assert.equal(again.data.enabled, true);
 });
 
+test("search: chat in the user's rooms and mail in their mailboxes, Chinese words found anywhere in a sentence", async (t) => {
+	const { database, call, login, addUser } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const sam = (await login()).data.token;
+	const lee = (await login("lee@one.test")).data.token;
+	const samKim = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
+	const leeKim = (await call("GET", "im/chat/contact/detail/friend", { token: lee, query: { id: "u2", roomType: "2" } })).data.roomId;
+	const send = async (token, roomId, content) => (await call("POST", "im/chat/msg", { token, body: { roomId, msgType: 1, body: { content } } })).data.message.id;
+	const meeting = await send(sam, samKim, "明天下午三点<b>开会</b>讨论预算");
+	const budget = await send(sam, samKim, "预算表已经更新");
+	await send(lee, leeKim, "Lee 和 Kim 也要开会");
+	const search = async (token, query) => (await call("GET", "im/search", { token, query })).data;
+
+	const two = await search(sam, { keyword: "开会", scope: "chat" });
+	assert.equal(two.mail, null, "scope=chat leaves mail out");
+	assert.deepEqual(two.chat.list.map((hit) => hit.msgId), [meeting], "a two-character word inside a sentence; Lee's room stays hidden");
+	assert.deepEqual(
+		{ ...two.chat.list[0], sendTime: 0 },
+		{ msgId: meeting, roomId: samKim, roomType: 2, detailId: "u2", roomName: "Kim", roomAvatar: "", fromUid: "u1", fromName: "Sam", fromAvatar: "", type: 1, text: "明天下午三点开会讨论预算", sendTime: 0 },
+	);
+	assert.deepEqual((await search(lee, { keyword: "开会", scope: "chat" })).chat.list.map((hit) => hit.roomId), [leeKim]);
+	assert.deepEqual((await search(sam, { keyword: "开会讨论", scope: "chat" })).chat.list.map((hit) => hit.msgId), [meeting], "longer terms go through the trigram index");
+	assert.deepEqual((await search(sam, { keyword: "预算", scope: "chat" })).chat.list.map((hit) => hit.msgId), [budget, meeting], "newest first");
+	assert.deepEqual((await search(sam, { keyword: "预算 -下午", scope: "chat" })).chat.list.map((hit) => hit.msgId), [budget]);
+	assert.deepEqual((await search(sam, { keyword: "预算", scope: "chat", size: "1" })).chat, { ...(await search(sam, { keyword: "预算", scope: "chat", size: "1" })).chat, total: 2, isLast: false });
+	assert.equal((await search(sam, { keyword: "开会", scope: "chat", roomId: leeKim })).chat.total, 0, "naming someone else's room finds nothing");
+	assert.equal((await search(sam, { keyword: "b", scope: "chat" })).chat.total, 0, "markup is not searchable text");
+
+	assert.equal((await call("PUT", "im/chat/msg/recall", { token: sam, body: { roomId: samKim, msgId: meeting } })).code, 200);
+	assert.deepEqual((await search(sam, { keyword: "预算", scope: "chat" })).chat.list.map((hit) => hit.msgId), [budget], "recalled messages leave the index");
+
+	database.db.prepare("INSERT INTO domains (id, user_id, hostname, zone_id, created_at) VALUES ('d1', 'u1', 'one.test', 'z', 1)").run();
+	const mailbox = database.db.prepare("INSERT INTO mailboxes (id, user_id, domain_id, local_part, created_at) VALUES (?, ?, 'd1', ?, 1)");
+	mailbox.run("m1", "u1", "sam");
+	mailbox.run("m2", "u2", "kim");
+	mailbox.run("m3", "u3", "lee");
+	database.db.prepare("INSERT INTO mailbox_access (id, mailbox_id, user_id, created_at) VALUES ('a1', 'm3', 'u1', 1)").run();
+	const mail = database.db.prepare(
+		"INSERT INTO messages (id, user_id, mailbox_id, direction, from_addr, to_addr, subject, text_body, status, read, created_at) VALUES (?, 'u1', ?, ?, ?, 'sam@one.test', ?, ?, ?, 0, ?)",
+	);
+	mail.run("x1", "m1", "inbound", '"张三" <zhang@b.test>', "关于合同审批的通知", "请在周五前完成合同审批。Invoice attached.", "received", 3);
+	mail.run("x2", "m2", "inbound", "a@b.test", "合同草稿", "Kim 的邮件", "received", 2);
+	mail.run("x3", "m3", "inbound", "a@b.test", "Re: 合同", "共享邮箱里的合同", "received", 1);
+	mail.run("x4", "m1", "inbound", "a@b.test", "垃圾合同", "spam", "spam", 4);
+	mail.run("x5", "m1", "outbound", "sam@one.test", "invoices for March", "see attached", "sent", 5);
+
+	const both = await search(sam, { keyword: "合同" });
+	assert.deepEqual(both.chat, { list: [], total: 0, isLast: true });
+	assert.deepEqual(both.mail.list.map((hit) => hit.id), ["x1", "x3"], "own and shared mailboxes; Kim's mailbox and spam stay out");
+	assert.deepEqual(
+		{ ...both.mail.list[0], date: 0 },
+		{
+			id: "x1", mailboxId: "m1", mailboxAddress: "sam@one.test", threadId: null, status: "received", outbound: false,
+			subject: "关于合同审批的通知", from: "zhang@b.test", fromName: "张三", to: "", text: "请在周五前完成合同审批。Invoice attached.",
+			read: false, date: 0, path: "/inbox/x1",
+		},
+	);
+	assert.deepEqual((await search(sam, { keyword: "合同", mailboxId: "m3" })).mail.list.map((hit) => hit.id), ["x3"]);
+	assert.equal((await search(sam, { keyword: "合同", mailboxId: "m2" })).mail.total, 0, "naming a mailbox one cannot read finds nothing");
+	assert.deepEqual((await search(sam, { keyword: "invoice", scope: "mail" })).mail.list.map((hit) => hit.id), ["x5", "x1"], "latin words keep prefix matching");
+	assert.deepEqual((await search(sam, { keyword: "合同 -审批", scope: "mail" })).mail.list.map((hit) => hit.id), ["x3"]);
+	assert.deepEqual((await search(sam, { keyword: "from:zhang 合同", scope: "mail" })).mail.list.map((hit) => hit.id), ["x1"], "operators still apply");
+	assert.equal((await search(lee, { keyword: "合同", scope: "mail" })).mail.total, 1, "Lee sees only his own mailbox");
+
+	assert.equal((await call("GET", "im/search", { token: sam, query: { keyword: "  " } })).code, 400);
+	assert.equal((await call("GET", "im/search", { query: { keyword: "合同" } })).code, 401);
+});
+
 test("route helpers", () => {
 	assert.equal(imApiPath("/api/im/oauth/check/"), "oauth/check");
 	assert.equal(imApiPath("/api/other"), null);

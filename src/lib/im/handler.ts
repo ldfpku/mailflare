@@ -41,6 +41,8 @@ import { createImUpload, receiveImUpload, serveImFile } from "./files";
 import { countUnreadMail, createMailSsoLink, redeemMailSsoLink } from "./mail";
 import { serveMailShare } from "./mail-share";
 import { disableRoomMailbox, enableRoomMailbox, getRoomMailbox } from "./room-mailbox";
+import { searchImAndMail } from "./search";
+import { parseImSearchParams } from "./search-utils";
 import { notifyImUsers } from "./notify";
 import { rtcRoutes } from "./meeting-routes";
 import { issueWebSessionTokens } from "./web-app";
@@ -215,6 +217,12 @@ const userRoutes: ImRouteTable<ImContext> = {
 	"GET im/room/mailbox": async ({ env, user, url }) => imOk(await getRoomMailbox(env, user.id, url.searchParams.get("roomId"))),
 	"POST im/room/mailbox": async ({ request, env, user, origin }) => imOk(await enableRoomMailbox(env, user.id, await readBody(request), origin)),
 	"POST im/room/mailbox/disable": async ({ request, env, user }) => imOk(await disableRoomMailbox(env, user.id, (await readBody(request)).roomId)),
+	// One search box over chat and mail; each side is paged on its own.
+	"GET im/search": async ({ env, user, url, origin }) => {
+		const params = parseImSearchParams(url.searchParams);
+		if (!params) return imFail(IM_CODE.BAD_REQUEST, "请输入搜索内容");
+		return imOk(await searchImAndMail(env, user, params, origin));
+	},
 	"GET im/room/announcement/list": ({ url }) => imOk({ records: [], total: "0", size: url.searchParams.get("size") ?? "0" }),
 };
 

@@ -27,6 +27,7 @@ import {
 } from "./chat-utils";
 import { requireUploadedImFiles } from "./files";
 import { imFileIdFromUrl } from "./files-utils";
+import { imSearchTextOverride } from "./search-utils";
 import { IM_DEFAULT_USER_STATE_ID, imAvatarUrl } from "./users-utils";
 
 /**
@@ -447,7 +448,9 @@ async function insertMessage(
 		if (!existing) throw new ImChatError(400, "消息发送失败");
 		return existing;
 	}
+	const searchText = imSearchTextOverride(inserted.type, inserted.body);
 	await db(env).batch([
+		...(searchText === null ? [] : [db(env).prepare("UPDATE im_messages_fts SET text = ? WHERE rowid = ?").bind(searchText, inserted.id)]),
 		db(env)
 			.prepare("UPDATE im_rooms SET last_msg_id = MAX(COALESCE(last_msg_id, 0), ?), active_time = MAX(active_time, ?) WHERE id = ?")
 			.bind(inserted.id, now, values.roomId),
