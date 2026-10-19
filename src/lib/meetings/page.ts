@@ -1,23 +1,32 @@
 /**
- * The meeting page: RealtimeKit's prebuilt meeting UI, loaded from jsDelivr at a
- * pinned version, in SMJ colours and Chinese. A participant token comes either
- * from the URL fragment (HuLa opens `/meet/<id>#t=<token>` after joining with
- * its own credentials) or from `/api/meetings/<id>/join` with the web session;
- * without a session the page sends the user to sign in and back.
+ * The meeting page: RealtimeKit's prebuilt meeting UI in SMJ colours and
+ * Chinese. A participant token comes either from the URL fragment (HuLa opens
+ * `/meet/<id>#t=<token>` after joining with its own credentials) or from
+ * `/api/meetings/<id>/join` with the web session; without a session the page
+ * sends the user to sign in and back.
+ *
+ * The browser build and UI Kit are served from this origin
+ * (`public/vendor/realtimekit`, written by `scripts/vendor-realtimekit.mjs`,
+ * which also removes the UI Kit's Google Fonts loader), so the page only ever
+ * talks to us and to RealtimeKit's own `*.realtime.cloudflare.com` hosts.
  */
 const REALTIMEKIT_VERSION = "2.0.2";
-const CDN = "https://cdn.jsdelivr.net/npm";
+const VENDOR = `/vendor/realtimekit/${REALTIMEKIT_VERSION}`;
+const REALTIMEKIT_HOSTS = "https://*.realtime.cloudflare.com";
+/** Matches the stack the vendoring script writes into the UI Kit. */
+const FONT_STACK = `"Barlow", "Noto Sans SC", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif`;
 
 const CSP = [
 	"default-src 'self'",
-	`script-src 'self' 'unsafe-inline' 'unsafe-eval' ${CDN}/@cloudflare/`,
-	"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
-	"font-src 'self' data: https:",
-	"img-src 'self' data: blob: https:",
-	"media-src 'self' blob: https:",
-	"connect-src 'self' https: wss:",
+	// Cloudflare Web Analytics, as on /im, in case the zone injects its beacon.
+	"script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
+	"style-src 'self' 'unsafe-inline'",
+	"font-src 'self' data:",
+	`img-src 'self' data: blob: ${REALTIMEKIT_HOSTS}`,
+	`media-src 'self' blob: ${REALTIMEKIT_HOSTS}`,
+	`connect-src 'self' ${REALTIMEKIT_HOSTS} wss://*.realtime.cloudflare.com https://cloudflareinsights.com`,
 	"worker-src 'self' blob:",
-	"frame-src https:",
+	`frame-src 'self' ${REALTIMEKIT_HOSTS}`,
 	"object-src 'none'",
 	"base-uri 'self'",
 	"form-action 'self'",
@@ -134,7 +143,7 @@ const ZH: Record<string, string> = {
 };
 
 export function renderMeetingPage(id: string): string {
-	const config = JSON.stringify({ id, core: `${CDN}/@cloudflare/realtimekit@${REALTIMEKIT_VERSION}`, ui: `${CDN}/@cloudflare/realtimekit-ui@${REALTIMEKIT_VERSION}`, zh: ZH }).replace(/</g, "\\u003c");
+	const config = JSON.stringify({ id, core: `${VENDOR}/core`, ui: `${VENDOR}/ui`, font: FONT_STACK, zh: ZH }).replace(/</g, "\\u003c");
 	return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -144,7 +153,7 @@ export function renderMeetingPage(id: string): string {
 <style>
 :root { --smj-blue: #034fbc; --smj-navy: #1a2b4a; --smj-muted: #5b6b85; --smj-line: #e3e8f0; }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: #ffffff; color: var(--smj-navy); font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif; }
+html, body { margin: 0; height: 100%; background: #ffffff; color: var(--smj-navy); font-family: ${FONT_STACK}; }
 body { display: flex; flex-direction: column; }
 header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--smj-line); flex-wrap: wrap; }
 .brand { font-weight: 700; color: var(--smj-blue); white-space: nowrap; }
@@ -235,7 +244,7 @@ async function participantToken() {
 async function start() {
 	const token = await participantToken();
 	if (!token) return;
-	const [loader] = await Promise.all([import(config.ui + "/loader/index.es2017.js"), loadScript(config.core + "/dist/browser.js")]);
+	const [loader] = await Promise.all([import(config.ui + "/loader/index.es2017.js"), loadScript(config.core + "/browser.js")]);
 	loader.defineCustomElements();
 	const element = document.getElementById("meeting");
 	try {
@@ -243,6 +252,7 @@ async function start() {
 		element.t = ui.useLanguage(config.zh);
 		ui.provideRtkDesignSystem(document.body, {
 			theme: "light",
+			fontFamily: config.font,
 			colors: { brand: { 300: "#4f86d6", 400: "#2a6bcb", 500: "#034fbc", 600: "#02409a", 700: "#023178" }, text: "#1a2b4a", "text-on-brand": "#ffffff" },
 		});
 	} catch (error) {

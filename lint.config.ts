@@ -158,7 +158,8 @@ const lintConfig = {
     "data/**",
     "deploy/**/node_modules/**",
     "cloudflare-env.d.ts",
-    "next-env.d.ts"
+    "next-env.d.ts",
+    "public/vendor/**"
   ],
   "overrides": [
     {

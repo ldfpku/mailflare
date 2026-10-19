@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test, { after } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -246,8 +246,17 @@ test("the meeting page allows camera and microphone, and web joins need a sessio
 	const page = await handleMeetingRequest(new Request("https://mail.one.test/meet/abcdefghijklmnop"), env);
 	assert.equal(page.status, 200);
 	assert.match(page.headers.get("Permissions-Policy"), /camera=\(self\), microphone=\(self\)/);
-	assert.match(page.headers.get("Content-Security-Policy"), /cdn\.jsdelivr\.net\/npm\/@cloudflare\//);
-	assert.match(await page.text(), /realtimekit-ui@2\.0\.2/);
+	// Only this origin and Cloudflare: RealtimeKit is served from public/vendor.
+	const hosts = page.headers.get("Content-Security-Policy").match(/(?:https|wss):\/\/[^\s;]+/g);
+	assert.deepEqual(hosts.filter((host) => !/^(?:https|wss):\/\/(?:\*\.realtime\.cloudflare\.com|static\.cloudflareinsights\.com|cloudflareinsights\.com)$/.test(host)), []);
+	const html = await page.text();
+	assert.match(html, /"\/vendor\/realtimekit\/2\.0\.2\/ui"/);
+	assert.doesNotMatch(html, /https?:\/\//);
+	const vendor = join(root, "public", "vendor", "realtimekit", "2.0.2");
+	assert.ok(existsSync(join(vendor, "core", "browser.js")) && existsSync(join(vendor, "ui", "loader", "index.es2017.js")));
+	for (const file of readdirSync(join(vendor, "ui", "dist", "esm"))) {
+		assert.doesNotMatch(readFileSync(join(vendor, "ui", "dist", "esm", file), "utf8"), /fonts\.(?:googleapis|gstatic)\.com/, file);
+	}
 
 	const anonymous = await handleMeetingRequest(new Request("https://mail.one.test/api/meetings/abcdefghijklmnop/join", { method: "POST" }), env);
 	assert.equal(anonymous.status, 401);
