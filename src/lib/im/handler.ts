@@ -47,6 +47,8 @@ import { parseImSearchParams } from "./search-utils";
 import { listDriveForPicker, listRoomFiles, removeRoomFile, saveRoomFileToDrive, sendDriveFileToRoom } from "./room-files";
 import { notifyImUsers } from "./notify";
 import { rtcRoutes } from "./meeting-routes";
+import { draftMailTodo, summarizeRoom } from "./ai";
+import { createTodo, deleteTodo, listTodos, updateTodo } from "./todos";
 import { issueWebSessionTokens } from "./web-app";
 
 /**
@@ -253,6 +255,17 @@ const userRoutes: ImRouteTable<ImContext> = {
 		return imOk(delivery.message);
 	},
 	"GET im/drive/items": async ({ env, user, url }) => imOk(await listDriveForPicker(env, user.id, url.searchParams.get("parentId"))),
+	// Workers AI: a summary only the caller sees (nothing is stored or posted), and a to-do drafted from a mail.
+	"POST im/ai/summary": async ({ request, env, user }) => imOk(await summarizeRoom(env, user, await readBody(request))),
+	"POST im/ai/mailTodo": async ({ request, env, user }) => imOk(await draftMailTodo(env, user, await readBody(request))),
+	// "我的待办" (see todos.ts).
+	"GET im/todo/list": async ({ env, user, url }) => imOk(await listTodos(env, user.id, url.searchParams.get("status"))),
+	"POST im/todo": async ({ request, env, user }) => imOk(await createTodo(env, user, await readBody(request))),
+	"POST im/todo/update": async ({ request, env, user }) => imOk(await updateTodo(env, user.id, await readBody(request))),
+	"POST im/todo/delete": async ({ request, env, user }) => {
+		await deleteTodo(env, user.id, (await readBody(request)).id);
+		return imOk(true);
+	},
 	"GET im/room/announcement/list": ({ url }) => imOk({ records: [], total: "0", size: url.searchParams.get("size") ?? "0" }),
 };
 

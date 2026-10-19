@@ -1125,6 +1125,32 @@ export const businessCards = sqliteTable(
 );
 
 /**
+ * "我的待办" in chat: one person's to-dos, typed in or drafted by Workers AI from a mail. `source_id` is the mail's
+ * `messages.id` for a mail to-do; the title is kept so the item still reads well after the mail is deleted.
+ */
+export const imTodos = sqliteTable(
+	"im_todos",
+	{
+		id: text("id").primaryKey(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		title: text("title").notNull(),
+		notes: text("notes").notNull().default(""),
+		/** Epoch milliseconds, or null for no deadline. */
+		dueAt: integer("due_at"),
+		done: integer("done", { mode: "boolean" }).notNull().default(false),
+		doneAt: integer("done_at"),
+		sourceType: text("source_type", { enum: ["manual", "mail"] }).notNull().default("manual"),
+		sourceId: text("source_id"),
+		sourceTitle: text("source_title").notNull().default(""),
+		createdAt: integer("created_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [index("im_todos_user_idx").on(table.userId, table.done, table.dueAt)],
+);
+
+/**
  * Video meetings on Cloudflare RealtimeKit. RealtimeKit has no schedule of its own, so the time, the invitees and the
  * link back to a chat live here; `sequence` is the iCalendar SEQUENCE the next invitation for the meeting carries.
  */
@@ -1242,4 +1268,5 @@ export const schema = {
 	imMeetingParticipants,
 	imCalendarInvites,
 	businessCards,
+	imTodos,
 };
