@@ -15,6 +15,7 @@ import {
 	parseShareRoomIds,
 	prepareSharedHtml,
 	renderMailSharePage,
+	rewriteRemoteImages,
 	type SharedAttachmentRow,
 	type SharedMailRow,
 } from "./mail-share-utils";
@@ -114,8 +115,10 @@ export async function postRoomMailCard(env: Env, mailboxId: string, messageId: s
 	return true;
 }
 
+// Images only from this origin: remote ones are left out, or go through /api/remote-images once the reader asks for them.
+// `allow-same-origin` (still no scripts) lets those and the inline `cid:` images carry the session cookie.
 const PAGE_CSP =
-	"default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; font-src https: data:; form-action 'none'; frame-ancestors 'none'; sandbox allow-popups allow-popups-to-escape-sandbox allow-downloads";
+	"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:; form-action 'none'; frame-ancestors 'none'; sandbox allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads";
 
 function page(status: number, title: string, message: string): Response {
 	const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title></head><body style="font:15px/1.6 sans-serif;color:#0a1f54;padding:48px;text-align:center"><p>${message}</p></body></html>`;
@@ -162,11 +165,17 @@ export async function serveMailShare(env: Env, request: Request, shareId: string
 	);
 	const viaRoom = mail.mailbox_id ? await findMailboxRoom(env, mail.mailbox_id) : null;
 	const sharer = await env.DB.prepare("SELECT name, email FROM users WHERE id = ?").bind(share.shared_by).first<{ name: string; email: string }>();
+	// Like the mail reader's "ask" setting: remote images load only after a click, and then through our proxy.
+	const showImages = new URL(request.url).searchParams.get("images") === "1";
+	const remote = mail.html_body
+		? rewriteRemoteImages(prepareSharedHtml(mail.html_body, cidUrls), origin, (url) => (showImages ? `${origin}/api/remote-images?url=${encodeURIComponent(url)}` : null))
+		: null;
 	const html = renderMailSharePage({
 		mail,
 		note: viaRoom?.roomId === share.room_id ? "群邮箱收到的邮件" : `${imUserName(sharer)} 分享到聊天的邮件`,
 		attachments: attachments.filter(isDownloadable).map((item) => ({ name: item.filename, size: item.size, url: attachmentUrl(item.id) })),
-		bodyHtml: mail.html_body ? prepareSharedHtml(mail.html_body, cidUrls) : null,
+		bodyHtml: remote?.html ?? null,
+		showImagesUrl: remote?.found && !showImages ? `${mailShareUrl(origin, shareId)}?images=1` : null,
 	});
 	return new Response(html, {
 		headers: {

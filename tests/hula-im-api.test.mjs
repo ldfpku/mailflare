@@ -485,6 +485,28 @@ test("mail cards: share a mail into chats, and only room members read it on the 
 	assert.match(download.headers.get("Content-Disposition"), /^attachment;/);
 	assert.equal((await raw("GET", card.url, { headers: { Cookie: await cookie("u3") } })).status, 403, "Bob is not in the private chat");
 
+	// Remote images stay unloaded until the reader asks, and then come through our proxy.
+	assert.match(page.headers.get("Content-Security-Policy"), /img-src 'self' data:;/);
+	assert.ok(!/https?:\/\/|style-src[^;]*https/.test(page.headers.get("Content-Security-Policy")), "the page itself allows no remote origin");
+	assert.ok(!html.includes("显示图片"), "no prompt when there is nothing remote");
+	database.db.prepare(
+		"INSERT INTO messages (id, user_id, mailbox_id, direction, from_addr, to_addr, subject, html_body, status, read, created_at) VALUES ('x2', 'u1', 'm1', 'inbound', 'lee@b.test', 'sam@one.test', 'Newsletter', ?, 'received', 1, 1700000000)",
+	).run(`<img src="https://img.example.test/pixel.gif?u=1&amp;v=2"><img src=//img.example.test/a.png srcset="https://img.example.test/a2.png 2x, cid:logo@b 1x"><td background='http://img.example.test/bg.png' style="background:url(&quot;https://img.example.test/c.png&quot;)"></td><style>.x{background-image:url(https://img.example.test/d.png)}</style><img src="cid:logo@b">`);
+	database.db.prepare("INSERT INTO message_attachments (id, message_id, filename, content_type, size, disposition, content_id, r2_key, created_at) VALUES ('a3', 'x2', 'logo.png', 'image/png', 3, 'inline', '<logo@b>', 'att/a3', 1)").run();
+	await shareMailToChats(env, samUser, "x2", [privateRoom], "https://mail.one.test");
+	const newsletter = pushes.filter((push) => push.data?.message?.body?.subject === "Newsletter").at(-1).data.message.body;
+	const blocked = await (await raw("GET", newsletter.url, { headers: { Cookie: await cookie("u2") } })).text();
+	assert.ok(!blocked.includes("img.example.test"), "no remote image address reaches the page");
+	assert.ok(blocked.includes(`href="${newsletter.url}?images=1"`) && blocked.includes("显示图片"), "the reader is offered to load them");
+	assert.ok(blocked.includes(`src="${newsletter.url}/attachments/a3"`) && blocked.includes(`${newsletter.url}/attachments/a3 1x`), "inline images still show");
+	const shown = await (await raw("GET", `${newsletter.url}?images=1`, { headers: { Cookie: await cookie("u2") } })).text();
+	const proxied = (url) => `https://mail.one.test/api/remote-images?url=${encodeURIComponent(url)}`;
+	for (const url of ["https://img.example.test/pixel.gif?u=1&v=2", "https://img.example.test/a.png", "https://img.example.test/a2.png", "http://img.example.test/bg.png", "https://img.example.test/c.png", "https://img.example.test/d.png"]) {
+		assert.ok(shown.includes(proxied(url)), `${url} goes through the proxy`);
+	}
+	assert.ok(!/["'(]\s*(?:https?:)?\/\/img\.example\.test/.test(shown), "never directly");
+	assert.ok(!shown.includes("显示图片"));
+
 	database.db.prepare("DELETE FROM messages WHERE id = 'x1'").run();
 	assert.equal((await raw("GET", card.url, { headers: { Cookie: await cookie("u2") } })).status, 404);
 });
