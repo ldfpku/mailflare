@@ -76,7 +76,7 @@ export interface MeetingCreated {
 
 const ACTIVE_USER = "disabled = 0 AND deleted_at IS NULL";
 
-async function activeUsers(env: Env, ids: string[]): Promise<MeetingUser[]> {
+export async function activeUsers(env: Env, ids: string[]): Promise<MeetingUser[]> {
 	if (!ids.length) return [];
 	const result = await env.DB
 		.prepare(`SELECT id, name, email, avatar_key, time_zone FROM users WHERE ${ACTIVE_USER} AND id IN (${ids.map(() => "?").join(", ")})`)
@@ -125,7 +125,7 @@ export async function getMeeting(env: Env, id: string, origin: string): Promise<
 }
 
 /** The room a meeting is started from must be one the host is in; a group's members become the default invitees. */
-async function roomForHost(env: Env, roomId: string, hostId: string) {
+export async function roomForHost(env: Env, roomId: string, hostId: string) {
 	const room = await env.DB
 		.prepare("SELECT r.id, r.type, r.name FROM im_rooms r JOIN im_room_members m ON m.room_id = r.id WHERE r.id = ? AND m.user_id = ?")
 		.bind(roomId, hostId)

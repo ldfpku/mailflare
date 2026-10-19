@@ -1136,6 +1136,33 @@ export const imMeetingParticipants = sqliteTable(
 	(table) => [primaryKey({ columns: [table.meetingId, table.userId] })],
 );
 
+/**
+ * Meeting invitations (.ics) found in mail, parsed once per attachment for the scheduling assistant's busy times.
+ * Derived from `message_attachments` and rebuilt on demand, so backups leave it out.
+ */
+export const imCalendarInvites = sqliteTable(
+	"im_calendar_invites",
+	{
+		attachmentId: text("attachment_id")
+			.notNull()
+			.references(() => messageAttachments.id, { onDelete: "cascade" }),
+		eventIndex: integer("event_index").notNull().default(0),
+		messageId: text("message_id").notNull(),
+		userId: text("user_id").notNull(),
+		uid: text("uid"),
+		method: text("method"),
+		sequence: integer("sequence").notNull().default(0),
+		cancelled: integer("cancelled").notNull().default(0),
+		startsAt: integer("starts_at"),
+		endsAt: integer("ends_at"),
+		timeZone: text("time_zone"),
+		rrule: text("rrule"),
+		summary: text("summary"),
+		parsedAt: integer("parsed_at").notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.attachmentId, table.eventIndex] }), index("im_calendar_invites_user_idx").on(table.userId, table.startsAt)],
+);
+
 export const schema = {
 	users,
 	domains,
@@ -1187,4 +1214,5 @@ export const schema = {
 	imRoomFiles,
 	imMeetings,
 	imMeetingParticipants,
+	imCalendarInvites,
 };

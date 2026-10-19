@@ -1,5 +1,7 @@
 import { RequestBodyTooLargeError } from "@/lib/http/errors";
 import { readJsonBody } from "@/lib/http/request";
+import { getAvailability } from "@/lib/meetings/availability";
+import { parseAvailabilityInput } from "@/lib/meetings/availability-utils";
 import { MeetingError, parseMeetingCreateInput } from "@/lib/meetings/meeting-utils";
 import { RealtimeKitNotConfiguredError } from "@/lib/meetings/realtimekit";
 import { cancelMeeting, createMeeting, getMeeting, getMeetingIcs, joinMeeting, listMeetings, type MeetingUser } from "@/lib/meetings/service";
@@ -62,6 +64,11 @@ export const rtcRoutes: ImRouteTable<ImContext> = {
 	"POST im/meeting/cancel": guarded(async (context) => {
 		const id = (await readBody(context.request)).id;
 		return imOk(await cancelMeeting(context.env, typeof id === "string" ? id : "", meetingUser(context), context.origin));
+	}),
+	/** The scheduling assistant: invitees' busy times and the earliest slots everyone has free. */
+	"POST im/meeting/availability": guarded(async (context) => {
+		const input = parseAvailabilityInput(await readBody(context.request));
+		return imOk(await getAvailability(context.env, meetingUser(context), input, context.origin));
 	}),
 	"GET im/meeting/ics": guarded(async ({ env, origin, url }) => imOk(await getMeetingIcs(env, url.searchParams.get("id") ?? "", origin))),
 };
