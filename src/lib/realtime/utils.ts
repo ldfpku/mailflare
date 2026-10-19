@@ -4,6 +4,7 @@ import { domains, mailboxAccess, mailboxes } from "@/db/schema";
 import type { NewMessageNotification, AgentDraftNotification } from "./types";
 import { sendPushNotifications } from "@/lib/push/server";
 import { sendNativePush } from "@/lib/push/native";
+import { notifyImUsersOfMail } from "@/lib/im/mail";
 
 export function getSessionTokenFromRequest(request: Request): string | undefined {
 	const cookie = request.headers.get("Cookie");
@@ -65,6 +66,8 @@ export async function notifyUsersOfNewMessage(
 				body: JSON.stringify(payload),
 			});
 		}),
-		...(payload.type === "agent_draft" ? [] : [sendPushNotifications(env, userIds, payload), sendNativePush(env, userIds, payload)]),
+		...(payload.type === "agent_draft"
+			? []
+			: [sendPushNotifications(env, userIds, payload), sendNativePush(env, userIds, payload), notifyImUsersOfMail(env, userIds, payload)]),
 	]);
 }

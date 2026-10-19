@@ -398,6 +398,35 @@ test("files: upload once with the presigned URL, serve with ranges, and send as 
 	assert.equal((await raw("GET", `${pending.downloadUrl}?download=1`)).headers.get("Content-Type"), "application/octet-stream");
 });
 
+test("mail: one-time web sign-in link, inbox unread count", async (t) => {
+	const { database, call, raw, login } = await fixture(t);
+	const sam = (await login()).data.token;
+	const link = (await call("GET", "im/mail/sso", { token: sam, query: { next: "/inbox" } })).data.url;
+	assert.match(link, /^https:\/\/mail\.one\.test\/api\/im\/mail\/sso\/[a-f0-9]{48}\?next=%2Finbox$/);
+	const signedIn = await raw("GET", link);
+	assert.equal(signedIn.status, 302);
+	assert.equal(signedIn.headers.get("Location"), "https://mail.one.test/inbox");
+	const cookie = signedIn.headers.get("Set-Cookie");
+	assert.match(cookie, /^ep_session=sess_[^;]+; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure$/);
+	const again = await raw("GET", link);
+	assert.equal(again.headers.get("Location"), "https://mail.one.test/login", "the link works once");
+	assert.equal(again.headers.get("Set-Cookie"), null);
+
+	const offsite = (await call("GET", "im/mail/sso", { token: sam, query: { next: "//evil.test/x" } })).data.url;
+	assert.ok(!offsite.includes("next="), "only same-origin paths survive");
+	database.db.prepare("UPDATE sessions SET expires_at = 1 WHERE id LIKE 'imsso_%'").run();
+	assert.equal((await raw("GET", offsite)).headers.get("Location"), "https://mail.one.test/login", "expired links sign nobody in");
+
+	database.db.prepare("INSERT INTO domains (id, user_id, hostname, zone_id, created_at) VALUES ('d1', 'u1', 'one.test', 'z', 1)").run();
+	database.db.prepare("INSERT INTO mailboxes (id, user_id, domain_id, local_part, created_at) VALUES ('m1', 'u1', 'd1', 'sam', 1)").run();
+	const insert = database.db.prepare("INSERT INTO messages (id, user_id, mailbox_id, direction, from_addr, to_addr, status, read, created_at) VALUES (?, 'u1', 'm1', 'inbound', 'a@b.test', 'sam@one.test', ?, ?, 1)");
+	insert.run("x1", "received", 0);
+	insert.run("x2", "received", 0);
+	insert.run("x3", "received", 1);
+	insert.run("x4", "spam", 0);
+	assert.deepEqual((await call("GET", "im/mail/unread", { token: sam })).data, { count: 2 });
+});
+
 test("route helpers", () => {
 	assert.equal(imApiPath("/api/im/oauth/check/"), "oauth/check");
 	assert.equal(imApiPath("/api/other"), null);

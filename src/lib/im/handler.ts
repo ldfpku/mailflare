@@ -38,6 +38,7 @@ import {
 } from "./chat";
 import { IM_ALL_STAFF_ROOM_ID, IM_ROOM_TYPE, ImChatError, parseImMessageId } from "./chat-utils";
 import { createImUpload, receiveImUpload, serveImFile } from "./files";
+import { countUnreadMail, createMailSsoLink, redeemMailSsoLink } from "./mail";
 import { notifyImUsers } from "./notify";
 
 /**
@@ -69,6 +70,7 @@ const publicRoutes: ImRouteTable<PublicContext> = {
 	"PUT files/:id/:name": ({ request, env, url }, params) => receiveImUpload(env, request, params.id, url.searchParams.get("token")),
 	"GET files/:id/:name": ({ request, env }, params) => serveImFile(env, request, params.id),
 	"HEAD files/:id/:name": ({ request, env }, params) => serveImFile(env, request, params.id),
+	"GET mail/sso/:code": ({ request, env }, params) => redeemMailSsoLink(env, request, params.code),
 };
 
 const userRoutes: ImRouteTable<ImContext> = {
@@ -77,6 +79,9 @@ const userRoutes: ImRouteTable<ImContext> = {
 	// HuLa's MinIO upload path: a presigned PUT URL plus the URL to send in the message.
 	"GET system/anyTenant/storage/provider": () => imOk({ provider: "minio" }),
 	"GET system/anyTenant/ossToken": async ({ env, user, url, origin }) => imOk(await createImUpload(env, user.id, url.searchParams.get("fileName"), origin)),
+	// Mail: a one-time sign-in link for the web app window, and the inbox unread count for the mail button.
+	"GET im/mail/sso": async ({ env, user, url, origin }) => imOk(await createMailSsoLink(env, user.id, origin, url.searchParams.get("next"))),
+	"GET im/mail/unread": async ({ env, user }) => imOk({ count: await countUnreadMail(env, user.id) }),
 	"GET im/user/userInfo": ({ user, origin }) => imOk(toImUserInfo(user, origin)),
 	"GET im/user/state/list": () => imOk(IM_USER_STATES),
 	"GET im/user/emoji/list": () => imOk([]),
