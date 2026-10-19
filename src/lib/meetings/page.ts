@@ -255,7 +255,11 @@ async function start() {
 	meeting.self.on("roomLeft", () => { element.hidden = true; show("你已离开会议", true); });
 }
 
-start().catch((error) => { console.error(error); show("会议加载失败，请检查网络后重试", true); });
+start().catch((error) => {
+	console.error(error);
+	const invalid = /auth token/i.test(String(error && error.message));
+	show(invalid ? "入会凭证无效，请从 SMJ 客户端或邀请邮件重新打开会议" : "会议加载失败，请检查网络后重试", !invalid);
+});
 </script>
 </body>
 </html>`;
