@@ -86,7 +86,7 @@ export default async function HomePage() {
                   return (
                     <div
                       key={item.labelKey}
-                      className={`flex h-9 items-center justify-between rounded-r-full px-3 text-sm font-medium ${
+                      className={`flex h-9 items-center justify-between rounded-r-lg px-3 text-sm font-medium ${
                         item.active
                           ? "bg-blue-100 text-blue-950"
                           : "text-neutral-600"

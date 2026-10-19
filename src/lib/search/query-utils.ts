@@ -141,3 +141,31 @@ export function buildFtsMatch(parsed: ParsedSearchQuery): string | null {
 	const base = positives.length > 0 ? positives.join(" AND ") : `${ftsString("")}*`;
 	return negatives.length > 0 ? `(${base}) NOT (${negatives.join(" OR ")})` : base;
 }
+
+/**
+ * Takes the free-text terms `test` accepts out of the query, for callers that
+ * match them some other way (the unified search matches Chinese words as
+ * substrings, which the unicode61 index cannot). The rest stays in `parsed`.
+ */
+export function splitFreeTextTerms(parsed: ParsedSearchQuery, test: (term: string) => boolean): { parsed: ParsedSearchQuery; terms: SearchToken[] } {
+	const kept: string[] = [];
+	const terms: SearchToken[] = [];
+	for (const token of tokenizeSearchText(parsed.text)) {
+		if (test(token.term)) {
+			terms.push(token);
+			continue;
+		}
+		const term = token.phrase ? ftsString(token.term) : token.term;
+		kept.push(token.negate ? `-${term}` : term);
+	}
+	const text = kept.join(" ");
+	return {
+		parsed: { ...parsed, text, needsFullText: !!(text || parsed.from || parsed.to || parsed.subject) },
+		terms,
+	};
+}
+
+/** A `LIKE ? ESCAPE '\\'` pattern matching `term` anywhere. */
+export function likeContains(term: string): string {
+	return `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+}

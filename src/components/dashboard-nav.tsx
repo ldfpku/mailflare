@@ -89,7 +89,7 @@ function NavToggle({ expanded, onClick, collapsedLabel, expandedLabel }: { expan
       type="button"
       onClick={onClick}
       aria-expanded={expanded}
-      className="flex h-9 w-full items-center rounded-r-full pl-[52px] text-left text-sm text-neutral-700 transition-colors hover:bg-stone-200/60 max-md:min-h-11 max-md:pl-14 max-md:text-base"
+      className="flex h-9 w-full items-center rounded-r-lg pl-[52px] text-left text-sm text-neutral-700 transition-colors hover:bg-stone-200/60 max-md:min-h-11 max-md:pl-14 max-md:text-base"
     >
       {expanded ? (expandedLabel ?? t("navigation.less")) : (collapsedLabel ?? t("navigation.more"))}
     </button>
