@@ -1071,6 +1071,34 @@ export const imRoomMailboxes = sqliteTable(
 );
 
 /**
+ * A group chat's files, the group's folder in Drive. Every image, file and video sent into a group is listed here and
+ * opened through the `im_files` object; members of `room_id` see the list for as long as they stay in the room.
+ * `removed_at` takes a file off the list (recalled, or removed by its sender or a manager) without touching the message.
+ */
+export const imRoomFiles = sqliteTable(
+	"im_room_files",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		roomId: text("room_id")
+			.notNull()
+			.references(() => imRooms.id, { onDelete: "cascade" }),
+		fileId: text("file_id").notNull(),
+		msgId: integer("msg_id"),
+		uploaderId: text("uploader_id").notNull(),
+		fileName: text("file_name").notNull(),
+		contentType: text("content_type").notNull(),
+		size: integer("size").notNull(),
+		msgType: integer("msg_type").notNull(),
+		createdAt: integer("created_at").notNull(),
+		removedAt: integer("removed_at"),
+	},
+	(table) => [
+		index("im_room_files_room_idx").on(table.roomId, table.createdAt),
+		uniqueIndex("im_room_files_msg_file_unique").on(table.msgId, table.fileId),
+	],
+);
+
+/**
  * Video meetings on Cloudflare RealtimeKit. RealtimeKit has no schedule of its own, so the time, the invitees and the
  * link back to a chat live here; `sequence` is the iCalendar SEQUENCE the next invitation for the meeting carries.
  */
@@ -1156,6 +1184,7 @@ export const schema = {
 	imFiles,
 	imMailShares,
 	imRoomMailboxes,
+	imRoomFiles,
 	imMeetings,
 	imMeetingParticipants,
 };

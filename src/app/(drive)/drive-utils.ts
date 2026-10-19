@@ -40,8 +40,9 @@ export function sortDriveItems<T extends Pick<DriveItemDto, "kind" | "name" | "u
 	});
 }
 
-/** URL of a file's bytes: a Drive file, or an email attachment when the item comes from mail. */
-export function driveFileUrl(item: Pick<DriveItemDto, "id" | "source">, download = false): string {
+/** URL of a file's bytes: a Drive file, an email attachment when the item comes from mail, or a group chat's file. */
+export function driveFileUrl(item: Pick<DriveItemDto, "id" | "source" | "group">, download = false): string {
+	if (item.group?.fileId) return `/api/drive/groups/${encodeURIComponent(item.group.roomId)}/files/${encodeURIComponent(item.group.fileId)}/content${download ? "?download=1" : ""}`;
 	return item.source ? `/api/drive/attachments/${encodeURIComponent(item.id)}/content${download ? "?download=1" : ""}` : contentUrl(item.id, download);
 }
 
