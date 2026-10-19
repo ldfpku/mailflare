@@ -17,19 +17,26 @@
  * enforced by the page every participant runs; a participant preset with screenshare
  * NOT_ALLOWED would make it binding. Latecomers get the lock again when they join;
  * it lasts as long as the host stays in the meeting.
+ *
+ * "背景" is the same video background as one-to-one calls (blur, SMJ images, an
+ * uploaded picture), done in the browser with MediaPipe and applied through a
+ * RealtimeKit video middleware; the module, wasm and model are served from
+ * `public/vendor/video-background` (`scripts/vendor-video-background.mjs`).
+ * The wasm needs `'wasm-unsafe-eval'`.
  */
 const REALTIMEKIT_VERSION = "2.0.2";
 /** RealtimeKit's capture preset for meetings (`qvga`, `vga`, `hd`, `fhd`); the presets' own default is `vga`. */
 const MEETING_VIDEO_QUALITY = "hd";
 const VENDOR = `/vendor/realtimekit/${REALTIMEKIT_VERSION}`;
 const REALTIMEKIT_HOSTS = "https://*.realtime.cloudflare.com";
+const VIDEO_BACKGROUND = "/vendor/video-background/0.10.21/smj-video-background.js";
 /** Matches the stack the vendoring script writes into the UI Kit. */
 const FONT_STACK = `"Barlow", "Noto Sans SC", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif`;
 
 const CSP = [
 	"default-src 'self'",
 	// Cloudflare Web Analytics, as on /im, in case the zone injects its beacon.
-	"script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
+	"script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com",
 	"style-src 'self' 'unsafe-inline'",
 	"font-src 'self' data:",
 	`img-src 'self' data: blob: ${REALTIMEKIT_HOSTS}`,
@@ -156,7 +163,7 @@ const ZH: Record<string, string> = {
 const SCREEN_LOCK_MESSAGE = "smj-screenshare-lock";
 
 export function renderMeetingPage(id: string, hostPreset = "group_call_host"): string {
-	const config = JSON.stringify({ id, hostPreset, videoQuality: MEETING_VIDEO_QUALITY, lockMessage: SCREEN_LOCK_MESSAGE, core: `${VENDOR}/core`, ui: `${VENDOR}/ui`, font: FONT_STACK, zh: ZH }).replace(/</g, "\\u003c");
+	const config = JSON.stringify({ id, hostPreset, videoQuality: MEETING_VIDEO_QUALITY, lockMessage: SCREEN_LOCK_MESSAGE, core: `${VENDOR}/core`, ui: `${VENDOR}/ui`, videoBackground: VIDEO_BACKGROUND, font: FONT_STACK, zh: ZH }).replace(/</g, "\\u003c");
 	return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -200,6 +207,22 @@ rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; 
 #invite-list .email { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .invite-actions { display: flex; align-items: center; gap: 8px; }
 .invite-actions label { flex: 1; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+#background.active { background: var(--smj-blue); border-color: var(--smj-blue); color: #fff; }
+#background.loading { opacity: .6; cursor: progress; }
+#background:disabled { opacity: .5; cursor: not-allowed; }
+#bg-panel { position: fixed; top: 52px; right: 16px; z-index: 10; width: 336px; max-width: calc(100vw - 32px); padding: 14px; border-radius: 8px; background: #1f2733; color: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+#bg-panel[hidden], #bg-toast[hidden] { display: none; }
+#bg-panel .bg-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+#bg-panel .bg-hint { font-size: 12px; color: #9aa8bd; margin-bottom: 12px; }
+#bg-panel .bg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+#bg-panel .bg-option { position: relative; height: 54px; padding: 0; border: 2px solid transparent; border-radius: 4px; overflow: hidden; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+#bg-panel .bg-option:hover { border-color: #5b6b85; }
+#bg-panel .bg-option.selected { border-color: var(--smj-blue); }
+#bg-panel .bg-option img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#bg-panel .bg-option span { position: relative; }
+#bg-panel .bg-option span.on-image { position: absolute; left: 3px; bottom: 3px; padding: 1px 6px; border-radius: 2px; background: rgba(0,0,0,.45); font-size: 11px; }
+#bg-panel .bg-change { margin-top: 10px; padding: 0; border: 0; background: none; color: #7aa7e8; font-size: 12px; cursor: pointer; }
+#bg-toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 11; padding: 8px 14px; border-radius: 6px; background: rgba(26,43,74,.92); color: #fff; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -211,9 +234,12 @@ rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; 
 	<label class="lock" id="lock" hidden><input type="checkbox" id="lock-input">仅主持人可共享屏幕</label>
 	<span class="notice" id="lock-notice" hidden>主持人已限制共享屏幕</span>
 	<button type="button" id="invite" hidden>添加参会人</button>
+	<button type="button" id="background" hidden>背景</button>
 	<a class="button" id="calendar" href="/api/meetings/${id}/meeting.ics" download="meeting.ics">加入日历</a>
 	<button type="button" id="copy">复制会议链接</button>
 </header>
+<div id="bg-panel" hidden></div>
+<div id="bg-toast" hidden></div>
 <main>
 	<rtk-meeting id="meeting" mode="fill" show-setup-screen="true"></rtk-meeting>
 	<div id="status"><p id="status-text">正在进入会议…</p><button type="button" class="primary" id="retry" hidden>重新进入</button></div>
@@ -323,6 +349,7 @@ async function start() {
 	meeting.self.on("roomLeft", () => { element.hidden = true; show("你已离开会议", true); });
 	setupScreenLock(meeting);
 	setupInvite(token);
+	setupBackground(meeting);
 }
 
 /** “添加参会人”: pick people from the directory; each gets the link in a chat from you, and optionally a mail. */
@@ -406,6 +433,17 @@ function setupInvite(token) {
 		button.textContent = data.mailError ? "已邀请 " + data.invited + " 人，邮件未发出" : "已邀请 " + data.invited + " 人";
 		setTimeout(() => { button.textContent = "添加参会人"; }, 4000);
 	});
+}
+
+function setupBackground(meeting) {
+	// Optional: without it the meeting works as before.
+	import(config.videoBackground)
+		.then((module) => module.setupVideoBackground(meeting, {
+			button: document.getElementById("background"),
+			panel: document.getElementById("bg-panel"),
+			toast: document.getElementById("bg-toast"),
+		}))
+		.catch((error) => console.warn("video background unavailable", error));
 }
 
 function setupScreenLock(meeting) {
