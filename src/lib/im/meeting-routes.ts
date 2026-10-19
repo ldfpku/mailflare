@@ -42,6 +42,7 @@ async function readBody(request: Request): Promise<Record<string, unknown>> {
 	return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }
 
+/** HuLa's Rust client maps each API to one fixed path, so meeting ids travel in the query or the body. */
 export const rtcRoutes: ImRouteTable<ImContext> = {
 	"GET im/rtc/iceServers": async ({ env }) => imOk({ iceServers: await generateIceServers(env) }),
 
@@ -52,10 +53,11 @@ export const rtcRoutes: ImRouteTable<ImContext> = {
 		if (created.delivery) await notifyImUsers(env, created.delivery.recipients, { type: "receiveMessage", data: created.delivery.message });
 		return imOk({ ...created.meeting, invited: created.invited, mailError: created.mailError, message: created.delivery?.message ?? null });
 	}),
-	"GET im/meeting/:id": guarded(async ({ env, origin }, { id }) => imOk(await getMeeting(env, id, origin))),
-	"POST im/meeting/:id/join": guarded(async (context, { id }) => {
-		const joined = await joinMeeting(context.env, id, meetingUser(context), context.origin);
+	"GET im/meeting/detail": guarded(async ({ env, origin, url }) => imOk(await getMeeting(env, url.searchParams.get("id") ?? "", origin))),
+	"POST im/meeting/join": guarded(async (context) => {
+		const id = (await readBody(context.request)).id;
+		const joined = await joinMeeting(context.env, typeof id === "string" ? id : "", meetingUser(context), context.origin);
 		return imOk({ authToken: joined.authToken, host: joined.host, ...joined.meeting });
 	}),
-	"GET im/meeting/:id/ics": guarded(async ({ env, origin }, { id }) => imOk(await getMeetingIcs(env, id, origin))),
+	"GET im/meeting/ics": guarded(async ({ env, origin, url }) => imOk(await getMeetingIcs(env, url.searchParams.get("id") ?? "", origin))),
 };

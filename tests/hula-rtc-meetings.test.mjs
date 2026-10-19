@@ -178,21 +178,21 @@ test("meetings: unconfigured answers 501; a group meeting posts its link and reu
 	assert.deepEqual(pushes.map((push) => push.userId).sort(), ["u2", "u3"]);
 	assert.deepEqual(requests[0].body, { title: "周会" });
 
-	const hostJoin = await call("POST", `im/meeting/${created.data.id}/join`, { token: sam });
+	const hostJoin = await call("POST", "im/meeting/join", { token: sam, body: { id: created.data.id } });
 	assert.deepEqual({ token: hostJoin.data.authToken, host: hostJoin.data.host }, { token: "token-1", host: true });
 	assert.equal(requests[1].body.preset_name, "group_call_host");
 	assert.equal(requests[1].body.custom_participant_id, "u1");
-	const kimJoin = await call("POST", `im/meeting/${created.data.id}/join`, { token: kim });
+	const kimJoin = await call("POST", "im/meeting/join", { token: kim, body: { id: created.data.id } });
 	assert.deepEqual({ token: kimJoin.data.authToken, host: kimJoin.data.host }, { token: "token-2", host: false });
 	assert.equal(requests[2].body.preset_name, "group_call_participant");
-	assert.equal((await call("POST", `im/meeting/${created.data.id}/join`, { token: kim })).data.authToken, "token-2");
+	assert.equal((await call("POST", "im/meeting/join", { token: kim, body: { id: created.data.id } })).data.authToken, "token-2");
 	assert.equal(requests.length, 3, "a second join does not add another participant");
 
-	assert.equal((await call("POST", "im/meeting/aaaaaaaaaaaaaaaa/join", { token: kim })).code, 404);
+	assert.equal((await call("POST", "im/meeting/join", { token: kim, body: { id: "aaaaaaaaaaaaaaaa" } })).code, 404);
 	assert.equal((await call("POST", "im/meeting", { token: sam, body: { roomId: "nope" } })).code, 403);
 	const listed = (await call("GET", "im/meeting/list", { token: kim })).data;
 	assert.deepEqual(listed.map((meeting) => meeting.id), [created.data.id]);
-	const ics = (await call("GET", `im/meeting/${created.data.id}/ics`, { token: kim })).data;
+	const ics = (await call("GET", "im/meeting/ics", { token: kim, query: { id: created.data.id } })).data;
 	assert.match(ics.body, /METHOD:PUBLISH/);
 });
 
