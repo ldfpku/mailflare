@@ -257,6 +257,9 @@ test("the meeting page allows camera and microphone, and web joins need a sessio
 	for (const file of readdirSync(join(vendor, "ui", "dist", "esm"))) {
 		assert.doesNotMatch(readFileSync(join(vendor, "ui", "dist", "esm", file), "utf8"), /fonts\.(?:googleapis|gstatic)\.com/, file);
 	}
+	assert.match(page.headers.get("Permissions-Policy"), /display-capture=\(self\)/, "screen sharing stays allowed");
+	assert.match(html, /仅主持人可共享屏幕/);
+	assert.match(html, /"hostPreset":"group_call_host"/, "the page compares presets with the configured host preset");
 
 	const anonymous = await handleMeetingRequest(new Request("https://mail.one.test/api/meetings/abcdefghijklmnop/join", { method: "POST" }), env);
 	assert.equal(anonymous.status, 401);
