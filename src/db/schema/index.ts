@@ -1099,6 +1099,32 @@ export const imRoomFiles = sqliteTable(
 );
 
 /**
+ * The brand business card of an account (BIS C1 / C3). The account's name and email come from `users`; this row adds
+ * what a card needs beyond them. `token` is the random id of the public card page `/card/<token>`, so the staff list
+ * cannot be walked; resetting it retires links already handed out.
+ */
+export const businessCards = sqliteTable(
+	"business_cards",
+	{
+		userId: text("user_id")
+			.primaryKey()
+			.references(() => users.id, { onDelete: "cascade" }),
+		token: text("token").notNull(),
+		title: text("title").notNull().default(""),
+		department: text("department").notNull().default(""),
+		nameEn: text("name_en").notNull().default(""),
+		titleEn: text("title_en").notNull().default(""),
+		mobile: text("mobile").notNull().default(""),
+		phone: text("phone").notNull().default(""),
+		// BIS B9: the accent edge and the signature rule are Smijia blue at headquarters and signal orange in the field.
+		placement: text("placement", { enum: ["hq", "field"] }).notNull().default("hq"),
+		published: integer("published", { mode: "boolean" }).notNull().default(true),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [uniqueIndex("business_cards_token_unique").on(table.token)],
+);
+
+/**
  * Video meetings on Cloudflare RealtimeKit. RealtimeKit has no schedule of its own, so the time, the invitees and the
  * link back to a chat live here; `sequence` is the iCalendar SEQUENCE the next invitation for the meeting carries.
  */
@@ -1187,4 +1213,5 @@ export const schema = {
 	imRoomFiles,
 	imMeetings,
 	imMeetingParticipants,
+	businessCards,
 };

@@ -232,6 +232,8 @@ export function prepareEmailHtml(source: string, options: Options = {}) {
 		try {
 			const url = new URL(value, base || "https://invalid.invalid/");
 			if (!["http:", "https:"].includes(url.protocol) || url.hostname === "invalid.invalid") return null;
+			// Our own origin (the brand signature's symbol) tells no third party that the mail was opened.
+			if (options.editor && typeof location !== "undefined" && url.origin === location.origin) return url.href;
 			hasRemote = true;
 			return options.allowRemote || (options.forOutgoing && !options.editor) ? url.href : null;
 		} catch { return null; }
