@@ -23,6 +23,7 @@ import {
 	getMailboxNotificationUserIds,
 	notifyUsersOfNewMessage,
 } from "@/lib/realtime/utils";
+import { postRoomMailCard } from "@/lib/im/mail-share";
 import { scheduleAutoDraft } from "@/lib/agent/jobs/utils";
 
 export type InboundQueueMessage = {
@@ -235,7 +236,16 @@ export async function processInboundMessage(
 		}
 	}
 
+	// Mail to a group address goes into the group chat instead of notifying the mailbox owner.
+	let postedToGroup = false;
 	if (status !== "spam") {
+		try {
+			postedToGroup = await postRoomMailCard(env, decision.mailbox.mailboxId, messageId);
+		} catch (error) {
+			console.error(`Group mail card failed for ${messageId}`, error);
+		}
+	}
+	if (status !== "spam" && !postedToGroup) {
 		const notificationUserIds = await getMailboxNotificationUserIds(
 			env,
 			decision.mailbox.mailboxId,

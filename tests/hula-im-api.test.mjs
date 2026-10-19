@@ -19,7 +19,8 @@ await build({
 			export { resolveImSocketToken } from "./src/lib/im/tokens.ts";
 			export { findImRoute, imApiPath } from "./src/lib/im/handler-utils.ts";
 			export { parseImPairId, imPairSessionIds } from "./src/lib/im/tokens-utils.ts";
-			export { listShareTargets, shareMailToChats } from "./src/lib/im/mail-share.ts";
+			export { listShareTargets, shareMailToChats, postRoomMailCard } from "./src/lib/im/mail-share.ts";
+			export { countUnreadMail } from "./src/lib/im/mail.ts";
 		`,
 		resolveDir: root,
 		sourcefile: "hula-im-test-entry.ts",
@@ -37,6 +38,7 @@ await build({
 const {
 	SqliteDatabase, applyMigrations, hashPassword, createSession, deleteUserSessions, handleImRequest,
 	resolveImSocketToken, findImRoute, imApiPath, parseImPairId, imPairSessionIds, listShareTargets, shareMailToChats,
+	postRoomMailCard, countUnreadMail,
 } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 
 async function fixture(t) {
@@ -484,6 +486,56 @@ test("mail cards: share a mail into chats, and only room members read it on the 
 
 	database.db.prepare("DELETE FROM messages WHERE id = 'x1'").run();
 	assert.equal((await raw("GET", card.url, { headers: { Cookie: await cookie("u2") } })).status, 404);
+});
+
+test("group mailbox: managers give a group an address, and its mail arrives as cards", async (t) => {
+	const { database, env, call, raw, login, addUser, pushes } = await fixture(t);
+	addUser("u2", "ana@one.test", "Ana");
+	addUser("u3", "bob@one.test", "Bob");
+	addUser("u4", "kim@one.test", "Kim");
+	database.db.prepare("INSERT INTO domains (id, user_id, hostname, zone_id, created_at) VALUES ('d1', 'u1', 'one.test', 'manual', 1)").run();
+	database.db.prepare("INSERT INTO mailboxes (id, user_id, domain_id, local_part, created_at) VALUES ('m1', 'u1', 'd1', 'sam', 1)").run();
+	const sam = (await login()).data.token;
+	const ana = (await login("ana@one.test")).data.token;
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+
+	const initial = (await call("GET", "im/room/mailbox", { token: ana, query: { roomId } })).data;
+	assert.deepEqual(initial, { address: null, enabled: false, canManage: false, suggestedLocalPart: `group-${roomId}`, domain: null });
+	assert.equal((await call("POST", "im/room/mailbox", { token: ana, body: { roomId, localPart: "team" } })).code, 403, "members cannot turn it on");
+	assert.equal((await call("GET", "im/room/mailbox", { token: (await login("kim@one.test")).data.token, query: { roomId } })).code, 403, "outsiders cannot look");
+	assert.equal((await call("POST", "im/room/mailbox", { token: sam, body: { roomId, localPart: "-bad" } })).code, 400);
+	assert.equal((await call("POST", "im/room/mailbox", { token: sam, body: { roomId, localPart: "sam" } })).code, 400, "an address in use is refused");
+
+	const enabled = await call("POST", "im/room/mailbox", { token: sam, body: { roomId, localPart: "Team.Sales" } });
+	assert.equal(enabled.code, 200);
+	assert.deepEqual(enabled.data, { address: "team.sales@one.test", enabled: true, canManage: true, suggestedLocalPart: "team.sales", domain: "one.test" });
+	const mailbox = database.db.prepare("SELECT * FROM mailboxes WHERE local_part = 'team.sales'").get();
+	assert.equal(mailbox.type, "shared");
+	assert.equal(mailbox.user_id, "u1");
+
+	database.db.prepare(
+		"INSERT INTO messages (id, user_id, mailbox_id, direction, from_addr, to_addr, subject, snippet, text_body, status, read, created_at) VALUES ('x1', 'u1', ?, 'inbound', 'lee@b.test', 'team.sales@one.test', 'Order 42', 'Please ship', 'Please ship', 'received', 0, 1700000000)",
+	).run(mailbox.id);
+	assert.equal(await countUnreadMail(env, "u1"), 0, "group mail is not in the owner's unread count");
+	pushes.length = 0;
+	assert.equal(await postRoomMailCard(env, "m1", "x1"), false, "ordinary mailboxes are left alone");
+	assert.equal(await postRoomMailCard(env, mailbox.id, "x1"), true);
+	const cards = pushes.filter((push) => push.type === "receiveMessage" && push.data.message.type === 19);
+	assert.deepEqual(new Set(cards.map((push) => push.userId)), new Set(["u1", "u2", "u3"]));
+	const card = cards[0].data.message.body;
+	assert.equal(card.via, "mailbox");
+	assert.equal(card.mailbox, "team.sales@one.test");
+	assert.equal(card.subject, "Order 42");
+	const cookie = `ep_session=${encodeURIComponent(await createSession(env, "u2"))}`;
+	const page = await (await raw("GET", card.url, { headers: { Cookie: cookie } })).text();
+	assert.ok(page.includes("群邮箱收到的邮件"));
+
+	const disabled = await call("POST", "im/room/mailbox/disable", { token: sam, body: { roomId } });
+	assert.equal(disabled.data.enabled, false);
+	assert.equal(database.db.prepare("SELECT disabled FROM mailboxes WHERE id = ?").get(mailbox.id).disabled, 1);
+	const again = await call("POST", "im/room/mailbox", { token: sam, body: { roomId, localPart: "other" } });
+	assert.equal(again.data.address, "team.sales@one.test", "turning it back on keeps the address");
+	assert.equal(again.data.enabled, true);
 });
 
 test("route helpers", () => {

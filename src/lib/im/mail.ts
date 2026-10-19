@@ -60,14 +60,17 @@ function redirect(location: string, cookie: string | null): Response {
 	return new Response(null, { status: 302, headers });
 }
 
-/** Unread inbox mail in the mailboxes the user owns or was given, not every mailbox an admin could open. */
+/**
+ * Unread inbox mail in the mailboxes the user owns or was given, not every mailbox an admin could open.
+ * Group addresses are left out: their mail is read in the group chat.
+ */
 export async function countUnreadMail(env: Env, userId: string): Promise<number> {
 	const row = await env.DB.prepare(
 		`SELECT COUNT(*) AS count FROM messages
 		WHERE status = 'received' AND read = 0 AND mailbox_id IN (
 			SELECT id FROM mailboxes WHERE user_id = ? AND disabled = 0
 			UNION SELECT mailbox_id FROM mailbox_access WHERE user_id = ?
-		)`,
+		) AND mailbox_id NOT IN (SELECT mailbox_id FROM im_room_mailboxes)`,
 	)
 		.bind(userId, userId)
 		.first<{ count: number }>();

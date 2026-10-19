@@ -1052,6 +1052,24 @@ export const imMailShares = sqliteTable(
 	(table) => [index("im_mail_shares_room_idx").on(table.roomId)],
 );
 
+/** A group chat's own mail address: mail delivered to the mailbox is posted into the room as a mail card. */
+export const imRoomMailboxes = sqliteTable(
+	"im_room_mailboxes",
+	{
+		roomId: text("room_id")
+			.primaryKey()
+			.references(() => imRooms.id, { onDelete: "cascade" }),
+		mailboxId: text("mailbox_id")
+			.notNull()
+			.references(() => mailboxes.id, { onDelete: "cascade" }),
+		enabledBy: text("enabled_by").notNull(),
+		/** The web origin the group's mail cards link to; inbound mail is processed off any request. */
+		origin: text("origin").notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [uniqueIndex("im_room_mailboxes_mailbox_unique").on(table.mailboxId)],
+);
+
 /**
  * Video meetings on Cloudflare RealtimeKit. RealtimeKit has no schedule of its own, so the time, the invitees and the
  * link back to a chat live here; `sequence` is the iCalendar SEQUENCE the next invitation for the meeting carries.
@@ -1137,6 +1155,7 @@ export const schema = {
 	imPresence,
 	imFiles,
 	imMailShares,
+	imRoomMailboxes,
 	imMeetings,
 	imMeetingParticipants,
 };

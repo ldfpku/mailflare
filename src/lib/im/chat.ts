@@ -162,6 +162,12 @@ function isManager(member: MemberRow): boolean {
 	return member.role === IM_ROLE.OWNER || member.role === IM_ROLE.ADMIN;
 }
 
+/** The caller's place in a group, for modules outside this file; throws unless they are a member. */
+export async function requireGroupRole(env: Env, roomId: unknown, userId: string): Promise<{ roomId: string; manager: boolean }> {
+	const member = await requireGroupMember(env, roomId, userId);
+	return { roomId: member.room_id, manager: isManager(member) };
+}
+
 // Sessions -------------------------------------------------------------------
 
 const SESSION_SELECT = `

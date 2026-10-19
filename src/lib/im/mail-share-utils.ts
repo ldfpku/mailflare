@@ -105,11 +105,12 @@ function formatSize(bytes: number): string {
 /** The read-only page a shared mail is shown on. */
 export function renderMailSharePage(options: {
 	mail: SharedMailRow;
-	sharedByName: string;
+	/** The line above the subject saying how the mail reached the chat. */
+	note: string;
 	attachments: { name: string; size: number; url: string }[];
 	bodyHtml: string | null;
 }): string {
-	const { mail, sharedByName, attachments, bodyHtml } = options;
+	const { mail, note, attachments, bodyHtml } = options;
 	const subject = escapeHtml(mail.subject?.trim() || "(无主题)");
 	const rows = [
 		["发件人", mail.from_addr],
@@ -148,7 +149,7 @@ h1{font-size:20px;margin:0 0 12px;word-break:break-word}
 </head>
 <body>
 <div class="head">
-<div class="shared">${escapeHtml(sharedByName)} 分享到聊天的邮件</div>
+<div class="shared">${escapeHtml(note)}</div>
 <h1>${subject}</h1>
 ${rows}
 ${files}

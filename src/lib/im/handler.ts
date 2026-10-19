@@ -40,6 +40,7 @@ import { IM_ALL_STAFF_ROOM_ID, IM_ROOM_TYPE, ImChatError, parseImMessageId } fro
 import { createImUpload, receiveImUpload, serveImFile } from "./files";
 import { countUnreadMail, createMailSsoLink, redeemMailSsoLink } from "./mail";
 import { serveMailShare } from "./mail-share";
+import { disableRoomMailbox, enableRoomMailbox, getRoomMailbox } from "./room-mailbox";
 import { notifyImUsers } from "./notify";
 import { rtcRoutes } from "./meeting-routes";
 
@@ -208,6 +209,9 @@ const userRoutes: ImRouteTable<ImContext> = {
 		return imOk(true);
 	},
 	// Announcements are not stored yet; an empty page keeps the group panel quiet.
+	"GET im/room/mailbox": async ({ env, user, url }) => imOk(await getRoomMailbox(env, user.id, url.searchParams.get("roomId"))),
+	"POST im/room/mailbox": async ({ request, env, user, origin }) => imOk(await enableRoomMailbox(env, user.id, await readBody(request), origin)),
+	"POST im/room/mailbox/disable": async ({ request, env, user }) => imOk(await disableRoomMailbox(env, user.id, (await readBody(request)).roomId)),
 	"GET im/room/announcement/list": ({ url }) => imOk({ records: [], total: "0", size: url.searchParams.get("size") ?? "0" }),
 };
 

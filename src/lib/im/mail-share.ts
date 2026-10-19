@@ -19,6 +19,7 @@ import {
 	type SharedMailRow,
 } from "./mail-share-utils";
 import { notifyImUsers } from "./notify";
+import { findMailboxRoom } from "./room-mailbox";
 
 /**
  * Sharing a mail into HuLa chats, from the web app's message view. Each target
@@ -82,6 +83,37 @@ export async function shareMailToChats(env: Env, user: SessionUser, messageId: u
 	return { shared };
 }
 
+/**
+ * Posts mail delivered to a group address into its group, as a card from the
+ * manager who turned the address on (or, once they left, the longest-standing
+ * owner or admin). Returns false when the mailbox is not a group address, so
+ * the caller notifies the mailbox owner as usual.
+ */
+export async function postRoomMailCard(env: Env, mailboxId: string, messageId: string): Promise<boolean> {
+	const link = await findMailboxRoom(env, mailboxId);
+	if (!link) return false;
+	const origin = env.APP_URL?.trim().replace(/\/+$/, "") || link.origin;
+	const poster = await env.DB.prepare(
+		"SELECT user_id FROM im_room_members WHERE room_id = ? ORDER BY (user_id = ?) DESC, role, created_at LIMIT 1",
+	)
+		.bind(link.roomId, link.enabledBy)
+		.first<{ user_id: string }>();
+	const mail = await findMail(env, messageId);
+	if (!poster || !mail) return true;
+	const address = await env.DB.prepare("SELECT m.local_part || '@' || d.hostname AS address FROM mailboxes m JOIN domains d ON d.id = m.domain_id WHERE m.id = ?")
+		.bind(mailboxId)
+		.first<{ address: string }>();
+	const attachmentCount = (await listAttachments(env, mail.id)).filter(isDownloadable).length;
+	const shareId = randomHex(16);
+	await env.DB.prepare("INSERT INTO im_mail_shares (id, message_id, room_id, shared_by, created_at) VALUES (?, ?, ?, ?, ?)")
+		.bind(shareId, mail.id, link.roomId, poster.user_id, Date.now())
+		.run();
+	const body = { ...buildMailCardBody(mail, shareId, origin, attachmentCount), via: "mailbox", mailbox: address?.address ?? "" };
+	const delivery = await postMailCard(env, poster.user_id, link.roomId, body, origin);
+	await notifyImUsers(env, delivery.recipients, { type: "receiveMessage", data: delivery.message });
+	return true;
+}
+
 const PAGE_CSP =
 	"default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; font-src https: data:; form-action 'none'; frame-ancestors 'none'; sandbox allow-popups allow-popups-to-escape-sandbox allow-downloads";
 
@@ -128,10 +160,11 @@ export async function serveMailShare(env: Env, request: Request, shareId: string
 	const cidUrls = new Map(
 		attachments.filter((item) => item.content_id).map((item) => [item.content_id!.replace(/^<|>$/g, "").toLowerCase(), attachmentUrl(item.id)]),
 	);
+	const viaRoom = mail.mailbox_id ? await findMailboxRoom(env, mail.mailbox_id) : null;
 	const sharer = await env.DB.prepare("SELECT name, email FROM users WHERE id = ?").bind(share.shared_by).first<{ name: string; email: string }>();
 	const html = renderMailSharePage({
 		mail,
-		sharedByName: imUserName(sharer),
+		note: viaRoom?.roomId === share.room_id ? "群邮箱收到的邮件" : `${imUserName(sharer)} 分享到聊天的邮件`,
 		attachments: attachments.filter(isDownloadable).map((item) => ({ name: item.filename, size: item.size, url: attachmentUrl(item.id) })),
 		bodyHtml: mail.html_body ? prepareSharedHtml(mail.html_body, cidUrls) : null,
 	});
