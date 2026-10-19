@@ -9,6 +9,10 @@ export const settingsNavSections: SettingsNavSection[] = [
 				labelKey: "settings.nav.account",
 			},
 			{
+				href: "/settings/business-card",
+				labelKey: "settings.nav.businessCard",
+			},
+			{
 				href: "/settings/inbox",
 				labelKey: "settings.nav.inbox",
 			},

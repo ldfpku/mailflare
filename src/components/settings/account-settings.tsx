@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useLanguage } from "@/components/language-provider";
 import { LanguageSelector } from "@/components/language-selector";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -77,6 +78,9 @@ export function AccountSettings() {
 						<div>
 							<h3 className="text-lg font-semibold text-neutral-900">{t("settings.account.signatureTitle")}</h3>
 							<p className="mt-1 text-sm text-neutral-500">{t("settings.account.signatureDescription")}</p>
+							<p className="mt-1 text-sm text-neutral-500">
+								{t("settings.account.signatureCardHint")} <Link href="/settings/business-card" className="text-blue-700 underline">{t("settings.nav.businessCard")}</Link>
+							</p>
 						</div>
 					<MailboxSignatureForm />
 					</div>

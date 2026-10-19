@@ -470,6 +470,13 @@
       "when": 1792200010000,
       "tag": "0074_add_im_calendar_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1792200011000,
+      "tag": "0075_add_business_cards",
+      "breakpoints": true
     }
   ]
 }
