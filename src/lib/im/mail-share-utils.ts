@@ -92,6 +92,54 @@ export function prepareSharedHtml(html: string, cidUrls: Map<string, string>): s
 		.replace(/\bcid:([^"'\s)>]+)/gi, (match, id: string) => cidUrls.get(decodeURIComponent(id).toLowerCase()) ?? match);
 }
 
+const REMOTE = /^(?:https?:)?\/\//i;
+const REMOTE_ATTRIBUTE = /(\s(?:src|background|poster)\s*=\s*)(?:(["'])([^"']*)\2|([^\s"'>]+))/gi;
+const SRCSET_ATTRIBUTE = /(\ssrcset\s*=\s*)(?:(["'])([^"']*)\2|([^\s"'>]+))/gi;
+const CSS_URL = /url\(\s*(&quot;|&#39;|["']?)\s*([^"')&]*?)\s*\1\s*\)/gi;
+
+/**
+ * Finds the remote images in mail HTML (`src`, `background`, `poster`,
+ * `srcset` and CSS `url()`), and passes each absolute URL to `replace`: a new
+ * URL, or null to drop it. URLs on `origin` (the share's own `cid:` images)
+ * are kept. The share page's CSP only allows images from this origin, so
+ * anything this misses fails to load rather than leaking.
+ */
+export function rewriteRemoteImages(html: string, origin: string, replace: (url: string) => string | null): { html: string; found: boolean } {
+	let found = false;
+	const absolute = (url: string) => (url.startsWith("//") ? `https:${url}` : url);
+	const isRemote = (url: string) => REMOTE.test(url.trim()) && !absolute(url.trim()).startsWith(`${origin}/`);
+	const swap = (url: string) => {
+		const trimmed = url.trim().replace(/&(amp|quot|#39);/g, (entity, name: string) => (name === "amp" ? "&" : name === "quot" ? '"' : "'"));
+		if (!isRemote(trimmed)) return url;
+		found = true;
+		return replace(absolute(trimmed)) ?? "";
+	};
+	const rewritten = html
+		.replace(REMOTE_ATTRIBUTE, (match, prefix: string, quote: string | undefined, quoted: string | undefined, bare: string | undefined) => {
+			const value = quoted ?? bare ?? "";
+			if (!isRemote(value)) return match;
+			return `${prefix}"${escapeHtml(swap(value))}"`;
+		})
+		.replace(SRCSET_ATTRIBUTE, (match, prefix: string, quote: string | undefined, quoted: string | undefined, bare: string | undefined) => {
+			const candidates = (quoted ?? bare ?? "").split(",").map((candidate) => candidate.trim()).filter(Boolean);
+			if (!candidates.some((candidate) => isRemote(candidate.split(/\s+/)[0]))) return match;
+			const kept = candidates
+				.map((candidate) => {
+					const [url, ...descriptor] = candidate.split(/\s+/);
+					const next = swap(url);
+					return next ? [next, ...descriptor].join(" ") : null;
+				})
+				.filter(Boolean);
+			return `${prefix}"${escapeHtml(kept.join(", "))}"`;
+		})
+		.replace(CSS_URL, (match, quote: string, url: string) => {
+			if (!isRemote(url)) return match;
+			const next = swap(url);
+			return next ? `url(${quote}${next}${quote})` : "none";
+		});
+	return { html: rewritten, found };
+}
+
 function formatDate(seconds: number): string {
 	return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Shanghai" }).format(new Date(seconds * 1000));
 }
@@ -109,8 +157,10 @@ export function renderMailSharePage(options: {
 	note: string;
 	attachments: { name: string; size: number; url: string }[];
 	bodyHtml: string | null;
+	/** Set when the body's remote images were left out; the link loads them. */
+	showImagesUrl?: string | null;
 }): string {
-	const { mail, note, attachments, bodyHtml } = options;
+	const { mail, note, attachments, bodyHtml, showImagesUrl } = options;
 	const subject = escapeHtml(mail.subject?.trim() || "(无主题)");
 	const rows = [
 		["发件人", mail.from_addr],
@@ -126,6 +176,9 @@ export function renderMailSharePage(options: {
 				.join("")}</div>`
 		: "";
 	const body = bodyHtml ?? `<pre class="text">${escapeHtml(mail.text_body ?? "")}</pre>`;
+	const remote = showImagesUrl
+		? `<div class="remote">为保护隐私，邮件中的远程图片未加载。<a href="${escapeHtml(showImagesUrl)}" target="_self">显示图片</a></div>`
+		: "";
 	return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -145,6 +198,8 @@ h1{font-size:20px;margin:0 0 12px;word-break:break-word}
 .file span{color:#5b6b8c;font-size:12px}
 .mail{background:#fff;margin:16px 24px;padding:20px;border-radius:8px;overflow-x:auto}
 .text{white-space:pre-wrap;word-break:break-word;font:inherit;margin:0}
+.remote{margin:16px 24px 0;padding:10px 14px;border-radius:8px;background:#fff7e6;color:#5b4a1f;font-size:13px}
+.remote a{color:#034fbc;margin-left:8px}
 </style>
 </head>
 <body>
@@ -154,6 +209,7 @@ h1{font-size:20px;margin:0 0 12px;word-break:break-word}
 ${rows}
 ${files}
 </div>
+${remote}
 <div class="mail">${body}</div>
 </body>
 </html>`;
