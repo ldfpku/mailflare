@@ -4,7 +4,7 @@ import { getUserFromSession } from "@/lib/auth/session";
 import { getSessionTokenFromRequest } from "@/lib/realtime/utils";
 import { IM_CODE, imFail, imOk } from "./response";
 import { issueImTokens } from "./tokens";
-import { IM_WEB_APP_INDEX, IM_WEB_APP_PATH } from "./web-app-utils";
+import { IM_WEB_APP_CSP, IM_WEB_APP_INDEX, IM_WEB_APP_PATH } from "./web-app-utils";
 
 /**
  * HuLa's web build is published as static assets under `/im/`. The asset layer
@@ -19,6 +19,7 @@ export async function serveImWebApp(request: Request, env: CloudflareEnv): Promi
 	if (!index.ok) return new Response("网页版尚未部署", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
 	const response = new Response(request.method === "HEAD" ? null : index.body, index);
 	response.headers.set("Cache-Control", "no-cache");
+	response.headers.set("Content-Security-Policy", IM_WEB_APP_CSP);
 	return response;
 }
 
