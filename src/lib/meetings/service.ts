@@ -139,9 +139,9 @@ export async function createMeeting(env: Env, host: MeetingUser, input: MeetingC
 	const config = requireRealtimeKitConfig(env);
 	const room = input.roomId ? await roomForHost(env, input.roomId, host.id) : null;
 
-	// Without an explicit list, a meeting from a chat invites that chat; the all-staff group is too big to mail by default.
+	// Without a list of its own, a meeting from a chat invites that chat; the all-staff group is too big to mail by default.
 	let inviteeIds = input.inviteeIds;
-	if (!inviteeIds.length && room && room.id !== IM_ALL_STAFF_ROOM_ID) inviteeIds = room.memberIds.slice(0, 50);
+	if (!input.inviteesChosen && !inviteeIds.length && room && room.id !== IM_ALL_STAFF_ROOM_ID) inviteeIds = room.memberIds.slice(0, 50);
 	const invitees = (await activeUsers(env, inviteeIds.filter((id) => id !== host.id))).filter((user) => user.email);
 
 	const defaultTitle = room?.type === IM_ROOM_TYPE.GROUP && room.name ? `${room.name} 的会议` : `${host.name} 的会议`;

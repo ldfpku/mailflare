@@ -177,6 +177,11 @@ test("meetings: unconfigured answers 501; a group meeting posts its link and reu
 	assert.match(created.data.message.message.body.content, new RegExp(`发起了视频会议「周会」[\\s\\S]*${created.data.url}`));
 	assert.deepEqual(pushes.map((push) => push.userId).sort(), ["u2", "u3"]);
 	assert.deepEqual(requests[0].body, { title: "周会" });
+	const chosen = await call("POST", "im/meeting", { token: sam, body: { roomId, inviteUids: ["u3"], sendMail: false } });
+	assert.deepEqual(chosen.data.inviteeIds, ["u3"], "the scheduler's own list replaces the group");
+	const nobody = await call("POST", "im/meeting", { token: sam, body: { roomId, inviteUids: [], sendMail: false } });
+	assert.deepEqual(nobody.data.inviteeIds, [], "an empty list stays empty");
+	requests.splice(0, 2);
 
 	const hostJoin = await call("POST", "im/meeting/join", { token: sam, body: { id: created.data.id } });
 	assert.deepEqual({ token: hostJoin.data.authToken, host: hostJoin.data.host }, { token: "token-1", host: true });
@@ -203,7 +208,7 @@ test("meetings: unconfigured answers 501; a group meeting posts its link and reu
 
 test("meeting input validation", () => {
 	const now = Date.parse("2026-10-19T00:00:00Z");
-	assert.deepEqual(parseMeetingCreateInput({}, now), { title: "", roomId: null, startsAt: null, durationMinutes: 60, inviteeIds: [], sendMail: true });
+	assert.deepEqual(parseMeetingCreateInput({}, now), { title: "", roomId: null, startsAt: null, durationMinutes: 60, inviteeIds: [], inviteesChosen: false, sendMail: true });
 	assert.equal(parseMeetingCreateInput({ startAt: "2026-10-20T02:00:00Z", durationMinutes: 30 }, now).startsAt, Date.parse("2026-10-20T02:00:00Z"));
 	assert.throws(() => parseMeetingCreateInput({ startAt: "2026-10-18T00:00:00Z" }, now), /早于现在/);
 	assert.throws(() => parseMeetingCreateInput({ durationMinutes: 2 }, now), /时长/);
