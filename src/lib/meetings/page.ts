@@ -154,7 +154,8 @@ header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; bord
 button, a.button { font: inherit; font-size: 13px; border: 1px solid var(--smj-line); background: #fff; color: var(--smj-navy); padding: 6px 12px; border-radius: 6px; cursor: pointer; text-decoration: none; }
 button.primary { background: var(--smj-blue); border-color: var(--smj-blue); color: #fff; }
 main { flex: 1; min-height: 0; position: relative; }
-rtk-meeting { display: block; height: 100%; width: 100%; }
+/* The UI Kit lays out its grid and control bar as a flex column; display: block collapses the video area to zero height. */
+rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; }
 #status { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 24px; }
 #status[hidden] { display: none; }
 #status p { margin: 0; color: var(--smj-muted); }

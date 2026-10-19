@@ -2,7 +2,7 @@ import { RequestBodyTooLargeError } from "@/lib/http/errors";
 import { readJsonBody } from "@/lib/http/request";
 import { MeetingError, parseMeetingCreateInput } from "@/lib/meetings/meeting-utils";
 import { RealtimeKitNotConfiguredError } from "@/lib/meetings/realtimekit";
-import { createMeeting, getMeeting, getMeetingIcs, joinMeeting, listMeetings, type MeetingUser } from "@/lib/meetings/service";
+import { cancelMeeting, createMeeting, getMeeting, getMeetingIcs, joinMeeting, listMeetings, type MeetingUser } from "@/lib/meetings/service";
 import type { ImContext } from "./handler";
 import type { ImRouteHandler, ImRouteTable } from "./handler-utils";
 import { notifyImUsers } from "./notify";
@@ -58,6 +58,10 @@ export const rtcRoutes: ImRouteTable<ImContext> = {
 		const id = (await readBody(context.request)).id;
 		const joined = await joinMeeting(context.env, typeof id === "string" ? id : "", meetingUser(context), context.origin);
 		return imOk({ authToken: joined.authToken, host: joined.host, ...joined.meeting });
+	}),
+	"POST im/meeting/cancel": guarded(async (context) => {
+		const id = (await readBody(context.request)).id;
+		return imOk(await cancelMeeting(context.env, typeof id === "string" ? id : "", meetingUser(context), context.origin));
 	}),
 	"GET im/meeting/ics": guarded(async ({ env, origin, url }) => imOk(await getMeetingIcs(env, url.searchParams.get("id") ?? "", origin))),
 };
