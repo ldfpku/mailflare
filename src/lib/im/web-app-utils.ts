@@ -8,9 +8,10 @@ export function isImWebAppPath(pathname: string): boolean {
 }
 
 /**
- * The web client may only reach this origin: no third-party scripts, images,
+ * The web client may only reach this origin and Cloudflare's own Web Analytics
+ * beacon (injected at the edge): no other third-party scripts, images,
  * fonts or requests. The same policy is set for the static files in
  * `public/_headers`; keep the two equal.
  */
 export const IM_WEB_APP_CSP =
-	"default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob: data:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'";
+	"default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob: https://cloudflareinsights.com; worker-src 'self' blob: data:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'";
