@@ -14,6 +14,7 @@ import {
 	IM_SYNC_MESSAGES_PER_ROOM,
 	ImChatError,
 	defaultGroupName,
+	deletedFileNotice,
 	imUserName,
 	parseImMessageId,
 	parseMediaBody,
@@ -25,7 +26,9 @@ import {
 	type ImMessageRow,
 	type ImUserRow,
 } from "./chat-utils";
-import { requireUploadedImFiles } from "./files";
+import { deleteImFilesUnlessShared, requireUploadedImFiles } from "./files";
+import { IM_ROOM_FILE_TYPES, roomFileName } from "./room-files-utils";
+import { imAccessTokenHash, resolveImAccessToken } from "./tokens";
 import { imFileIdFromUrl } from "./files-utils";
 import { imSearchTextOverride } from "./search-utils";
 import { fileRoomMessage, unfileRoomMessage } from "./room-files";
@@ -115,22 +118,29 @@ async function selectIn<T>(env: Env, sql: (placeholders: string) => string, ids:
  * through an invitation.
  */
 export async function ensureAllStaffRoom(env: Env): Promise<void> {
-	const now = Date.now();
-	await db(env).batch([
+	await db(env).batch(allStaffRoomStatements(env, Date.now()));
+}
+
+/** `ensureAllStaffRoom` as statements, to run inside another batch; with `me` they only act for a signed-in sender. */
+function allStaffRoomStatements(env: Env, now: number, me?: SenderCte): D1PreparedStatement[] {
+	const prefix = me ? `WITH ${me.sql} ` : "";
+	const guard = me ? "EXISTS (SELECT 1 FROM me)" : "1";
+	const binds = me?.binds ?? [];
+	return [
 		db(env)
-			.prepare("INSERT OR IGNORE INTO im_rooms (id, type, hot_flag, name, active_time, created_at) VALUES (?, ?, 1, ?, ?, ?)")
-			.bind(IM_ALL_STAFF_ROOM_ID, IM_ROOM_TYPE.GROUP, IM_ALL_STAFF_ROOM_NAME, now, now),
+			.prepare(`${prefix}INSERT OR IGNORE INTO im_rooms (id, type, hot_flag, name, active_time, created_at) SELECT ?, ?, 1, ?, ?, ? WHERE ${guard}`)
+			.bind(...binds, IM_ALL_STAFF_ROOM_ID, IM_ROOM_TYPE.GROUP, IM_ALL_STAFF_ROOM_NAME, now, now),
 		db(env)
 			.prepare(
-				`INSERT OR IGNORE INTO im_room_members (room_id, user_id, role, created_at)
+				`${prefix}INSERT OR IGNORE INTO im_room_members (room_id, user_id, role, created_at)
 				SELECT ?, u.id, CASE WHEN u.is_primary_admin THEN ${IM_ROLE.OWNER} WHEN u.role = 'admin' THEN ${IM_ROLE.ADMIN} ELSE ${IM_ROLE.MEMBER} END, ?
-				FROM users u WHERE ${ACTIVE_USER}`,
+				FROM users u WHERE ${ACTIVE_USER} AND ${guard}`,
 			)
-			.bind(IM_ALL_STAFF_ROOM_ID, now),
+			.bind(...binds, IM_ALL_STAFF_ROOM_ID, now),
 		db(env)
-			.prepare(`DELETE FROM im_room_members WHERE room_id = ? AND user_id IN (SELECT u.id FROM users u WHERE NOT (${ACTIVE_USER}))`)
-			.bind(IM_ALL_STAFF_ROOM_ID),
-	]);
+			.prepare(`${prefix}DELETE FROM im_room_members WHERE room_id = ? AND user_id IN (SELECT u.id FROM users u WHERE NOT (${ACTIVE_USER})) AND ${guard}`)
+			.bind(...binds, IM_ALL_STAFF_ROOM_ID),
+	];
 }
 
 async function findMember(env: Env, roomId: string, userId: string): Promise<MemberRow | null> {
@@ -478,34 +488,219 @@ export async function sendMessage(
 	input: { id?: unknown; roomId?: unknown; msgType?: unknown; body?: unknown },
 	origin: string,
 ): Promise<ImDelivery> {
-	const member = await requireMember(env, input.roomId, userId);
+	const result = await storeSentMessage(env, { userId }, input, origin);
+	if ("auth" in result) throw new ImChatError(403, "账号不可用");
+	return result;
+}
+
+/**
+ * `sendMessage` for HuLa's own send, authenticated by its access token. The token is checked inside the same D1
+ * batch that stores the message, so a send costs one round trip to the database (each costs about 0.2 s from
+ * the edge) instead of the eight it took looking things up one by one.
+ */
+export async function sendMessageWithToken(
+	env: Env,
+	token: string | null,
+	input: { id?: unknown; roomId?: unknown; msgType?: unknown; body?: unknown },
+	origin: string,
+): Promise<ImDelivery | ImSendRefusal> {
+	const tokenHash = await imAccessTokenHash(token);
+	if (!tokenHash || !token) return { auth: "invalid" };
+	return storeSentMessage(env, { token, tokenHash }, input, origin);
+}
+
+/** Who a message is from: an account the caller already checked, or whoever holds this access token. */
+type ImSender = { userId: string } | { token: string; tokenHash: string };
+
+/** The token did not sign anyone in; HuLa refreshes on `expired` and signs out on `invalid`. */
+export interface ImSendRefusal {
+	auth: "invalid" | "expired";
+}
+
+/** The sender as a `me(id)` CTE every statement of the send batch starts with. */
+interface SenderCte {
+	sql: string;
+	binds: unknown[];
+}
+
+function senderCte(sender: ImSender, now: number): SenderCte {
+	if ("userId" in sender) return { sql: "me(id) AS (SELECT ?)", binds: [sender.userId] };
+	return {
+		sql: `me(id) AS (SELECT s.user_id FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at * 1000 > ? AND ${ACTIVE_USER})`,
+		binds: [sender.tokenHash, now],
+	};
+}
+
+interface ParsedSend {
+	type: number;
+	body: unknown;
+	fileIds: string[];
+	replyMsgId: number | null;
+}
+
+function parseSend(input: { msgType?: unknown; body?: unknown }, origin: string): ParsedSend | ImChatError {
 	const type = Number(input.msgType);
-	let body: unknown;
-	let fileIds: string[] = [];
+	const replyMsgId = parseImMessageId((input.body as { replyMsgId?: unknown } | null)?.replyMsgId);
 	if (type === IM_MSG_TYPE.TEXT) {
-		body = parseTextBody(input.body);
-		if (!body) throw new ImChatError(400, "消息内容为空或超过长度限制");
-	} else if (IM_MEDIA_TYPES.has(type)) {
+		const body = parseTextBody(input.body);
+		return body ? { type, body, fileIds: [], replyMsgId } : new ImChatError(400, "消息内容为空或超过长度限制");
+	}
+	if (IM_MEDIA_TYPES.has(type)) {
 		const media = parseMediaBody(type, input.body, (url) => imFileIdFromUrl(url, origin));
-		if (!media) throw new ImChatError(400, "文件消息无效");
-		await requireUploadedImFiles(env, media.fileIds);
-		body = media.body;
-		fileIds = media.fileIds;
-	} else {
-		throw new ImChatError(400, "暂不支持该类型的消息");
+		return media ? { type, body: media.body, fileIds: media.fileIds, replyMsgId } : new ImChatError(400, "文件消息无效");
 	}
-	let replyMsgId = parseImMessageId((input.body as { replyMsgId?: unknown } | null)?.replyMsgId);
-	if (replyMsgId !== null) {
-		const reply = await db(env).prepare("SELECT id FROM im_messages WHERE id = ? AND room_id = ?").bind(replyMsgId, member.room_id).first();
-		if (!reply) replyMsgId = null;
-	}
+	return new ImChatError(400, "暂不支持该类型的消息");
+}
+
+/**
+ * Stores a message and loads everything needed to answer and push it, in one batch (one D1 transaction). Every
+ * write is conditional on the sender being a member of the room (and, by token, signed in), so a refused send
+ * changes nothing; the reads at the end tell the refusals apart. A retried send (same client id) finds the stored
+ * message instead of inserting a second one.
+ */
+async function storeSentMessage(
+	env: Env,
+	sender: ImSender,
+	input: { id?: unknown; roomId?: unknown; msgType?: unknown; body?: unknown },
+	origin: string,
+): Promise<ImDelivery | ImSendRefusal> {
+	const roomId = typeof input.roomId === "string" && input.roomId ? input.roomId : null;
+	const parsed = parseSend(input, origin);
+	if (!roomId || parsed instanceof ImChatError) return refuseSend(env, sender, input.roomId, parsed);
+
+	const now = Date.now();
+	const me = senderCte(sender, now);
+	const withMe = (sql: string, ...binds: unknown[]) => db(env).prepare(`WITH ${me.sql}${sql}`).bind(...me.binds, ...binds);
 	const clientMsgId = typeof input.id === "string" && input.id && input.id.length <= 64 ? input.id : null;
-	const row = await insertMessage(env, { roomId: member.room_id, fromUid: userId, clientMsgId, type, body, replyMsgId });
-	if (fileIds.length && member.room_type === IM_ROOM_TYPE.GROUP) await fileRoomMessage(env, row, body as Record<string, unknown>, fileIds[0]);
-	const [message] = await renderMessages(env, userId, [row], origin);
-	// The sender's client already shows its own message; a second copy over the socket would race its id swap.
-	const recipients = (await roomMemberIds(env, member.room_id)).filter((id) => id !== userId);
-	return { message, recipients };
+	// The statements find the new row by sender and client id, so a send without one gets a server-made id.
+	const key = clientMsgId ?? newId("srv");
+	const bodyJson = JSON.stringify(parsed.body);
+	const fileIds = [...new Set(parsed.fileIds)];
+	const inMessage = ", msg AS (SELECT id, room_id, from_uid, type, created_at FROM im_messages WHERE from_uid = (SELECT id FROM me) AND client_msg_id = ? AND room_id = ?)";
+	const ownRow = "(SELECT id FROM me) AND client_msg_id = ?";
+
+	const statements: D1PreparedStatement[] = [];
+	const add = (statement: D1PreparedStatement) => statements.push(statement) - 1;
+	const authAt =
+		"tokenHash" in sender
+			? add(
+					db(env)
+						.prepare("SELECT s.expires_at, u.disabled, u.deleted_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?")
+						.bind(sender.tokenHash),
+				)
+			: -1;
+	if (roomId === IM_ALL_STAFF_ROOM_ID) statements.push(...allStaffRoomStatements(env, now, me));
+	const filesUploaded = fileIds.length
+		? ` AND (SELECT COUNT(*) FROM im_files f WHERE f.id IN (${fileIds.map(() => "?").join(", ")}) AND f.uploaded_at IS NOT NULL) = ?`
+		: "";
+	add(
+		withMe(
+			` INSERT OR IGNORE INTO im_messages (room_id, from_uid, client_msg_id, type, body, reply_msg_id, created_at)
+			SELECT m.room_id, m.user_id, ?, ?, ?, (SELECT r.id FROM im_messages r WHERE r.id = ? AND r.room_id = m.room_id), ?
+			FROM im_room_members m WHERE m.room_id = ? AND m.user_id = (SELECT id FROM me)${filesUploaded}`,
+			key,
+			parsed.type,
+			bodyJson,
+			parsed.replyMsgId,
+			now,
+			roomId,
+			...(fileIds.length ? [...fileIds, fileIds.length] : []),
+		),
+	);
+	const searchText = imSearchTextOverride(parsed.type, bodyJson);
+	if (searchText !== null) {
+		add(withMe(` UPDATE im_messages_fts SET text = ? WHERE rowid = (SELECT id FROM im_messages WHERE from_uid = ${ownRow} AND room_id = ?)`, searchText, key, roomId));
+	}
+	add(
+		withMe(
+			`${inMessage} UPDATE im_rooms SET last_msg_id = MAX(COALESCE(last_msg_id, 0), (SELECT id FROM msg)), active_time = MAX(active_time, (SELECT created_at FROM msg))
+			WHERE id = ? AND EXISTS (SELECT 1 FROM msg)`,
+			key,
+			roomId,
+			roomId,
+		),
+	);
+	add(withMe(`${inMessage} UPDATE im_room_members SET hide = 0 WHERE room_id = ? AND hide = 1 AND EXISTS (SELECT 1 FROM msg)`, key, roomId, roomId));
+	add(
+		withMe(
+			`${inMessage} UPDATE im_room_members SET last_read_msg_id = MAX(last_read_msg_id, (SELECT id FROM msg))
+			WHERE room_id = ? AND user_id = (SELECT id FROM me) AND EXISTS (SELECT 1 FROM msg)`,
+			key,
+			roomId,
+			roomId,
+		),
+	);
+	if (fileIds.length && IM_ROOM_FILE_TYPES.has(parsed.type)) {
+		// A group's files are its folder in Drive (see room-files.ts); the first file is the message's own (not a video's thumbnail).
+		add(
+			withMe(
+				`${inMessage} INSERT OR IGNORE INTO im_room_files (room_id, file_id, msg_id, uploader_id, file_name, content_type, size, msg_type, created_at)
+				SELECT x.room_id, f.id, x.id, x.from_uid, COALESCE(?, f.file_name), f.content_type, f.size, x.type, x.created_at
+				FROM msg x JOIN im_rooms r ON r.id = x.room_id AND r.type = ? JOIN im_files f ON f.id = ? AND f.uploaded_at IS NOT NULL AND f.size IS NOT NULL`,
+				key,
+				roomId,
+				roomFileName(parsed.type, parsed.body as Record<string, unknown>, "") || null,
+				IM_ROOM_TYPE.GROUP,
+				parsed.fileIds[0],
+			),
+		);
+	}
+	const memberAt = add(
+		withMe(
+			` SELECT m.room_id, m.user_id, m.role, r.type AS room_type, r.owner_id
+			FROM im_room_members m JOIN im_rooms r ON r.id = m.room_id WHERE m.room_id = ? AND m.user_id = (SELECT id FROM me)`,
+			roomId,
+		),
+	);
+	const filesAt = fileIds.length
+		? add(db(env).prepare(`SELECT COUNT(*) AS count FROM im_files WHERE id IN (${fileIds.map(() => "?").join(", ")}) AND uploaded_at IS NOT NULL`).bind(...fileIds))
+		: -1;
+	const rowAt = add(withMe(` SELECT ${MESSAGE_COLUMNS} FROM im_messages x WHERE x.from_uid = ${ownRow}`, key));
+	const replyAt = add(withMe(` SELECT ${MESSAGE_COLUMNS} FROM im_messages x WHERE x.id = (SELECT reply_msg_id FROM im_messages WHERE from_uid = ${ownRow})`, key));
+	const usersAt = add(
+		withMe(
+			`, t AS (SELECT from_uid, recalled_by, reply_msg_id FROM im_messages WHERE from_uid = ${ownRow}),
+			q AS (SELECT from_uid, recalled_by FROM im_messages WHERE id = (SELECT reply_msg_id FROM t))
+			SELECT id, email, name FROM users WHERE id IN (SELECT from_uid FROM t UNION SELECT recalled_by FROM t UNION SELECT from_uid FROM q UNION SELECT recalled_by FROM q)`,
+			key,
+		),
+	);
+	const roomAt = add(withMe(` SELECT id, type FROM im_rooms WHERE id = (SELECT room_id FROM im_messages WHERE from_uid = ${ownRow})`, key));
+	const recipientsAt = add(withMe(" SELECT user_id FROM im_room_members WHERE room_id = ? AND EXISTS (SELECT 1 FROM me)", roomId));
+
+	const results = await db(env).batch(statements);
+	const rows = <T>(at: number) => (results[at]?.results ?? []) as T[];
+	if (authAt >= 0) {
+		const auth = rows<{ expires_at: number; disabled: number; deleted_at: number | null }>(authAt)[0];
+		if (!auth || auth.disabled || auth.deleted_at !== null) return { auth: "invalid" };
+		if (auth.expires_at * 1000 <= now) return { auth: "expired" };
+	}
+	if (!rows<MemberRow>(memberAt)[0]) throw new ImChatError(403, "你不在该会话中");
+	if (filesAt >= 0 && Number(rows<{ count: number }>(filesAt)[0]?.count) < fileIds.length) throw new ImChatError(400, "文件未上传完成");
+	const row = rows<ImMessageRow>(rowAt)[0];
+	if (!row) throw new ImChatError(400, "消息发送失败");
+	const users = new Map(rows<ImUserRow>(usersAt).map((user) => [user.id, user]));
+	const replies = new Map(rows<ImMessageRow>(replyAt).map((reply) => [reply.id, reply]));
+	const isGroup = rows<{ type: number }>(roomAt)[0]?.type === IM_ROOM_TYPE.GROUP;
+	const message = toImMessage(row, { viewerUid: row.from_uid, isGroup, users, replies, avatarUrl: (user) => imAvatarUrl(user, origin) });
+	// The sender's other devices get it too. The client that sent it already shows it under its client id, which
+	// rides along so that client can tell the copy apart from a new message (HuLa swaps the id when the send returns).
+	if (clientMsgId) Object.assign(message.message, { clientMsgId });
+	return { message, recipients: rows<{ user_id: string }>(recipientsAt).map((member) => member.user_id) };
+}
+
+/** A send refused before it reached the database still answers in the old order: sign-in, membership, the message. */
+async function refuseSend(env: Env, sender: ImSender, roomId: unknown, error: ImChatError | ParsedSend): Promise<ImSendRefusal> {
+	let userId: string;
+	if ("token" in sender) {
+		const auth = await resolveImAccessToken(env, sender.token);
+		if (auth.status !== "ok") return { auth: auth.status };
+		userId = auth.user.id;
+	} else {
+		userId = sender.userId;
+	}
+	await requireMember(env, roomId, userId);
+	throw error instanceof ImChatError ? error : new ImChatError(400, "缺少会话");
 }
 
 /**
@@ -590,6 +785,38 @@ export async function recallMessage(env: Env, userId: string, input: { msgId?: u
 	await db(env).prepare("UPDATE im_messages SET recalled_by = ?, recalled_at = ? WHERE id = ?").bind(userId, Date.now(), row.id).run();
 	await unfileRoomMessage(env, row.id);
 	return { event: { msgId: String(row.id), roomId: row.room_id, recallUid: userId }, recipients: await roomMemberIds(env, row.room_id) };
+}
+
+/** Message types whose file can be deleted from the chat (an emoji's picture is not the sender's to take back). */
+const DELETABLE_FILE_TYPES: ReadonlySet<number> = new Set([IM_MSG_TYPE.IMAGE, IM_MSG_TYPE.FILE, IM_MSG_TYPE.VOICE, IM_MSG_TYPE.VIDEO]);
+
+/**
+ * Deletes the file a message carries: the object leaves the bucket (unless a forwarded copy still points at it),
+ * the group's file list drops it, and the message becomes a notice saying who deleted what. The sender may do
+ * this at any time, and in a group so may its owner and admins. A recalled message keeps its recall notice.
+ */
+export async function deleteMessageFile(env: Env, user: ImUserRow, input: { msgId?: unknown; roomId?: unknown }, origin: string) {
+	const member = await requireMember(env, input.roomId, user.id);
+	const msgId = parseImMessageId(input.msgId);
+	const row = msgId === null
+		? null
+		: await db(env).prepare(`SELECT ${MESSAGE_COLUMNS} FROM im_messages x WHERE x.id = ? AND x.room_id = ?`).bind(msgId, member.room_id).first<ImMessageRow>();
+	if (!row) throw new ImChatError(404, "消息不存在");
+	if (!DELETABLE_FILE_TYPES.has(row.type)) throw new ImChatError(400, "该消息没有可删除的文件");
+	const canModerate = member.room_type === IM_ROOM_TYPE.GROUP && isManager(member);
+	if (row.from_uid !== user.id && !canModerate) throw new ImChatError(403, "只有发送者、群主和管理员可以删除文件");
+	const stored = parseMediaBody(row.type, JSON.parse(row.body), (url) => imFileIdFromUrl(url, origin));
+	await deleteImFilesUnlessShared(env, stored?.fileIds ?? [], row.id);
+	const notice = deletedFileNotice(imUserName(user), row.type, stored?.body ?? {});
+	await db(env).batch([
+		...(row.recalled_by
+			? []
+			: [db(env).prepare("UPDATE im_messages SET type = ?, body = ? WHERE id = ?").bind(IM_MSG_TYPE.SYSTEM, JSON.stringify(notice), row.id)]),
+		db(env).prepare("UPDATE im_room_files SET removed_at = ? WHERE msg_id = ? AND removed_at IS NULL").bind(Date.now(), row.id),
+	]);
+	const updated = await db(env).prepare(`SELECT ${MESSAGE_COLUMNS} FROM im_messages x WHERE x.id = ?`).bind(row.id).first<ImMessageRow>();
+	const [message] = await renderMessages(env, user.id, updated ? [updated] : [], origin);
+	return { event: { msgId: String(row.id), roomId: row.room_id, message }, recipients: await roomMemberIds(env, row.room_id) };
 }
 
 // Groups ---------------------------------------------------------------------

@@ -54,18 +54,26 @@ export async function issueImTokens(env: CloudflareEnv, userId: string): Promise
  * never accepted here.
  */
 export async function resolveImAccessToken(env: CloudflareEnv, token: string | null | undefined): Promise<ImAccessResult> {
-	if (!token || token.startsWith(`${IM_REFRESH_TOKEN_PREFIX}_`)) return { status: "invalid" };
-	const db = getDb(env);
-	const [session] = await db
-		.select()
+	const tokenHash = await imAccessTokenHash(token);
+	if (!tokenHash) return { status: "invalid" };
+	// One round trip: the session and its account together.
+	const [row] = await getDb(env)
+		.select({ session: sessions, user: users })
 		.from(sessions)
-		.where(eq(sessions.tokenHash, await hashSessionToken(token)))
+		.innerJoin(users, eq(users.id, sessions.userId))
+		.where(eq(sessions.tokenHash, tokenHash))
 		.limit(1);
-	if (!session) return { status: "invalid" };
-	const [user] = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
-	if (!user || user.disabled || user.deletedAt) return { status: "invalid" };
+	if (!row) return { status: "invalid" };
+	const { session, user } = row;
+	if (user.disabled || user.deletedAt) return { status: "invalid" };
 	const pairId = parseImPairId(session.id);
 	return session.expiresAt.getTime() > Date.now() ? { status: "ok", user, pairId } : { status: "expired", user, pairId };
+}
+
+/** The `sessions.token_hash` an access token is looked up by; null for a missing token or a refresh token. */
+export async function imAccessTokenHash(token: string | null | undefined): Promise<string | null> {
+	if (!token || token.startsWith(`${IM_REFRESH_TOKEN_PREFIX}_`)) return null;
+	return hashSessionToken(token);
 }
 
 /**

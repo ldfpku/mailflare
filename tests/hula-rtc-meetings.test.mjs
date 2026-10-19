@@ -175,7 +175,7 @@ test("meetings: unconfigured answers 501; a group meeting posts its link and reu
 	assert.deepEqual(created.data.inviteeIds.sort(), ["u2", "u3"], "the group is invited");
 	assert.equal(created.data.mailError, "发起人没有可用的邮箱", "no mailbox: the meeting still starts, without mail");
 	assert.match(created.data.message.message.body.content, new RegExp(`发起了视频会议「周会」[\\s\\S]*${created.data.url}`));
-	assert.deepEqual(pushes.map((push) => push.userId).sort(), ["u2", "u3"]);
+	assert.deepEqual(pushes.map((push) => push.userId).sort(), ["u1", "u2", "u3"], "the host's other devices get the card too");
 	assert.deepEqual(requests[0].body, { title: "周会" });
 	const chosen = await call("POST", "im/meeting", { token: sam, body: { roomId, inviteUids: ["u3"], sendMail: false } });
 	assert.deepEqual(chosen.data.inviteeIds, ["u3"], "the scheduler's own list replaces the group");

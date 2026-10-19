@@ -3,6 +3,7 @@ import { driveContentDisposition } from "@/lib/drive/utils";
 import { getInlineContentType } from "@/lib/http/content-type";
 import { ImChatError } from "./chat-utils";
 import {
+	IM_FILES_PATH,
 	IM_FILE_LIMIT_BYTES,
 	IM_MULTIPART_UPLOAD_TTL_MS,
 	IM_SINGLE_UPLOAD_LIMIT_BYTES,
@@ -13,6 +14,7 @@ import {
 	imFileCorsHeaders,
 	imFileObjectKey,
 	imFileUrl,
+	imUnsentFileCutoff,
 	imUploadPartSize,
 	isImFileId,
 	parseImUploadParts,
@@ -283,4 +285,59 @@ export async function findUploadedImFile(env: Env, id: string): Promise<{ object
 	const file = await findFile(env, id);
 	if (!file?.uploaded_at || file.size === null) return null;
 	return { objectKey: file.object_key, fileName: file.file_name, contentType: file.content_type, size: file.size };
+}
+
+/** Matches a stored message body that points at the chat file `id` (a bound parameter or a column). */
+function fileReferenceSql(column: string, id = "?"): string {
+	return `instr(${column}, '${IM_FILES_PATH}' || ${id} || '/') > 0`;
+}
+
+/**
+ * Removes chat files from the bucket and `im_files`, except those another message still points at (a forwarded
+ * copy carries the same URL). `exceptMsgId` is the message the files are being taken out of. Returns the ids removed.
+ */
+export async function deleteImFilesUnlessShared(env: Env, ids: string[], exceptMsgId: number | null): Promise<string[]> {
+	const removed: string[] = [];
+	for (const id of new Set(ids)) {
+		const file = await findFile(env, id);
+		if (!file) continue;
+		const shared = await env.DB.prepare(`SELECT 1 FROM im_messages WHERE id <> ? AND recalled_by IS NULL AND ${fileReferenceSql("body")} LIMIT 1`)
+			.bind(exceptMsgId ?? -1, id)
+			.first();
+		if (shared) continue;
+		await env.BUCKET.delete(file.object_key);
+		await env.DB.prepare("DELETE FROM im_files WHERE id = ?").bind(id).run();
+		removed.push(id);
+	}
+	return removed;
+}
+
+/**
+ * The caller's uploads that never reached a message: a file picked and then not sent, an upload that failed half
+ * way, or a test upload. Recent ones are left out, since their message may still be on its way.
+ */
+export async function listUnsentImFiles(env: Env, userId: string) {
+	const result = await env.DB.prepare(
+		`SELECT f.id, f.file_name, f.size, f.uploaded_at, f.created_at FROM im_files f
+		WHERE f.uploader_id = ? AND f.created_at < ?
+		AND NOT EXISTS (SELECT 1 FROM im_messages m WHERE ${fileReferenceSql("m.body", "f.id")})
+		ORDER BY f.created_at LIMIT 500`,
+	)
+		.bind(userId, imUnsentFileCutoff(Date.now()))
+		.all<Pick<ImFileRow, "id" | "file_name" | "size" | "uploaded_at" | "created_at">>();
+	return result.results.map((row) => ({
+		id: row.id,
+		fileName: row.file_name,
+		size: row.size ?? 0,
+		uploaded: row.uploaded_at !== null,
+		createdAt: row.created_at,
+	}));
+}
+
+/** Deletes some of the caller's unsent uploads (see `listUnsentImFiles`); ids that are not one of them are skipped. */
+export async function deleteUnsentImFiles(env: Env, userId: string, ids: unknown): Promise<{ deleted: string[] }> {
+	if (!Array.isArray(ids) || ids.length > 100) throw new ImChatError(400, "请选择要删除的文件");
+	const unsent = new Set((await listUnsentImFiles(env, userId)).map((file) => file.id));
+	const chosen = ids.filter((id): id is string => typeof id === "string" && unsent.has(id));
+	return { deleted: await deleteImFilesUnlessShared(env, chosen, null) };
 }

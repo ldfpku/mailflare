@@ -49,8 +49,9 @@ class SqlitePreparedStatement {
 		return statement;
 	}
 
+	/** SQLite knows whether a statement returns rows; the text alone cannot tell `WITH ... INSERT` from `WITH ... SELECT`. */
 	private isRead(): boolean {
-		return /^\s*(select|with|pragma|explain)\b/i.test(this.sql) || /\breturning\b/i.test(this.sql);
+		return this.statement().reader;
 	}
 
 	async first<T = Row>(column?: string): Promise<T | null> {

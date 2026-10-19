@@ -291,7 +291,11 @@ test("one-to-one chat: open from a contact, send, push, sync, unread and read", 
 	assert.match(sent.data.message.id, /^\d+$/);
 	assert.equal(sent.data.fromUser.uid, "u1");
 	assert.equal(sent.data.message.body.content, "你好 <b>Kim</b>");
-	assert.deepEqual(pushes.map((push) => [push.userId, push.type, push.data.message.id]), [["u2", "receiveMessage", sent.data.message.id]]);
+	// Both members get it: Kim, and Sam's other devices. The client id lets the sending client skip its own copy.
+	assert.deepEqual(
+		pushes.map((push) => [push.userId, push.type, push.data.message.id, push.data.message.clientMsgId]).sort(),
+		[["u1", "receiveMessage", sent.data.message.id, "tmp-1"], ["u2", "receiveMessage", sent.data.message.id, "tmp-1"]],
+	);
 
 	const retried = await call("POST", "im/chat/msg", { token: sam, body: { id: "tmp-1", roomId: opened.roomId, msgType: 1, body: { content: "你好 <b>Kim</b>" } } });
 	assert.equal(retried.data.message.id, sent.data.message.id, "a retried send is stored once");
@@ -320,6 +324,68 @@ test("one-to-one chat: open from a contact, send, push, sync, unread and read", 
 
 	assert.equal((await call("POST", "im/chat/msg", { token: sam, body: { roomId: opened.roomId, msgType: 3, body: { url: "x" } } })).code, 400);
 	assert.equal((await call("POST", "im/chat/msg", { token: sam, body: { roomId: opened.roomId, msgType: 1, body: { content: "  " } } })).code, 400);
+});
+
+test("a send is one D1 round trip, and its refusals keep their old order", async (t) => {
+	const { call, login, addUser, database, env, expireAccess, objects } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const sam = (await login()).data.token;
+	const lee = (await login("lee@one.test")).data.token;
+	const room = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
+	const first = await call("POST", "im/chat/msg", { token: sam, body: { id: "c-1", roomId: room, msgType: 1, body: { content: "第一条" } } });
+
+	// Count what reaches the database: each prepared statement run on its own, or one batch, is one round trip.
+	let trips = 0;
+	const db = env.DB;
+	env.DB = {
+		prepare: (sql) => {
+			const wrap = (statement) => ({
+				bind: (...values) => wrap(statement.bind(...values)),
+				first: (...args) => (trips++, statement.first(...args)),
+				all: () => (trips++, statement.all()),
+				run: () => (trips++, statement.run()),
+				raw: (...args) => (trips++, statement.raw(...args)),
+				inner: statement,
+			});
+			return wrap(db.prepare(sql));
+		},
+		batch: (statements) => (trips++, db.batch(statements.map((statement) => statement.inner))),
+	};
+	t.after(() => { env.DB = db; });
+
+	const reply = await call("POST", "im/chat/msg", { token: sam, body: { id: "c-2", roomId: room, msgType: 1, body: { content: "第二条", replyMsgId: first.data.message.id } } });
+	assert.equal(reply.code, 200);
+	assert.equal(trips, 1, "auth, membership, insert, room updates, render and recipients in one batch");
+	assert.equal(reply.data.message.body.reply.username, "Sam");
+	assert.equal(reply.data.message.body.reply.body, "第一条");
+	const stored = database.db.prepare("SELECT last_msg_id, active_time FROM im_rooms WHERE id = ?").get(room);
+	assert.equal(String(stored.last_msg_id), reply.data.message.id);
+	assert.equal(database.db.prepare("SELECT last_read_msg_id FROM im_room_members WHERE room_id = ? AND user_id = 'u1'").get(room).last_read_msg_id, Number(reply.data.message.id));
+
+	trips = 0;
+	const all = await call("POST", "im/chat/msg", { token: sam, body: { id: "c-3", roomId: "1", msgType: 1, body: { content: "大家好" } } });
+	assert.equal(all.code, 200);
+	assert.equal(trips, 1, "the all-staff room joins the same batch");
+	assert.deepEqual(database.db.prepare("SELECT user_id FROM im_room_members WHERE room_id = '1' ORDER BY user_id").all().map((row) => row.user_id), ["u1", "u2", "u3"]);
+
+	const count = () => database.db.prepare("SELECT COUNT(*) AS n FROM im_messages").get().n;
+	const before = count();
+	assert.equal((await call("POST", "im/chat/msg", { token: lee, body: { id: "x-1", roomId: room, msgType: 1, body: { content: "hi" } } })).code, 403);
+	assert.equal((await call("POST", "im/chat/msg", { token: "imat_nope", body: { roomId: room, msgType: 1, body: { content: "hi" } } })).code, 401);
+	assert.equal((await call("POST", "im/chat/msg", { token: "imat_nope", body: { roomId: room, msgType: 99 } })).code, 401, "sign-in is checked before the message");
+	assert.equal((await call("POST", "im/chat/msg", { token: lee, body: { roomId: room, msgType: 99 } })).code, 403, "membership is checked before the message");
+	assert.equal(count(), before, "refused sends store nothing");
+
+	const upload = (await call("GET", "system/anyTenant/ossToken", { token: sam, query: { fileName: "a.png" } })).data;
+	const fileUrl = upload.downloadUrl;
+	assert.equal((await call("POST", "im/chat/msg", { token: sam, body: { roomId: room, msgType: 3, body: { url: fileUrl, size: 3 } } })).code, 400, "a file that is not uploaded yet");
+	assert.equal(count(), before);
+	assert.equal(objects.size, 0);
+
+	expireAccess(sam);
+	assert.equal((await call("POST", "im/chat/msg", { token: sam, body: { roomId: room, msgType: 1, body: { content: "late" } } })).code, 406);
+	assert.equal(count(), before);
 });
 
 test("only members can read or write a room", async (t) => {
@@ -863,4 +929,88 @@ test("route helpers", () => {
 	assert.equal(findImRoute(table, "POST", "a/b"), null);
 	assert.equal(parseImPairId(imPairSessionIds("abc_def").refresh), "abc_def");
 	assert.equal(parseImPairId("plain-session"), null);
+});
+
+test("deleting a sent file: sender or group managers, the object goes unless a forwarded copy still uses it", async (t) => {
+	const { call, raw, login, addUser, pushes, objects, database } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	const lee = (await login("lee@one.test")).data.token;
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+	const upload = async (token, fileName) => {
+		const cred = (await call("GET", "system/anyTenant/ossToken", { token, query: { fileName } })).data;
+		assert.equal((await raw("PUT", cred.uploadUrl, { body: new Uint8Array([1, 2, 3]), headers: { "Content-Length": "3" } })).status, 200);
+		return cred.downloadUrl;
+	};
+	const report = await upload(kim, "report.pdf");
+	const sent = await call("POST", "im/chat/msg", { token: kim, body: { id: "f-1", roomId, msgType: 4, body: { url: report, size: 3, fileName: "季度报告.pdf" } } });
+	assert.equal(sent.code, 200);
+	const listed = (await call("GET", "im/room/files", { token: sam, query: { roomId } })).data;
+	assert.equal(listed.total, 1, "the send filed it in the group's files");
+	const photo = await upload(kim, "photo.png");
+	const image = await call("POST", "im/chat/msg", { token: kim, body: { id: "f-2", roomId, msgType: 3, body: { url: photo, size: 3 } } });
+	const forwarded = await call("POST", "im/chat/msg", { token: lee, body: { id: "f-3", roomId, msgType: 3, body: { url: photo, size: 3 } } });
+	assert.equal(forwarded.code, 200);
+	assert.equal(objects.size, 2);
+
+	const remove = (token, msgId) => call("POST", "im/chat/msg/file/delete", { token, body: { roomId, msgId } });
+	assert.equal((await remove(lee, sent.data.message.id)).code, 403, "a plain member cannot delete someone else's file");
+	assert.equal((await call("POST", "im/chat/msg/file/delete", { token: lee, body: { roomId: "1", msgId: sent.data.message.id } })).code, 404);
+	pushes.length = 0;
+	const deleted = await remove(sam, sent.data.message.id);
+	assert.equal(deleted.code, 200, "the group owner can");
+	assert.deepEqual({ type: deleted.data.message.type, body: deleted.data.message.body }, { type: 8, body: "Sam删除了文件「季度报告.pdf」" });
+	assert.deepEqual(pushes.map((push) => [push.userId, push.type, push.data.msgId]).sort(), [
+		["u1", "msgFileDeleted", sent.data.message.id],
+		["u2", "msgFileDeleted", sent.data.message.id],
+		["u3", "msgFileDeleted", sent.data.message.id],
+	]);
+	assert.equal((await raw("GET", report)).status, 404);
+	assert.equal(objects.size, 1);
+	const left = (await call("GET", "im/room/files", { token: sam, query: { roomId } })).data.list;
+	assert.equal(left.length, 2, "only the two pictures are left in the group's files");
+	assert.equal(left.some((file) => file.fileName === "季度报告.pdf"), false);
+	assert.equal((await remove(sam, sent.data.message.id)).code, 400, "nothing left to delete");
+	const page = (await call("GET", "im/chat/msg/page", { token: kim, query: { roomId } })).data.list;
+	assert.equal(page.find((message) => message.message.id === sent.data.message.id).message.body, "Sam删除了文件「季度报告.pdf」");
+
+	assert.equal((await remove(kim, image.data.message.id)).code, 200, "senders delete their own");
+	assert.equal((await raw("GET", photo)).status, 200, "Lee's copy still points at the picture");
+	assert.equal((await remove(lee, forwarded.data.message.id)).code, 200);
+	assert.equal((await raw("GET", photo)).status, 404, "the last message using it takes it along");
+	assert.equal(objects.size, 0);
+	assert.equal(database.db.prepare("SELECT COUNT(*) AS n FROM im_files").get().n, 0);
+});
+
+test("unsent uploads: only the uploader's, only old ones, and only files no message uses", async (t) => {
+	const { call, raw, login, addUser, objects, database } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	const room = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
+	const upload = async (token, fileName) => {
+		const cred = (await call("GET", "system/anyTenant/ossToken", { token, query: { fileName } })).data;
+		assert.equal((await raw("PUT", cred.uploadUrl, { body: new Uint8Array([1, 2, 3]), headers: { "Content-Length": "3" } })).status, 200);
+		return cred.downloadUrl;
+	};
+	const left = await upload(sam, "selftest-limit-104857600.bin");
+	const sentUrl = await upload(sam, "sent.png");
+	await call("POST", "im/chat/msg", { token: sam, body: { roomId: room, msgType: 3, body: { url: sentUrl, size: 3 } } });
+	await upload(kim, "kim.bin");
+	const started = (await call("GET", "system/anyTenant/ossToken", { token: sam, query: { fileName: "never.bin" } })).data;
+
+	assert.deepEqual((await call("GET", "im/chat/files/unsent", { token: sam })).data, [], "nothing recent counts");
+	database.db.prepare("UPDATE im_files SET created_at = 1").run();
+	const unsent = (await call("GET", "im/chat/files/unsent", { token: sam })).data;
+	assert.deepEqual(unsent.map((file) => [file.fileName, file.uploaded]).sort(), [["never.bin", false], ["selftest-limit-104857600.bin", true]]);
+
+	const kimFile = (await call("GET", "im/chat/files/unsent", { token: kim })).data[0];
+	const result = await call("POST", "im/chat/files/unsent/delete", { token: sam, body: { ids: [...unsent.map((file) => file.id), kimFile.id] } });
+	assert.equal(result.data.deleted.length, 2, "Kim's file is not Sam's to delete");
+	assert.equal((await raw("GET", left)).status, 404);
+	assert.equal((await raw("GET", sentUrl)).status, 200);
+	assert.equal(objects.size, 2);
+	assert.equal((await raw("PUT", started.uploadUrl, { body: new Uint8Array([1]), headers: { "Content-Length": "1" } })).status, 404, "its upload link is gone too");
 });

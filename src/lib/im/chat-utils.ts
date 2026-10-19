@@ -274,6 +274,21 @@ export function toImMessage(row: ImMessageRow, context: ImMessageResponseContext
 
 export type ImMessageResponse = ReturnType<typeof toImMessage>;
 
+/** What a file message turns into once its file is deleted (see `deleteMessageFile`). */
+export function deletedFileNotice(deleterName: string, type: number, body: Record<string, unknown>): string {
+	const name = (value: unknown) => (typeof value === "string" && value.trim() ? `「${value.trim()}」` : "");
+	switch (type) {
+		case IM_MSG_TYPE.FILE:
+			return `${deleterName}删除了文件${name(body.fileName)}`;
+		case IM_MSG_TYPE.VIDEO:
+			return `${deleterName}删除了视频${name(body.filename)}`;
+		case IM_MSG_TYPE.VOICE:
+			return `${deleterName}删除了一条语音`;
+		default:
+			return `${deleterName}删除了一张图片`;
+	}
+}
+
 /** Names for a new group without one: the first few members, the way chat apps title an ad-hoc group. */
 export function defaultGroupName(names: string[]): string {
 	const name = names.filter(Boolean).slice(0, 3).join("、");
