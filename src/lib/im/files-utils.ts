@@ -155,3 +155,10 @@ export function parseImUploadParts(value: unknown, totalSize: number, partSize =
 	parts.sort((a, b) => a.partNumber - b.partNumber);
 	return parts.every((part, index) => part.partNumber === index + 1 && part.etag && part.etag.length <= 200) ? parts : null;
 }
+
+/** Uploads younger than this may still be on their way into a message, so they never count as unsent. */
+export const IM_UNSENT_FILE_GRACE_MS = 24 * 60 * 60 * 1000;
+
+export function imUnsentFileCutoff(now: number): number {
+	return now - IM_UNSENT_FILE_GRACE_MS;
+}

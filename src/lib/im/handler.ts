@@ -16,6 +16,7 @@ import { IM_USER_STATES, toImUserInfo } from "./users-utils";
 import { findImRoute, imApiPath, type ImRouteTable } from "./handler-utils";
 import {
 	createGroup,
+	deleteMessageFile,
 	exitGroup,
 	getPeople,
 	getSession,
@@ -32,7 +33,7 @@ import {
 	readCounts,
 	recallMessage,
 	removeMembers,
-	sendMessage,
+	sendMessageWithToken,
 	setAdmins,
 	updateMemberFlags,
 	updateRoomInfo,
@@ -43,6 +44,8 @@ import {
 	abortImMultipartUpload,
 	completeImMultipartUpload,
 	createImUpload,
+	deleteUnsentImFiles,
+	listUnsentImFiles,
 	preflightImFile,
 	receiveImUpload,
 	serveImFile,
@@ -160,11 +163,14 @@ const userRoutes: ImRouteTable<ImContext> = {
 		return imOk(true);
 	},
 
-	"POST im/chat/msg": async ({ request, env, user, origin }) => {
-		const delivery = await sendMessage(env, user.id, await readBody(request), origin);
-		await deliver(env, delivery);
-		return imOk(delivery.message);
+	// Deleting a sent file, and the caller's own uploads that never made it into a message (see files.ts).
+	"POST im/chat/msg/file/delete": async ({ request, env, user, origin }) => {
+		const { event, recipients } = await deleteMessageFile(env, user, await readBody(request), origin);
+		await notifyImUsers(env, recipients, { type: "msgFileDeleted", data: event });
+		return imOk(event.message ?? true);
 	},
+	"GET im/chat/files/unsent": async ({ env, user }) => imOk(await listUnsentImFiles(env, user.id)),
+	"POST im/chat/files/unsent/delete": async ({ request, env, user }) => imOk(await deleteUnsentImFiles(env, user.id, (await readBody(request)).ids)),
 	"POST im/chat/msg/list": async ({ env, user, origin }) => imOk(await listSyncMessages(env, user.id, origin)),
 	"GET im/chat/msg/page": async ({ env, user, url, origin }) =>
 		imOk(
@@ -311,19 +317,46 @@ export async function handleImRequest(request: Request, env: CloudflareEnv): Pro
 	const publicRoute = findImRoute(publicRoutes, request.method, path);
 	if (publicRoute) return publicRoute.handler(base, publicRoute.params);
 
+	// Sending is the hot path: the token is checked inside the batch that stores the message (see sendMessageWithToken).
+	if (request.method === "POST" && path === "im/chat/msg") return guardImChat(() => send(base));
+
 	const userRoute = findImRoute(userRoutes, request.method, path) ?? findImRoute(rtcRoutes, request.method, path);
 	if (!userRoute) return imFail(IM_CODE.NOT_IMPLEMENTED, "暂未实现");
 
 	const auth = await resolveImAccessToken(env, request.headers.get("token"));
-	if (auth.status === "invalid") return imFail(IM_CODE.UNAUTHORIZED, "请重新登录");
-	if (auth.status === "expired") return imFail(IM_CODE.TOKEN_EXPIRED, "token已过期");
+	if (auth.status !== "ok") return refuseSignIn(auth.status);
+	return guardImChat(() => userRoute.handler({ ...base, user: auth.user, pairId: auth.pairId }, userRoute.params));
+}
+
+/** Turns a refusal from the chat modules into HuLa's envelope. */
+async function guardImChat(handler: () => Promise<Response> | Response): Promise<Response> {
 	try {
-		return await userRoute.handler({ ...base, user: auth.user, pairId: auth.pairId }, userRoute.params);
+		return await handler();
 	} catch (error) {
 		if (!(error instanceof ImChatError)) throw error;
 		const code = error.status === 403 ? IM_CODE.FORBIDDEN : error.status === 404 ? IM_CODE.NOT_FOUND : IM_CODE.BAD_REQUEST;
 		return imFail(code, error.message);
 	}
+}
+
+const refuseSignIn = (auth: "invalid" | "expired") =>
+	auth === "expired" ? imFail(IM_CODE.TOKEN_EXPIRED, "token已过期") : imFail(IM_CODE.UNAUTHORIZED, "请重新登录");
+
+async function send({ request, env, origin }: PublicContext): Promise<Response> {
+	const token = request.headers.get("token");
+	let body: Record<string, unknown>;
+	try {
+		body = await readBody(request);
+	} catch (error) {
+		// A body that is not JSON is refused after the sign-in check, as on every other route.
+		const auth = await resolveImAccessToken(env, token);
+		if (auth.status !== "ok") return refuseSignIn(auth.status);
+		throw error;
+	}
+	const result = await sendMessageWithToken(env, token, body, origin);
+	if ("auth" in result) return refuseSignIn(result.auth);
+	await deliver(env, result);
+	return imOk(result.message);
 }
 
 const BODY_LIMIT = 64 * 1024;
