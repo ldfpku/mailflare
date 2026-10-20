@@ -21,6 +21,7 @@ import {
 	getPeople,
 	getSession,
 	groupDetail,
+	historyMessages,
 	inviteMembers,
 	listDirectory,
 	listGroups,
@@ -56,6 +57,7 @@ import { countUnreadMail, createMailSsoLink, redeemMailSsoLink } from "./mail";
 import { serveMailShare } from "./mail-share";
 import { disableRoomMailbox, enableRoomMailbox, getRoomMailbox } from "./room-mailbox";
 import { searchImAndMail } from "./search";
+import { parseImHistoryParams } from "./history-utils";
 import { parseImSearchParams } from "./search-utils";
 import { listDriveForPicker, listRoomFiles, removeRoomFile, saveRoomFileToDrive, sendDriveFileToRoom } from "./room-files";
 import { notifyImUsers } from "./notify";
@@ -188,6 +190,8 @@ const userRoutes: ImRouteTable<ImContext> = {
 				origin,
 			),
 		),
+	// The web client's chat history and file windows; the desktop app reads its own database instead.
+	"GET im/chat/msg/history": async ({ env, user, url, origin }) => imOk(await historyMessages(env, user.id, parseImHistoryParams(url.searchParams), origin)),
 	"PUT im/chat/msg/read": async ({ request, env, user }) => {
 		await markRead(env, user.id, (await readBody(request)).roomId);
 		return imOk(true);

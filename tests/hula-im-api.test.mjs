@@ -833,6 +833,51 @@ test("search: chat in the user's rooms and mail in their mailboxes, Chinese word
 	assert.equal((await call("GET", "im/search", { query: { keyword: "合同" } })).code, 401);
 });
 
+test("history: the web client's history and file windows, filtered by kind, words, sender and time", async (t) => {
+	const { database, call, login, addUser } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	const lee = (await login("lee@one.test")).data.token;
+	const samKim = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
+	const leeKim = (await call("GET", "im/chat/contact/detail/friend", { token: lee, query: { id: "u2", roomType: "2" } })).data.roomId;
+	const send = async (token, roomId, content) => (await call("POST", "im/chat/msg", { token, body: { roomId, msgType: 1, body: { content } } })).data.message.id;
+	const first = await send(sam, samKim, "明天开会");
+	const second = await send(kim, samKim, "好的，预算表带上");
+	const third = await send(sam, samKim, "预算表已经更新");
+	await send(lee, leeKim, "Lee 的预算");
+	database.db.prepare("INSERT INTO im_messages (room_id, from_uid, type, body, created_at) VALUES (?, 'u2', 4, ?, ?)")
+		.run(samKim, JSON.stringify({ fileName: "季度预算.xlsx", size: 10, url: "https://mail.one.test/api/im/files/x/a.xlsx" }), Date.now());
+	const file = String(database.db.prepare("SELECT max(id) AS id FROM im_messages").get().id);
+	const history = async (token, query) => (await call("GET", "im/chat/msg/history", { token, query })).data;
+	const ids = (page) => page.list.map((item) => item.message.id);
+
+	const all = await history(sam, { roomId: samKim });
+	assert.deepEqual(ids(all), [file, third, second, first], "newest first");
+	assert.equal(all.isLast, true);
+	assert.equal(all.list[1].fromUser.uid, "u1", "HuLa's message shape");
+	assert.deepEqual(ids(await history(sam, { roomId: samKim, kind: "file" })), [file]);
+	assert.deepEqual(ids(await history(sam, { roomId: samKim, kind: "image" })), []);
+	assert.deepEqual(ids(await history(sam, { roomId: samKim, keyword: "预算" })), [file, third, second], "file names are searchable too");
+	assert.deepEqual(ids(await history(sam, { roomId: samKim, keyword: "预算 -更新" })), [file, second]);
+	assert.deepEqual(ids(await history(sam, { roomId: samKim, keyword: "-预算" })), [], "only excluded words find nothing");
+	assert.deepEqual(ids(await history(sam, { roomId: samKim, fromUid: "u2" })), [file, second]);
+	const firstAt = database.db.prepare("SELECT created_at FROM im_messages WHERE id = ?").get(Number(first)).created_at;
+	assert.deepEqual(ids(await history(sam, { roomId: samKim, endTime: String(firstAt) })), [first]);
+	const page = await history(sam, { roomId: samKim, pageSize: "2" });
+	assert.deepEqual([ids(page), page.isLast], [[file, third], false]);
+	const next = await history(sam, { roomId: samKim, pageSize: "2", cursor: page.cursor });
+	assert.deepEqual([ids(next), next.isLast], [[second, first], true]);
+
+	assert.deepEqual(ids(await history(sam, { kind: "files" })), [file], "without a room: every room the user is in");
+	assert.deepEqual((await history(kim, { keyword: "预算" })).list.map((item) => item.message.roomId).sort(), [samKim, samKim, samKim, leeKim].sort());
+	assert.equal((await call("GET", "im/chat/msg/history", { token: sam, query: { roomId: leeKim } })).code, 403, "someone else's room");
+
+	assert.equal((await call("PUT", "im/chat/msg/recall", { token: sam, body: { roomId: samKim, msgId: third } })).code, 200);
+	assert.deepEqual(ids(await history(sam, { roomId: samKim })), [file, second, first], "recalled messages are left out");
+});
+
 test("group files: filed from the chat, readable only by current members, and linked with Drive", async (t) => {
 	const { database, env, call, raw, login, addUser, pushes, objects } = await fixture(t);
 	addUser("u2", "kim@one.test", "Kim");
