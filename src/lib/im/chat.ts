@@ -32,6 +32,7 @@ import { deleteImFilesUnlessShared, requireUploadedImFiles } from "./files";
 import { IM_ROOM_FILE_TYPES, roomFileName } from "./room-files-utils";
 import { imAccessTokenHash, resolveImAccessToken } from "./tokens";
 import { imFileIdFromUrl } from "./files-utils";
+import { buildHistoryWhere, type ImHistoryParams } from "./history-utils";
 import { imSearchTextOverride } from "./search-utils";
 import { fileRoomMessage, unfileRoomMessage } from "./room-files";
 import { IM_DEFAULT_USER_STATE_ID, imAvatarUrl, imRoomAvatarUrl } from "./users-utils";
@@ -468,6 +469,27 @@ export async function listSyncMessages(env: Env, userId: string, origin: string)
 		.bind(userId, IM_SYNC_MESSAGES_PER_ROOM)
 		.all<ImMessageRow>();
 	return renderMessages(env, userId, result.results, origin);
+}
+
+/**
+ * History for the web client's chat history and file windows (`GET im/chat/msg/history`):
+ * one room or all of the user's rooms, filtered by kind, words, sender and time,
+ * newest first. Membership is the access check, as for every chat read.
+ */
+export async function historyMessages(env: Env, userId: string, params: ImHistoryParams, origin: string) {
+	if (params.roomId) await requireMember(env, params.roomId, userId);
+	else await ensureAllStaffRoom(env);
+	const { where, binds } = buildHistoryWhere(params);
+	const result = await db(env)
+		.prepare(
+			`SELECT ${MESSAGE_COLUMNS} FROM im_messages x JOIN im_room_members m ON m.room_id = x.room_id AND m.user_id = ?
+			WHERE ${where} ORDER BY x.id DESC LIMIT ?`,
+		)
+		.bind(userId, ...binds, params.size + 1)
+		.all<ImMessageRow>();
+	const rows = result.results.slice(0, params.size);
+	const list = await renderMessages(env, userId, rows, origin);
+	return { list, cursor: rows.length ? String(rows[rows.length - 1].id) : "", isLast: result.results.length <= params.size };
 }
 
 /** A page of one room's history, newest first by cursor (the last id returned). */
