@@ -12,16 +12,19 @@ export const IM_SUMMARY_MAX_MESSAGES = 500;
 export const IM_SUMMARY_DEFAULT_MESSAGES = 100;
 /** Characters of transcript per model call; a longer chat is summarized in parts, then the parts are merged. */
 /**
- * Asked when the first model fails or answers with nothing usable: another
- * Cloudflare-hosted model that writes good Chinese and takes the same
- * `reasoning_effort` switch.
+ * The model chat summaries and mail to-dos ask first. Flash, not the
+ * assistant's Pro: with reasoning off both write good Chinese, and Pro took
+ * 16-48 s for a 20-100 message summary on the live site (2026-10-20, 12 of 12
+ * answered first time), which is too slow for a button someone waits on.
  */
-export const IM_AI_FALLBACK_MODEL = "@cf/deepseek-ai/deepseek-v4-flash-0731";
+export const IM_AI_DEFAULT_MODEL = "@cf/deepseek-ai/deepseek-v4-flash-0731";
 
-/** The models to try in order: the chosen one, then a fallback unless it is the same model. */
+/** Asked when the first model fails or answers with nothing usable. */
+export const IM_AI_BACKUP_MODEL = DEFAULT_CLOUDFLARE_MODEL;
+
+/** The models to try in order: the chosen one, then the other of Flash and Pro. */
 export function imAiModelChain(primary: string): string[] {
-	const fallback = primary === IM_AI_FALLBACK_MODEL ? DEFAULT_CLOUDFLARE_MODEL : IM_AI_FALLBACK_MODEL;
-	return [primary, fallback];
+	return [primary, primary === IM_AI_BACKUP_MODEL ? IM_AI_DEFAULT_MODEL : IM_AI_BACKUP_MODEL];
 }
 
 export const IM_SUMMARY_CHUNK_CHARS = 8_000;
