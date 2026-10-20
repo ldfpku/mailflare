@@ -223,10 +223,18 @@ test("the model's thinking and its text before a tool call never reach the panel
 		? { reasoning: "The user wants a summary, so I will answer in Chinese.", text: "这封邮件请你周五前确认设备报价。" }
 		: { reasoning: "Let me look at the email first.", text: "Let me read the email.", tool: "get_email", args: { emailId: "email-1" } });
 	const { context } = await setup(t, { AI: ai });
+	const logs = [];
+	t.mock.method(console, "log", (...args) => logs.push(args));
 	const { conversationId, stream } = await mod.createAgentChatStream(context, "总结这封邮件", undefined, undefined, "Asia/Shanghai", "email-1", { locale: "zh-CN" });
 	const body = await new Response(stream).text();
 	const events = body.trim().split("\n").map((line) => JSON.parse(line));
 	assert.equal(events.at(-1).type, "done");
+	// One summary line per turn, in the same shape as the chat summaries' "[im-ai] request".
+	const turns = logs.filter((args) => args[0] === "[agent] request").map((args) => JSON.parse(args[1]));
+	assert.equal(turns.length, 1);
+	assert.deepEqual([turns[0].source, turns[0].outcome, turns[0].attempts, turns[0].steps, turns[0].toolCalls], ["chat", "ok", 1, 2, 1]);
+	assert.match(turns[0].model, /^@cf\//);
+	assert.ok([turns[0].ms, turns[0].inputTokens, turns[0].outputTokens].every((value) => typeof value === "number"));
 	assert.ok(!events.some((event) => event.type === "reasoning"));
 	assert.doesNotMatch(body, /The user wants|Let me look/);
 	const history = await mod.getAgentChatHistory(context, conversationId);
