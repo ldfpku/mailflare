@@ -31,7 +31,8 @@ const VENDOR = `/vendor/realtimekit/${REALTIMEKIT_VERSION}`;
 /** /vendor is cached as immutable: bump this whenever the patched core changes (scripts/vendor-realtimekit.mjs). */
 const CORE_REVISION = "4";
 const REALTIMEKIT_HOSTS = "https://*.realtime.cloudflare.com";
-const VIDEO_BACKGROUND = "/vendor/video-background/0.10.21/smj-video-background.js";
+/** /vendor is cached as immutable: a new directory whenever the bundle, wasm or images change (REVISION in scripts/vendor-video-background.mjs). */
+const VIDEO_BACKGROUND = "/vendor/video-background/0.10.21-2/smj-video-background.js";
 /** Matches the stack the vendoring script writes into the UI Kit. */
 const FONT_STACK = `"Barlow", "Noto Sans SC", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif`;
 

@@ -1,5 +1,5 @@
 // Builds the meeting page's video background (src/lib/meetings/video-background)
-// into public/vendor/video-background/<version>: the MediaPipe wasm (SIMD build
+// into public/vendor/video-background/<version>-<REVISION>: the MediaPipe wasm (SIMD build
 // only) from node_modules/@mediapipe/tasks-vision, and the page module bundled
 // with esbuild. The model and the SMJ background images in that directory are
 // committed as they are; they match HuLa's public/video-bg. The output is
@@ -14,7 +14,11 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const pkg = join(root, "node_modules", "@mediapipe", "tasks-vision");
 const version = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")).version;
-const output = join(root, "public", "vendor", "video-background", version);
+// /vendor/* is cached for a year as immutable, so files in a published directory must never change:
+// bump REVISION (and VIDEO_BACKGROUND in src/lib/meetings/page.ts) whenever anything here changes,
+// moving the directory (`git mv`) so the committed model and backgrounds come along.
+const REVISION = 2;
+const output = join(root, "public", "vendor", "video-background", `${version}-${REVISION}`);
 
 for (const file of ["selfie_segmenter_landscape.tflite", "backgrounds/smj-hook.png", "backgrounds/smj-split.png", "backgrounds/smj-wall.jpg"]) {
 	if (!existsSync(join(output, file))) throw new Error(`Missing ${file} in ${output}; copy it from HuLa public/video-bg`);
@@ -40,4 +44,4 @@ const urls = [bundle, join(output, "wasm", "vision_wasm_internal.js")]
 	.flatMap((file) => readFileSync(file, "utf8").match(/https?:\/\/[a-z0-9.-]+\.[a-z]{2,}[^\s"'`)]*/gi) || [])
 	.filter((url) => !/^https?:\/\/(www\.)?(apache\.org|github\.com\/emscripten-core)/.test(url));
 if (urls.length) console.warn("[video-background] absolute URLs in the output (check none is fetched):", [...new Set(urls)]);
-console.log(`[video-background] MediaPipe ${version} and the page module written to public/vendor/video-background/${version}`);
+console.log(`[video-background] MediaPipe ${version} and the page module written to public/vendor/video-background/${version}-${REVISION}`);
