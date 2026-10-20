@@ -2180,5 +2180,22 @@
 	"agent.tool.propose_meeting.description": "Suggested a meeting for you to confirm. Nothing was booked or sent yet.",
 	"agent.tool.read_attachment.running": "Reading attachment...",
 	"agent.tool.read_attachment.completed": "Read attachment",
-	"agent.tool.read_attachment.description": "Read the text of an attachment."
+	"agent.tool.read_attachment.description": "Read the text of an attachment.",
+	"settings.nav.desktop": "Desktop app",
+	"settingsPage.desktop.title": "Desktop app",
+	"settingsPage.desktop.description": "The desktop app adds remote assistance, the green border while you share your screen, the tray icon, start at sign-in and global shortcuts. Everything else also works in the browser.",
+	"settingsPage.desktop.loading": "Checking the latest version…",
+	"settingsPage.desktop.notPublished": "The desktop app has not been published yet. Ask your administrator.",
+	"settingsPage.desktop.loadFailed": "Could not read the latest version. Try again later.",
+	"settingsPage.desktop.version": "Version {version}",
+	"settingsPage.desktop.published": "Updated {date}",
+	"settingsPage.desktop.recommended": "For this computer",
+	"settingsPage.desktop.windows": "Windows 10 / 11 (64-bit)",
+	"settingsPage.desktop.macos": "macOS 10.13 or later (Apple silicon and Intel)",
+	"settingsPage.desktop.download": "Download",
+	"settingsPage.desktop.notes": "What's new",
+	"settingsPage.desktop.installTitle": "How to install",
+	"settingsPage.desktop.windowsSteps": "Run the downloaded installer. It installs for your account only, so no administrator password is needed. If Windows shows \"Windows protected your PC\" (unknown publisher), click \"More info\" and then \"Run anyway\".",
+	"settingsPage.desktop.macSteps": "Open the .dmg and drag SMJ into Applications. The app is not notarized by Apple yet, so the first time, right-click SMJ in Applications and choose Open (on macOS 15 and later: open it once, then go to System Settings > Privacy & Security and click \"Open Anyway\"). For remote assistance, allow SMJ under Screen Recording and Accessibility in the same place.",
+	"settingsPage.desktop.updates": "Sign in with your mail account. The app checks for new versions by itself and asks before updating."
 }

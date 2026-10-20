@@ -52,6 +52,11 @@ export default defineConfig({
 			BUCKET: bindings.r2({
 				name: "mailflare-raw",
 			}),
+			// Desktop installers and updates (src/lib/desktop/), kept apart from mail so the CI upload token
+			// can be scoped to this bucket alone.
+			DESKTOP_BUCKET: bindings.r2({
+				name: "smj-desktop",
+			}),
 			EMAIL: bindings.sendEmail({
 				dev: {
 					remote: false,
