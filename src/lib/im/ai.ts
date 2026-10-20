@@ -46,7 +46,7 @@ function imAiModelId(env: Env, configured: { provider: string; model: string }):
 async function imAiModel(env: Env, userId: string) {
 	if (!env.AI) throw new ImChatError(400, "AI 功能未开启，请联系管理员");
 	if (!(await getAgentEnabled(env))) throw new ImChatError(403, "管理员已关闭 AI 功能");
-	if (!(await allowAgentRequest(env, `im-ai:${userId}`))) throw new ImChatError(400, "请求太频繁，请稍后再试");
+	if (!(await allowAgentRequest(env, `im-ai:${userId}`, `user:${userId}`))) throw new ImChatError(400, "请求太频繁或今日 AI 次数已用完，请稍后再试");
 	const config = await getAgentProviderConfig(env);
 	const modelIds = imAiModelChain(imAiModelId(env, config));
 	const workersAi = createWorkersAI({ binding: env.AI });

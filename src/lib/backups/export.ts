@@ -40,6 +40,9 @@ const INTERNAL_TABLES = [
 	"im_presence",
 	// Parsed meeting invitations, re-read from the restored attachments when needed.
 	"im_calendar_invites",
+	// Assistant daily call counters (src/lib/agent/rate-limit.ts): per-day operational state that
+	// starts over at midnight UTC; restoring old counts would only block people for nothing.
+	"ai_daily_counters",
 ];
 
 /**
