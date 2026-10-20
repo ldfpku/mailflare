@@ -265,6 +265,8 @@ test("the meeting page allows camera and microphone, and web joins need a sessio
 	assert.match(page.headers.get("Permissions-Policy"), /display-capture=\(self\)/, "screen sharing stays allowed");
 	assert.match(html, /仅主持人可共享屏幕/);
 	assert.match(html, /"hostPreset":"group_call_host"/, "the page compares presets with the configured host preset");
+	assert.match(html, /id="share-frame"/, "sharing shows a frame round the page");
+	assert.match(html, /"● 正在共享"/, "sharing prefixes the title, which the desktop window watches");
 
 	const anonymous = await handleMeetingRequest(new Request("https://mail.one.test/api/meetings/abcdefghijklmnop/join", { method: "POST" }), env);
 	assert.equal(anonymous.status, 401);
