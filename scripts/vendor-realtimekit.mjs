@@ -52,20 +52,29 @@ function patchGoogleFonts(directory) {
 /**
  * The core picks each remote video's simulcast layer from its tile: layer 0 is
  * the quarter-size encoding, layer 1 the half-size one, and the full encoding is
- * only used until the first switch. It also compares against CSS pixels, so on a
- * high-DPI screen a large tile still drops to 320x180. Patched so layer 0 is the
- * half-size encoding and layer 1 the full one, tiles are measured in device
- * pixels, and the thresholds are 1.1x up and 2.4x down: a tile wider than about
- * 580 device pixels gets the full layer and one narrower than about 530 drops
- * to half, whichever layer it had before (with the stock 0.8x up, a tile that
- * shrank during a screen share and grew back kept the half layer for good).
- * The gap between them is wider than the factor-of-two jump between layers,
- * so a tile does not flip back and forth.
+ * only used until the first switch. Stock, it compared the received size with
+ * the one element whose resize fired last (in CSS pixels), only on a resize, and
+ * only when its own idea of the layer changed, so a share started and stopped
+ * twice could leave a full-size tile on 640x360 for good. Patched so:
+ *
+ * - layer 0 is the half-size encoding and layer 1 the full one;
+ * - the decision uses the largest visible tile of that person: the width a
+ *   16:9 picture fills in it, in device pixels. 580 or more gets the full
+ *   layer, under 530 half, in between keeps the current one (the gap stops
+ *   tiles flipping);
+ * - it runs again every few seconds while the person has a tile, and re-sends
+ *   the layer every 30 s even when unchanged, so a lost switch heals itself;
+ * - the last decision per person is kept in `window.__smjLayers` for tests.
  */
+const ORIGINAL_LAYER_PICK =
+	'g(this,Sl,Ou(t=>{if(!this.videoTrack)return;const{clientWidth:e,clientHeight:r}=t,{width:i,height:n}=this.videoTrack.getSettings();if(!i||!n)return;const o=n/r,c=i/e,d=Math.max(o,c);d>mD&&a(this,mr)===1?(f(this,mr,0),a(this,$t).getValue("peerSessionStore").emit(k.MAX_SPATIAL_LAYER_CHANGE,{peerId:this.id,maxSpatialLayer:a(this,mr)})):d<pD&&a(this,mr)===0&&(f(this,mr,1),a(this,$t).getValue("peerSessionStore").emit(k.MAX_SPATIAL_LAYER_CHANGE,{peerId:this.id,maxSpatialLayer:a(this,mr)}))},2e3))';
+const PATCHED_LAYER_PICK =
+	'g(this,Sl,Ou(()=>{clearTimeout(this.smjLayerTimer);const els=Array.from(a(this,Zr).keys());if(!els.length)return;this.smjLayerTimer=setTimeout(()=>a(this,Sl).call(this),5e3);if(!this.videoTrack)return;let w=0,h=0;for(const el of els)if(el.isConnected&&el.clientWidth*el.clientHeight>w*h){w=el.clientWidth;h=el.clientHeight}if(!w||!h)return;const size=Math.min(w,h*16/9)*(window.devicePixelRatio||1),cur=a(this,mr),next=size>=pD?1:size<mD?0:cur,now=Date.now();(window.__smjLayers||(window.__smjLayers={}))[this.id]={w,h,layer:next,at:now};if(next!==cur||now-(this.smjLayerAt||0)>3e4){f(this,mr,next);this.smjLayerAt=now;a(this,$t).getValue("peerSessionStore").emit(k.MAX_SPATIAL_LAYER_CHANGE,{peerId:this.id,maxSpatialLayer:next})}},2e3))';
+
 const CORE_PATCHES = [
 	['preferredRid:e===0?"q":"h"', 'preferredRid:e===0?"h":"f"'],
-	["const pD=.8,mD=1.2;", "const pD=1.1,mD=2.4;"],
-	["const o=n/r,c=i/e,d=Math.max(o,c);", "const dpr=window.devicePixelRatio||1,o=n/(r*dpr),c=i/(e*dpr),d=Math.max(o,c);"],
+	["const pD=.8,mD=1.2;", "const pD=580,mD=530;"],
+	[ORIGINAL_LAYER_PICK, PATCHED_LAYER_PICK],
 ];
 
 function patchCore(path) {
