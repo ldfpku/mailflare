@@ -6,6 +6,7 @@ import { JSDOM } from "jsdom";
 const dom = new JSDOM("", { url: "https://mail.example/" });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
+globalThis.location = dom.window.location;
 globalThis.HTMLElement = dom.window.HTMLElement;
 const bundle = await build({ entryPoints: ["src/lib/remote-images/reader.ts"], bundle: true, write: false, platform: "browser", format: "esm" });
 const { prepareReaderEmailHtml } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
@@ -89,4 +90,14 @@ test("permitted font sources remain direct while CSS raster images use the image
 	assert.match(result.html, /https:\/\/cdn\.example\/font\.woff2/);
 	assert.ok(result.html.includes(endpoint("https://cdn.example/bg.png")));
 	assert.ok(!result.html.includes(endpoint("https://cdn.example/font.woff2")));
+});
+
+test("images on this application's own origin load directly, not through the proxy that refuses them", () => {
+	const own = "https://mail.example/brand/smj-symbol-email@2x.png";
+	for (const allowRemote of [false, true]) {
+		const result = prepareReaderEmailHtml(`<p>Sig</p><img src="${own}" alt="SMJ">`, { reader: true, allowRemote });
+		assert.equal(result.hasRemote, false);
+		assert.ok(result.html.includes(`src="${own}"`), String(allowRemote));
+		assert.doesNotMatch(result.html, /\/api\/remote-images/);
+	}
 });
