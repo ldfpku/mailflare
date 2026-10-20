@@ -24,6 +24,7 @@ const primaryOnlyPrefixes = [
   "/api-keys",
   "/webhooks",
   "/backups",
+  "/chat-cleanup",
   "/branding",
   "/activity",
   "/audit-logs",

@@ -20,6 +20,7 @@ export function isAdminPath(pathname: string): boolean {
 		pathname.startsWith("/api-keys") ||
 		pathname.startsWith("/webhooks") ||
 		pathname.startsWith("/activity") ||
-		pathname.startsWith("/backups")
+		pathname.startsWith("/backups") ||
+		pathname.startsWith("/chat-cleanup")
 	);
 }

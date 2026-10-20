@@ -14,6 +14,7 @@ const staticRouteTitles: Array<[string, TranslationKey]> = [
 	["/accounts", "admin.nav.accounts"],
 	["/activity", "admin.nav.activity"],
 	["/backups", "admin.nav.backups"],
+	["/chat-cleanup", "admin.nav.chatCleanup"],
 	["/branding", "admin.nav.branding"],
 	["/ai-usage", "aiUsage.title"],
 	["/calendar", "account.calendar"],
