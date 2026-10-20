@@ -307,3 +307,56 @@ test("people already in a meeting can add others, who get the link in a private 
 	const outsider = await page("invite", { method: "POST", headers: { Authorization: "Bearer token-x" }, body: "{}" });
 	assert.equal(outsider.status, 401);
 });
+
+test("a call to someone already in a call or a meeting answers busy and rings nobody", async (t) => {
+	mockCloudflare(t);
+	const { call, login, env, database } = await fixture(t, RTK_ENV);
+	const sam = await login("sam@one.test");
+	const lee = await login("lee@one.test");
+	const roomOf = async (token, uid) => (await call("GET", "im/chat/contact/detail/friend", { token, query: { id: uid, roomType: "2" } })).data.roomId;
+	const samKim = await roomOf(sam, "u2");
+	const leeSam = await roomOf(lee, "u1");
+	const leeKim = await roomOf(lee, "u2");
+
+	const ring = await resolveRtcRelay(env, "u1", { type: 5, data: { roomId: samKim, targetUid: "u2", isVideo: true } });
+	assert.equal(ring.toPeer.type, "VideoCallRequest", "a free person rings");
+	await resolveRtcRelay(env, "u2", { type: 6, data: { roomId: samKim, callerUid: "u1", accepted: 1 } });
+
+	for (const [roomId, target] of [[leeSam, "u1"], [leeKim, "u2"]]) {
+		const busy = await resolveRtcRelay(env, "u3", { type: 5, data: { roomId, targetUid: target, isVideo: false } });
+		assert.equal(busy.toPeer, undefined, "nobody rings on top of a call");
+		assert.deepEqual(busy.toSender, { type: "CallRejected", data: { callerUid: target, targetUid: "u3", roomId, accepted: 0, busy: true } });
+	}
+	const again = await resolveRtcRelay(env, "u1", { type: 5, data: { roomId: samKim, targetUid: "u2" } });
+	assert.equal(again.toPeer.type, "VideoCallRequest", "the call itself never counts as busy");
+
+	// The call window renews while it is open; the rows lapse when nobody does.
+	database.db.prepare("UPDATE im_call_busy SET busy_until = 1").run();
+	assert.equal(await resolveRtcRelay(env, "u1", { type: 4, data: { roomId: samKim, targetUid: "u2" } }), null, "keep-alives relay nothing");
+	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toSender, "Sam renewed, still busy");
+	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeKim, targetUid: "u2" } })).toPeer, "Kim did not renew, rings");
+	await resolveRtcRelay(env, "u2", { type: 6, data: { roomId: leeKim, callerUid: "u3", accepted: 0, busy: true } });
+	assert.equal(database.db.prepare("SELECT COUNT(*) AS n FROM im_call_busy WHERE ref = ?").get(`call:${leeKim}`).n, 0, "declining clears the ring");
+
+	await resolveRtcRelay(env, "u1", { type: 6, data: { roomId: samKim, callerUid: "u2", accepted: 2 } });
+	assert.equal((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toPeer.type, "VideoCallRequest", "hanging up frees Sam");
+	await resolveRtcRelay(env, "u3", { type: 6, data: { roomId: leeSam, callerUid: "u1", accepted: 3 } });
+
+	const declined = buildRtcRelay("u2", { type: 6, data: { roomId: leeKim, callerUid: "u3", accepted: 0, busy: true } });
+	assert.equal(declined.toPeer.data.busy, true, "a client that sees its own call window declines as busy");
+
+	// Meetings: the page reports presence with its participant token.
+	const created = (await call("POST", "im/meeting", { token: sam, body: { title: "周会", inviteUids: [], sendMail: false } })).data;
+	const samToken = (await call("POST", "im/meeting/join", { token: sam, body: { id: created.id } })).data.authToken;
+	const presence = (active, token = samToken) =>
+		handleMeetingRequest(new Request(`https://mail.one.test/api/meetings/${created.id}/presence`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+			body: JSON.stringify({ active }),
+		}), env);
+	assert.equal((await presence(true, "not-a-token")).status, 401);
+	assert.equal((await presence(true)).status, 204);
+	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toSender, "in a meeting counts as busy");
+	assert.equal((await presence(false)).status, 204);
+	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toPeer, "leaving the meeting frees Sam");
+});

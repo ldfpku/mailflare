@@ -1,5 +1,6 @@
 import { hasValidSessionMutationOrigin } from "@/lib/auth/origin";
 import { getUserFromSession } from "@/lib/auth/session";
+import { CALL_ALIVE_TTL_MS, clearUsersBusy, markUsersBusy, meetingBusyRef } from "@/lib/im/call-busy";
 import { notifyImUsers } from "@/lib/im/notify";
 import { getSessionTokenFromRequest } from "@/lib/realtime/utils";
 import { MEETING_ID_PATTERN, MeetingError } from "./meeting-utils";
@@ -17,6 +18,8 @@ import { getMeetingIcs, getMeetingUser, getMeetingUserByToken, inviteToMeeting, 
  * - `GET /api/meetings/<id>/meeting.ics`: the calendar file; the id is the only key, as for the link itself.
  * - `GET /api/meetings/<id>/people`, `POST /api/meetings/<id>/invite`: “添加参会人” on the meeting page. The
  *   desktop meeting window has no web session, so these also accept the page's participant token as a bearer.
+ * - `POST /api/meetings/<id>/presence`: the page renews this while you are in the meeting (`{ active: false }` on
+ *   leaving), so one-to-one calls to you answer "busy" instead of ringing. Same authentication as above.
  */
 export function isMeetingPath(pathname: string): boolean {
 	return pathname.startsWith("/meet/") || pathname.startsWith("/api/meetings/");
@@ -34,7 +37,7 @@ export async function handleMeetingRequest(request: Request, env: CloudflareEnv)
 		return new Response(renderMeetingPage(page[1], getRealtimeKitConfig(env)?.hostPreset), { headers: MEETING_PAGE_HEADERS });
 	}
 
-	const api = /^\/api\/meetings\/([^/]+)\/(join|meeting\.ics|people|invite)$/.exec(url.pathname);
+	const api = /^\/api\/meetings\/([^/]+)\/(join|meeting\.ics|people|invite|presence)$/.exec(url.pathname);
 	if (!api || !MEETING_ID_PATTERN.test(api[1])) return json({ error: "会议不存在" }, 404);
 	const [, id, action] = api;
 
@@ -49,6 +52,16 @@ export async function handleMeetingRequest(request: Request, env: CloudflareEnv)
 					"Cache-Control": "no-store",
 				},
 			});
+		}
+
+		if (action === "presence") {
+			if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+			const user = await meetingPageUser(request, env, id);
+			if (!user) return json({ error: "请先加入会议" }, 401);
+			const body = (await request.json().catch(() => ({}))) as { active?: unknown };
+			if (body.active === false) await clearUsersBusy(env, [user.id], meetingBusyRef(id));
+			else await markUsersBusy(env, [user.id], meetingBusyRef(id), CALL_ALIVE_TTL_MS);
+			return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
 		}
 
 		if (action === "people" || action === "invite") {

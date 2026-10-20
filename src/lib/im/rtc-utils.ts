@@ -6,6 +6,8 @@ import type { ImSocketEvent } from "./hub-utils";
  * socket as chat. These are the request types HuLa's `WsRequestMsgType` sends.
  */
 export const RTC_REQUEST = {
+	/** HuLa's `VIDEO_HEARTBEAT`: an open call window renewing that its user is busy. */
+	ALIVE: 4,
 	CALL: 5,
 	CALL_RESPONSE: 6,
 	SIGNAL: 14,
@@ -33,13 +35,15 @@ export interface RtcSocketRequest {
 /**
  * What one call message becomes: the event for the other party, and
  * optionally one for the sender's other devices (an answered call stops
- * ringing everywhere else).
+ * ringing everywhere else). A call to someone already in a call goes nowhere
+ * and only answers the sender, with `toSender`.
  */
 export interface RtcRelay {
 	roomId: string;
 	peerUid: string;
-	toPeer: ImSocketEvent;
+	toPeer?: ImSocketEvent;
 	toOwnOtherDevices?: ImSocketEvent;
+	toSender?: ImSocketEvent;
 }
 
 /** Reads a socket frame as a call message, or null for anything else (heartbeats, acks). */
@@ -47,9 +51,9 @@ export function parseRtcSocketRequest(value: unknown): RtcSocketRequest | null {
 	if (!value || typeof value !== "object") return null;
 	const { type, data } = value as { type?: unknown; data?: unknown };
 	const numericType = typeof type === "string" && /^\d+$/.test(type) ? Number(type) : type;
-	if (numericType !== RTC_REQUEST.CALL && numericType !== RTC_REQUEST.CALL_RESPONSE && numericType !== RTC_REQUEST.SIGNAL) return null;
+	if (!Object.values(RTC_REQUEST).includes(numericType as never)) return null;
 	if (!data || typeof data !== "object" || Array.isArray(data)) return null;
-	return { type: numericType, data: data as Record<string, unknown> };
+	return { type: numericType as number, data: data as Record<string, unknown> };
 }
 
 function idString(value: unknown): string | null {
@@ -67,7 +71,7 @@ function idString(value: unknown): string | null {
 export function buildRtcRelay(senderUid: string, request: RtcSocketRequest): RtcRelay | null {
 	const { data } = request;
 	const roomId = idString(data.roomId);
-	if (!roomId) return null;
+	if (!roomId || request.type === RTC_REQUEST.ALIVE) return null;
 
 	if (request.type === RTC_REQUEST.CALL) {
 		const peerUid = idString(data.targetUid);
@@ -86,7 +90,8 @@ export function buildRtcRelay(senderUid: string, request: RtcSocketRequest): Rtc
 		const accepted = Number(data.accepted);
 		const event = CALL_RESPONSE_EVENTS[accepted];
 		if (!peerUid || peerUid === senderUid || !event) return null;
-		const payload = { callerUid: senderUid, targetUid: peerUid, roomId, accepted };
+		// `busy`: the other side declined because it is already in a call (HuLa's desktop sees its own call window).
+		const payload = { callerUid: senderUid, targetUid: peerUid, roomId, accepted, ...(accepted === 0 && data.busy === true ? { busy: true } : {}) };
 		return {
 			roomId,
 			peerUid,
@@ -109,6 +114,19 @@ export function buildRtcRelay(senderUid: string, request: RtcSocketRequest): Rtc
 			data: { callerUid: senderUid, targetUid: peerUid, roomId, signal, signalType, video: data.video === true },
 		},
 	};
+}
+
+/** The room and other party of a call window's keep-alive, or null when it does not name both. */
+export function parseCallAlive(senderUid: string, request: RtcSocketRequest): { roomId: string; peerUid: string } | null {
+	if (request.type !== RTC_REQUEST.ALIVE) return null;
+	const roomId = idString(request.data.roomId);
+	const peerUid = idString(request.data.targetUid);
+	return roomId && peerUid && peerUid !== senderUid ? { roomId, peerUid } : null;
+}
+
+/** What a caller hears when the person they ring is already in a call or meeting: a decline marked busy. */
+export function callBusyEvent(senderUid: string, peerUid: string, roomId: string): ImSocketEvent {
+	return { type: "CallRejected", data: { callerUid: peerUid, targetUid: senderUid, roomId, accepted: 0, busy: true } };
 }
 
 /** Cloudflare lists port 53 too, which browsers block; without it ICE does not wait for that timeout. */

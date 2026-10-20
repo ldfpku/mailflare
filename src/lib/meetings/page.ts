@@ -385,7 +385,35 @@ async function start() {
 	setupScreenLock(meeting);
 	setupShareIndicator(meeting);
 	setupInvite(token);
+	setupPresence(meeting, token);
 	setupBackground(meeting);
+}
+
+/** While you are in the room, one-to-one calls to you answer "busy" instead of ringing over the meeting. */
+function setupPresence(meeting, token) {
+	let timer = 0;
+	const report = (active) =>
+		fetch("/api/meetings/" + config.id + "/presence", {
+			method: "POST",
+			keepalive: true,
+			headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+			body: JSON.stringify({ active }),
+		}).catch(() => {});
+	const stop = () => {
+		if (!timer) return;
+		clearInterval(timer);
+		timer = 0;
+		report(false);
+	};
+	const start = () => {
+		if (timer) return;
+		report(true);
+		timer = setInterval(() => report(true), 15000);
+	};
+	meeting.self.on("roomJoined", start);
+	meeting.self.on("roomLeft", stop);
+	if (meeting.self.roomJoined) start();
+	window.addEventListener("pagehide", stop);
 }
 
 /** “添加参会人”: pick people from the directory; each gets the link in a chat from you, and optionally a mail. */
