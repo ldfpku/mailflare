@@ -10,10 +10,20 @@ export type AgentEvent =
 export type AgentMessage = { id: string; role: "user" | "assistant" | "system" | "tool" | "reasoning"; content: string; toolName?: string | null; toolState?: "running" | "used" | "failed"; recordId?: string; createdAt?: string; durationMs?: number; pending?: boolean };
 export type AgentEmailReference = { id: string; subject?: string | null; status?: string; from?: string; snippet?: string; url?: string };
 export type AgentEmailLinkProps = { email: AgentEmailReference; className: string };
-export type AgentActionProposal = { action: "move_email" | "move_emails" | "mark_email_read" | "discard_draft"; status: "pending_approval" | "processing" | "approved"; emailId?: string; emailIds?: string[]; destination?: string; read?: boolean; draftId?: string; expectedRevision?: number; emails?: AgentEmailReference[] };
+export type AgentTodoProposalItem = { title: string; notes: string; dueAt: string | null; sourceEmailId: string | null; sourceSubject: string | null };
+export type AgentMeetingInvitee = { id: string; name: string; email: string };
+export type AgentActionProposal = {
+	action: "move_email" | "move_emails" | "mark_email_read" | "discard_draft" | "create_todos" | "schedule_meeting";
+	status: "pending_approval" | "processing" | "approved";
+	emailId?: string; emailIds?: string[]; destination?: string; read?: boolean; draftId?: string; expectedRevision?: number; emails?: AgentEmailReference[];
+	items?: AgentTodoProposalItem[];
+	title?: string; startsAt?: string; durationMinutes?: number; location?: string; description?: string; invitees?: AgentMeetingInvitee[]; external?: string[];
+	result?: { todos?: { id: string; title: string }[]; meetingId?: string; url?: string; invited?: string[]; mailError?: string | null };
+};
+export type AgentApproveOptions = { selected?: number[] };
 export type AgentTurn = { id: string; user: AgentMessage | null; assistant: AgentMessage | null; activity: AgentMessage[]; durationMs: number | null; running: boolean };
 export type AgentDraftAction = { messageId: string; draftId: string; revision: number; scheduledAt: string | null };
-export type AgentTurnProps = { turn: AgentTurn; draftActions: AgentDraftAction[]; onOpenDraft: (draftId: string) => void; onApproveDraft: (draftId: string, revision: number) => void; onApproveAction: (item: AgentMessage) => void; approvingId: string | null };
+export type AgentTurnProps = { turn: AgentTurn; draftActions: AgentDraftAction[]; onOpenDraft: (draftId: string) => void; onApproveDraft: (draftId: string, revision: number) => void; onApproveAction: (item: AgentMessage, options?: AgentApproveOptions) => void; approvingId: string | null };
 
 export type AgentSettings = { mailboxId: string; enabled: boolean; modelId: string | null; autoDraftEnabled: boolean; reviewerUserId: string | null; instructions: string; dailyLimit: number };
 
@@ -21,8 +31,9 @@ export type AgentPanelProps = { open: boolean; fullSize: boolean; onClose: () =>
 export type QueuedAgentMessage = { id: string; text: string };
 export type QueuedAgentMessagesProps = { messages: QueuedAgentMessage[]; running: boolean; onRemove: (id: string) => void; onEdit: (id: string, text: string) => void; onSteer: (id: string) => void };
 
-export type AgentPanelView = "chat" | "settings";
-export type AgentConversation = { id: string; title: string };
+export type AgentPanelView = "chat" | "history" | "settings";
+export type AgentConversation = { id: string; title: string; updatedAt?: string | number | null };
+export type AgentQuickTask = { id: "summarizeThread" | "replyThread" | "todosThread" | "translateThread" | "meetingThread" | "attachmentThread" | "templatesThread" | "summarizeRecent" | "todosRecent" | "searchMail" | "polish" | "signature" | "templates" | "meetingsRecent"; icon: import("lucide-react").LucideIcon; mode: "send" | "insert" };
 export type AgentJob = { id: string; status: string; reason: string | null; draftId: string | null; sourceMessageId: string };
 export type AgentProvider = { kind: string; model: string };
 export type AgentSettingsResponse = { settings: AgentSettings; models: string[]; canManage: boolean; canConfigureProvider: boolean; providerConfigured: boolean; provider: AgentProvider | null; autoReplyEnabled: boolean; reviewers: { id: string; name: string; email: string }[] };

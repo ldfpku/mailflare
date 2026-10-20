@@ -1,7 +1,7 @@
 import type { Translator } from "../../lib/i18n/utils";
 import type { KeyboardEvent } from "react";
 import type { TranslationKey } from "../../lib/i18n/types";
-import type { AgentActionProposal, AgentDraftAction, AgentEmailReference, AgentErrorResponse, AgentEvent, AgentMessage, AgentTurn, QueuedAgentMessage } from "./types";
+import type { AgentActionProposal, AgentConversation, AgentDraftAction, AgentEmailReference, AgentErrorResponse, AgentEvent, AgentMessage, AgentTurn, QueuedAgentMessage } from "./types";
 
 /** The message for each refusal reason the assistant routes return with their 429 or 503. */
 export const AGENT_LIMIT_MESSAGE_KEYS: Record<NonNullable<AgentErrorResponse["reason"]>, TranslationKey> = {
@@ -166,7 +166,7 @@ export function formatAgentDuration(durationMs: number): string {
 
 export const AGENT_TOOL_NAMES = [
 	"list_emails", "get_email", "get_thread", "search_emails", "draft_email", "draft_reply", "mark_email_read", "move_email", "move_emails",
-	"discard_draft", "get_schedule", "search_events", "get_event", "create_event", "update_events", "delete_events", "find_free_time", "get_calendars",
+	"discard_draft", "edit_draft", "review_draft_send", "suggest_todos", "propose_meeting", "read_attachment", "get_schedule", "search_events", "get_event", "create_event", "update_events", "delete_events", "find_free_time", "get_calendars",
 ] as const;
 
 type AgentToolName = typeof AGENT_TOOL_NAMES[number];
@@ -211,9 +211,11 @@ export function parseAgentToolContent(content: string): Record<string, unknown> 
 	catch { return null; }
 }
 
+const AGENT_PROPOSAL_ACTIONS: AgentActionProposal["action"][] = ["move_email", "move_emails", "mark_email_read", "discard_draft", "create_todos", "schedule_meeting"];
+
 export function agentActionProposal(content: string): AgentActionProposal | null {
 	const value = parseAgentToolContent(content);
-	return value && (value.action === "move_email" || value.action === "move_emails" || value.action === "mark_email_read" || value.action === "discard_draft") && (value.status === "pending_approval" || value.status === "processing" || value.status === "approved") ? value as AgentActionProposal : null;
+	return value && typeof value.action === "string" && AGENT_PROPOSAL_ACTIONS.includes(value.action as AgentActionProposal["action"]) && (value.status === "pending_approval" || value.status === "processing" || value.status === "approved") ? value as AgentActionProposal : null;
 }
 
 export function agentToolLabel(name: string | null | undefined, state: AgentMessage["toolState"], content: string, t: Translator): { label: string; description: string } {
@@ -227,4 +229,30 @@ export function agentToolLabel(name: string | null | undefined, state: AgentMess
 	if (name === "get_thread" && emails !== null) return { label: t("agent.tool.threadCount", { count: emails }), description };
 	if ((name === "move_emails" || name === "move_email") && emails !== null) return { label: t(result?.status === "approved" ? "agent.tool.movedCount" : "agent.tool.preparedCount", { count: emails }), description };
 	return { label: agentToolText(name, "completed", t)!, description };
+}
+
+/** History sections by last activity in the viewer's own day: today, yesterday, earlier. */
+export function groupAgentConversations(conversations: AgentConversation[], now = new Date()): { key: "today" | "yesterday" | "earlier"; items: AgentConversation[] }[] {
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+	const startOfYesterday = startOfToday - 86_400_000;
+	const groups = { today: [] as AgentConversation[], yesterday: [] as AgentConversation[], earlier: [] as AgentConversation[] };
+	for (const item of conversations) {
+		const at = typeof item.updatedAt === "number" ? item.updatedAt : item.updatedAt ? Date.parse(item.updatedAt) : NaN;
+		const key = !Number.isFinite(at) ? "earlier" : at >= startOfToday ? "today" : at >= startOfYesterday ? "yesterday" : "earlier";
+		groups[key].push(item);
+	}
+	return (["today", "yesterday", "earlier"] as const).filter((key) => groups[key].length).map((key) => ({ key, items: groups[key] }));
+}
+
+export function filterAgentConversations(conversations: AgentConversation[], query: string): AgentConversation[] {
+	const needle = query.trim().toLocaleLowerCase();
+	return needle ? conversations.filter((item) => item.title.toLocaleLowerCase().includes(needle)) : conversations;
+}
+
+/** A due date or meeting time in the viewer's locale and timezone. */
+export function formatAgentTime(value: string | null | undefined, locale: string): string {
+	const at = Date.parse(value ?? "");
+	if (!Number.isFinite(at)) return "";
+	try { return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(at); }
+	catch { return new Date(at).toLocaleString(); }
 }

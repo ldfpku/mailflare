@@ -23,7 +23,7 @@ export function agentProviderErrorMessage(error: unknown): string {
 	const status = details?.statusCode ?? cause?.statusCode ?? providerError?.code;
 	const code = typeof status === "number" && status >= 400 && status < 600 ? status : typeof status === "string" && /^[45]\d\d$/.test(status) ? Number(status) : null;
 	const message = readableText(metadata?.raw) ?? readableText(providerError?.message) ?? readableText(body?.error) ?? readableText(body?.message) ?? readableText(details?.message) ?? readableText(error);
-	if ((!message || message === "Provider returned error") && code === 429) return "The AI provider is temporarily rate-limited. Retry shortly or choose another model.";
-	if (!message) return "The assistant could not finish this request";
-	return code ? `AI provider error ${code}: ${message}` : message;
+	if ((!message || message === "Provider returned error") && code === 429) return "AI 服务暂时繁忙，请稍后重试或换一个模型。";
+	if (!message) return "助手没能完成这次请求，请重试。";
+	return code ? `AI 服务出错（${code}）：${message}` : message;
 }

@@ -4,7 +4,7 @@ import "./style.scss"
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, FileText, ListChecks, LoaderCircle, Maximize2, Minimize2, Pause, PauseCircle, PenLine, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from "lucide-react";
+import { ArrowLeft, Eraser, FileText, History, LoaderCircle, Maximize2, Minimize2, Pause, Send, Settings2, Sparkles, SquarePen, X } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { authFetch } from "@/lib/auth/client";
 import { fetchCachedMessageDetail } from "@/lib/messages/detail-cache";
@@ -19,11 +19,13 @@ import { QueuedAgentMessages } from "./queued-messages";
 import { SendReview } from "./send-review";
 import type { ReviewSnapshot } from "./send-review-types";
 import { approveAgentAction, requestDraftReview } from "./client-actions";
-import type { AgentConversation, AgentConversationsResponse, AgentErrorResponse, AgentEvent, AgentHistoryResponse, AgentJob, AgentJobsResponse, AgentMessage, AgentPanelProps, AgentPanelView, AgentSettings, AgentSettingsResponse, QueuedAgentMessage } from "./types";
+import { AgentConversationHistory } from "./conversation-history";
+import { agentQuickTasks, agentQuickTaskTitle } from "./quick-tasks";
+import type { AgentApproveOptions, AgentConversation, AgentConversationsResponse, AgentQuickTask, AgentErrorResponse, AgentEvent, AgentHistoryResponse, AgentJob, AgentJobsResponse, AgentMessage, AgentPanelProps, AgentPanelView, AgentSettings, AgentSettingsResponse, QueuedAgentMessage } from "./types";
 import { AGENT_LIMIT_MESSAGE_KEYS, activeAgentTool, activeAgentToolLabel, appendAgentReasoning, consumeAgentStream, editQueuedAgentMessage, enqueueAgentMessage, groupAgentMessages, isAgentScrollAtBottom, markAgentDraftSent, normalizeAgentHistory, readAgentConversationId, removeQueuedAgentMessage, resizeAgentInput, saveAgentConversationId, shouldSubmitAgentInput, steerQueuedAgentMessage, uniqueAgentDraftActions } from "./utils";
 
 export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentPanelProps) {
-	const { t } = useLanguage();
+	const { t, locale } = useLanguage();
 	const { selectedMailbox } = useSelectedMailbox();
 	const pathname = usePathname();
 	const { openDraftComposer } = useCompose();
@@ -36,6 +38,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 	const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
 	const [conversationId, setConversationId] = useState<string | null>(null);
 	const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null);
+	const [historyBusyId, setHistoryBusyId] = useState<string | null>(null);
 	const [conversations, setConversations] = useState<AgentConversation[]>([]);
 	const [messages, setMessages] = useState<AgentMessage[]>([]);
 	const [loadingConversation, setLoadingConversation] = useState(false);
@@ -50,7 +53,6 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 	const queuedMessagesRef = useRef<QueuedAgentMessage[]>([]);
 	const runningRef = useRef(false);
 	const queueGenerationRef = useRef(0);
-	const menuRef = useRef<HTMLDetailsElement | null>(null);
 	const inputRef = useRef<HTMLTextAreaElement | null>(null);
 	const chatScrollRef = useRef<HTMLDivElement | null>(null);
 	const stickToBottomRef = useRef(true);
@@ -61,15 +63,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 	const [dismissedMessageId, setDismissedMessageId] = useState<string | null>(null);
 	const openEmailId = selectedMessageId && selectedMessageId in openEmailSubjects && selectedMessageId !== dismissedMessageId ? selectedMessageId : null;
 	const openEmailIdRef = useRef<string | null>(null);
-	const welcomePrompts = selectedMessageId ? [
-		{ label: t("agent.welcome.sumThis"), detail: t("agent.welcome.sumThisDetail"), prompt: `Read the thread containing email ${selectedMessageId} and summarize its key points.`, icon: FileText },
-		{ label: t("agent.welcome.reply"), detail: t("agent.welcome.replyDetail"), prompt: `Read the thread containing email ${selectedMessageId} and draft a reply.`, icon: PenLine },
-		{ label: t("agent.welcome.actionsThis"), detail: t("agent.welcome.actionsThisDetail"), prompt: `Read the thread containing email ${selectedMessageId} and list the action items.`, icon: ListChecks },
-	] : [
-		{ label: t("agent.welcome.sumRecent"), detail: t("agent.welcome.sumRecentDetail"), prompt: "Summarize my recent email in this mailbox.", icon: FileText },
-		{ label: t("agent.welcome.reply"), detail: t("agent.welcome.replyDetail"), prompt: "Read my latest email and draft a reply.", icon: PenLine },
-		{ label: t("agent.welcome.actions"), detail: t("agent.welcome.actionsDetail"), prompt: "Find action items in my recent email.", icon: ListChecks },
-	];
+	const quickTasks = agentQuickTasks(Boolean(openEmailId));
 
 	const refresh = useCallback(async () => {
 		if (!mailboxId) return;
@@ -123,7 +117,6 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		setMessages([]);
 		setSettings(null);
 		setView("chat");
-		if (menuRef.current) menuRef.current.open = false;
 		setError(null);
 		void refresh().catch(() => { if (!cancelled) setError(t("agent.panel.settingsLoadFailed")); });
 		const savedId = readAgentConversationId(mailboxId);
@@ -141,21 +134,6 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		});
 		return () => { cancelled = true; abort.current?.abort(); };
 	}, [mailboxId, open, refresh]);
-
-	useEffect(() => {
-		const closeMenu = (event: PointerEvent) => {
-			if (menuRef.current && !menuRef.current.contains(event.target as Node)) menuRef.current.open = false;
-		};
-		const closeOnEscape = (event: KeyboardEvent) => {
-			if (event.key === "Escape" && menuRef.current?.open) menuRef.current.open = false;
-		};
-		document.addEventListener("pointerdown", closeMenu);
-		document.addEventListener("keydown", closeOnEscape);
-		return () => {
-			document.removeEventListener("pointerdown", closeMenu);
-			document.removeEventListener("keydown", closeOnEscape);
-		};
-	}, []);
 
 	useLayoutEffect(() => { resizeAgentInput(inputRef.current); }, [input, view]);
 	useLayoutEffect(() => {
@@ -194,7 +172,6 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		setMessages([]);
 		setLoadingConversation(true);
 		setView("chat");
-		if (menuRef.current) menuRef.current.open = false;
 		try {
 			const response = await authFetch(`/api/agent/conversations/${id}?mailboxId=${encodeURIComponent(mailboxId)}`);
 			if (!response.ok) throw new Error(t("agent.panel.conversationLoadFailed"));
@@ -235,7 +212,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		}
 	}
 
-	async function send(text: string, queued?: QueuedAgentMessage) {
+	async function send(text: string, queued?: QueuedAgentMessage, title?: string) {
 		if (!mailboxId || !text.trim() || runningRef.current || loadingConversation) return;
 		const controller = new AbortController();
 		const generation = queueGenerationRef.current;
@@ -250,7 +227,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		setError(null);
 		setMessages((current) => [...current, { id: userMessageId, role: "user", content: text, createdAt: new Date(startedAt).toISOString() }, { id: assistantMessageId, role: "assistant", content: "", pending: true }]);
 		try {
-			const response = await authFetch("/api/agent/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mailboxId, ...(selectedConversationRef.current ? { conversationId: selectedConversationRef.current } : {}), ...(openEmailIdRef.current ? { currentMessageId: openEmailIdRef.current } : {}), text, timeZone: getUserTimeZone() }), signal: controller.signal });
+			const response = await authFetch("/api/agent/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mailboxId, ...(selectedConversationRef.current ? { conversationId: selectedConversationRef.current } : {}), ...(openEmailIdRef.current ? { currentMessageId: openEmailIdRef.current } : {}), ...(title && !selectedConversationRef.current ? { title } : {}), text, timeZone: getUserTimeZone(), locale }), signal: controller.signal });
 			if (!response.ok) {
 				const failure = (await response.json().catch(() => ({}))) as AgentErrorResponse;
 				throw new Error(failure.reason ? t(AGENT_LIMIT_MESSAGE_KEYS[failure.reason]) : failure.error || t("agent.panel.unavailable"));
@@ -301,7 +278,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		}
 	}
 
-	function submitMessage(text: string) {
+	function submitMessage(text: string, title?: string) {
 		if (!mailboxId || !text.trim() || !settings || !providerConfigured || loadingConversation) return;
 		setInput("");
 		if (runningRef.current || queuedMessagesRef.current.length) {
@@ -315,7 +292,70 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 			}
 			return;
 		}
-		void send(text.trim());
+		void send(text.trim(), undefined, title);
+	}
+
+	function runQuickTask(task: AgentQuickTask) {
+		const prompt = t(`agent.task.${task.id}.prompt`);
+		if (task.mode === "insert") {
+			setInput(prompt);
+			window.requestAnimationFrame(() => { const field = inputRef.current; if (field) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } });
+			return;
+		}
+		submitMessage(prompt, agentQuickTaskTitle(t(`agent.task.${task.id}.label`), openEmailId ? openEmailSubjects[openEmailId] : null));
+	}
+
+	function stopRunning() {
+		abort.current?.abort();
+		abort.current = null;
+		runningRef.current = false;
+		queueGenerationRef.current += 1;
+		queuedMessagesRef.current = [];
+		setQueuedMessages([]);
+		setBusy(false);
+	}
+
+	function startNewChat() {
+		stopRunning();
+		selectedConversationRef.current = null;
+		stickToBottomRef.current = true;
+		if (mailboxId) saveAgentConversationId(mailboxId, null);
+		setConversationId(null);
+		setMessages([]);
+		setLoadingConversation(false);
+		setInput("");
+		setError(null);
+		setView("chat");
+		window.requestAnimationFrame(() => inputRef.current?.focus());
+	}
+
+	async function renameConversation(id: string, title: string) {
+		setHistoryBusyId(id);
+		try {
+			const response = await authFetch(`/api/agent/conversations/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) });
+			const data = await response.json().catch(() => ({})) as AgentErrorResponse & { conversation?: AgentConversation };
+			if (!response.ok || !data.conversation) throw new Error(data.error || t("agent.panel.renameFailed"));
+			setConversations((current) => current.map((item) => item.id === id ? { ...item, title: data.conversation!.title } : item));
+			return true;
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : t("agent.panel.renameFailed"));
+			return false;
+		} finally {
+			setHistoryBusyId(null);
+		}
+	}
+
+	async function clearConversation() {
+		const id = selectedConversationRef.current;
+		if (!id || !window.confirm(t("agent.panel.clearConfirm"))) return;
+		stopRunning();
+		try {
+			const response = await authFetch(`/api/agent/conversations/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clear: true }) });
+			if (!response.ok) throw new Error(((await response.json().catch(() => ({}))) as AgentErrorResponse).error || t("agent.panel.clearFailed"));
+			if (selectedConversationRef.current === id) setMessages([]);
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : t("agent.panel.clearFailed"));
+		}
 	}
 
 	async function saveSettings() {
@@ -350,12 +390,12 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		finally { setApprovingId(null); }
 	}
 
-	async function confirmAction(item: AgentMessage) {
+	async function confirmAction(item: AgentMessage, options?: AgentApproveOptions) {
 		if (!item.recordId) return;
 		setApprovingId(item.id);
 		setError(null);
 		try {
-			const result = await approveAgentAction(item.recordId);
+			const result = await approveAgentAction(item.recordId, options);
 			setMessages((current) => current.map((message) => message.id === item.id ? { ...message, content: JSON.stringify(result) } : message));
 			window.dispatchEvent(new Event("mailflare:messages-changed"));
 		} catch (cause) { setError(cause instanceof Error ? cause.message : t("agent.panel.approveFailed")); }
@@ -364,10 +404,20 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 
 	const draftActions = uniqueAgentDraftActions(messages);
 	const activeTool = busy ? activeAgentTool(messages) : null;
-	return <section id="email-assistant-panel" className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-3xl border border-neutral-200/70 bg-white text-neutral-900 shadow-xl shadow-neutral-300/30 max-md:rounded-b-none max-md:border-0 max-md:shadow-none" aria-label={t("agent.panel.label")}>
+	const currentTitle = conversationId ? conversations.find((item) => item.id === conversationId)?.title ?? "" : "";
+	const headerButton = "rounded-full p-2 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900";
+	const tasksDisabled = !settings || !providerConfigured || busy || loadingConversation;
+	return <section id="email-assistant-panel" className="@container flex h-full w-full min-w-0 flex-col overflow-hidden rounded-3xl border border-neutral-200/70 bg-white text-neutral-900 shadow-xl shadow-neutral-300/30 max-md:rounded-b-none max-md:border-0 max-md:shadow-none" aria-label={t("agent.panel.label")}>
 		<header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-neutral-100 pl-4 pr-2">
-			<div className="flex min-w-0 items-center gap-2.5">{view === "settings" ? <button type="button" className="-ml-2 rounded-full p-2 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900" onClick={() => setView("chat")} aria-label={t("agent.panel.backToAssistant")} title={t("agent.panel.backToAssistant")}><ArrowLeft size={18} /></button> : <Sparkles className="h-5 w-5 shrink-0 fill-blue-400/20 text-blue-600/70" aria-hidden="true" />}<div className="min-w-0"><strong className="block truncate text-sm font-semibold">{view === "settings" ? t("agent.panel.settings") : t("agent.panel.assistant")}</strong></div></div>
-			<div className="flex shrink-0 items-center gap-0.5"><details ref={menuRef} className="relative"><summary className={`list-none cursor-pointer rounded-full p-2 hover:bg-neutral-100 [&::-webkit-details-marker]:hidden ${view === "settings" ? "text-blue-700" : "text-neutral-600 hover:text-neutral-900"}`} aria-label={t("agent.panel.menuLabel")} title={t("agent.panel.menuLabel")}><Settings2 size={18} /></summary><div className="absolute -right-16 top-full z-30 mt-2 flex w-72 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white py-2 text-sm shadow-xl"><button type="button" className="flex items-center gap-2 px-4 py-2 text-left text-neutral-800 hover:bg-neutral-50" onClick={() => { abort.current?.abort(); abort.current = null; runningRef.current = false; queueGenerationRef.current += 1; queuedMessagesRef.current = []; setQueuedMessages([]); setBusy(false); selectedConversationRef.current = null; stickToBottomRef.current = true; if (mailboxId) saveAgentConversationId(mailboxId, null); setConversationId(null); setMessages([]); setLoadingConversation(false); setInput(""); setView("chat"); menuRef.current!.open = false; }}><Plus size={16} /> {t("agent.panel.newChat")}</button><div className="mx-3 my-2 border-t border-neutral-100" />{conversations.length ? <><p className="px-4 pb-1 text-xs font-medium text-neutral-500">{t("agent.panel.previousChats")}</p><div className="max-h-64 overflow-y-auto">{conversations.map((item) => <div key={item.id} className={`group flex items-center hover:bg-neutral-50 ${conversationId === item.id ? "bg-blue-50 text-blue-700" : "text-neutral-700"}`}><button type="button" className="min-w-0 flex-1 truncate py-2 pl-4 pr-2 text-left" onClick={() => void selectConversation(item.id)}>{item.title}</button><button type="button" className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-500 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100" aria-label={t("agent.panel.deleteChatLabel", { title: item.title })} title={t("agent.panel.deleteChat")} disabled={deletingConversationId !== null} onClick={() => void deleteConversation(item.id)}><Trash2 size={15} /></button></div>)}</div></> : <p className="px-4 py-3 text-neutral-500">{t("agent.panel.noChats")}</p>}<div className="mx-3 my-2 border-t border-neutral-100" /><button type="button" className="flex items-center gap-2 px-4 py-2 text-left text-neutral-800 hover:bg-neutral-50" onClick={() => { setView((current) => current === "settings" ? "chat" : "settings"); menuRef.current!.open = false; }}><Settings2 size={16} /> {view === "settings" ? t("agent.panel.backToChat") : t("agent.panel.settings")}</button></div></details><button type="button" className="rounded-full p-2 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900" onClick={onToggleFullSize} aria-label={fullSize ? t("agent.panel.exitFull") : t("agent.panel.expandFull")} aria-pressed={fullSize} title={fullSize ? t("agent.panel.exitFullTitle") : t("agent.panel.fullTitle")}>{fullSize ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button><button type="button" className="rounded-full p-2 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900" onClick={onClose} aria-label={t("agent.panel.close")} title={t("agent.panel.close")}><X size={18} /></button></div>
+			<div className="flex min-w-0 items-center gap-2.5">{view !== "chat" ? <button type="button" className="-ml-2 rounded-full p-2 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900" onClick={() => setView("chat")} aria-label={t("agent.panel.backToAssistant")} title={t("agent.panel.backToAssistant")}><ArrowLeft size={18} /></button> : <Sparkles className="h-5 w-5 shrink-0 fill-blue-400/20 text-blue-600/70" aria-hidden="true" />}<div className="min-w-0"><strong className="block truncate text-sm font-semibold">{view === "settings" ? t("agent.panel.settings") : view === "history" ? t("agent.panel.history") : t("agent.panel.assistant")}</strong>{view === "chat" && currentTitle && <span className="block truncate text-xs text-neutral-500">{currentTitle}</span>}</div></div>
+			<div className="flex shrink-0 items-center gap-0.5">
+				<button type="button" className={headerButton} onClick={startNewChat} aria-label={t("agent.panel.newChatTitle")} title={t("agent.panel.newChatTitle")}><SquarePen size={18} /></button>
+				<button type="button" className={`${headerButton} ${view === "history" ? "bg-blue-50 text-blue-700" : ""}`} onClick={() => setView((current) => current === "history" ? "chat" : "history")} aria-label={t("agent.panel.history")} aria-pressed={view === "history"} title={t("agent.panel.history")}><History size={18} /></button>
+				{view === "chat" && conversationId && messages.length > 0 && <button type="button" className={`${headerButton} max-sm:hidden`} onClick={() => void clearConversation()} aria-label={t("agent.panel.clearChat")} title={t("agent.panel.clearChat")}><Eraser size={18} /></button>}
+				<button type="button" className={`${headerButton} ${view === "settings" ? "bg-blue-50 text-blue-700" : ""}`} onClick={() => setView((current) => current === "settings" ? "chat" : "settings")} aria-label={t("agent.panel.settings")} aria-pressed={view === "settings"} title={t("agent.panel.settings")}><Settings2 size={18} /></button>
+				<button type="button" className={`${headerButton} max-md:hidden`} onClick={onToggleFullSize} aria-label={fullSize ? t("agent.panel.exitFull") : t("agent.panel.expandFull")} aria-pressed={fullSize} title={fullSize ? t("agent.panel.exitFullTitle") : t("agent.panel.fullTitle")}>{fullSize ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
+				<button type="button" className={headerButton} onClick={onClose} aria-label={t("agent.panel.close")} title={t("agent.panel.close")}><X size={18} /></button>
+			</div>
 		</header>
 		{error && <p role="alert" className="mx-4 mt-3 break-words rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 		{view === "chat" && <>
@@ -375,16 +425,14 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 				<div className="mx-auto max-w-3xl space-y-5">
 					{settings && !providerConfigured && <p className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-amber-800">{t("agent.panel.configureProvider")}</p>}
 					{loadingConversation && <ConversationSkeleton />}
-					{!loadingConversation && messages.length === 0 && settings && <div className="pt-3"><label className="agent-welcome-heading mt-1 font-medium leading-tight text-neutral-800">{t("agent.panel.welcome")}</label><div className="mt-7 space-y-2">{welcomePrompts.map((item) => { const Icon = item.icon; return <button key={item.label} type="button" className="agent-welcome-prompt flex w-full items-center gap-3 rounded-2xl bg-[#f0f3f9] px-3 py-3 text-left transition-colors hover:bg-[#e6ecf6] disabled:cursor-not-allowed disabled:opacity-50" disabled={!providerConfigured || busy} onClick={() => submitMessage(item.prompt)}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-neutral-800"><Icon size={18} /></span><span className="min-w-0"><span className="block font-medium text-neutral-800">{item.label}</span><span className="block text-xs text-neutral-500">{item.detail}</span></span></button>; })}</div></div>}
-					{groupAgentMessages(messages).map((turn) => <AgentTurnView key={turn.id} turn={turn} draftActions={draftActions} onOpenDraft={openDraftComposer} onApproveDraft={(draftId, revision) => void startDraftReview(draftId, revision)} onApproveAction={(item) => void confirmAction(item)} approvingId={approvingId} />)}
-					{jobs.filter((job) => job.status === "completed" && job.draftId).slice(0, 5).map((job) => <div key={job.id} className="rounded-2xl border border-neutral-200 bg-white p-3"><p>{t("agent.panel.autoDraftReady")}</p><div className="mt-2 flex gap-3 text-blue-700"><button type="button" onClick={() => openDraftComposer(job.draftId!)}>{t("agent.panel.openDraft")}</button><button type="button" disabled={busy} onClick={() => submitMessage(`Read the thread containing email ${job.sourceMessageId} and draft another reply. Preserve the existing draft.`)}>{t("agent.panel.regenerate")}</button><button type="button" className="text-red-600" onClick={() => void discardJobDraft(job.draftId!)}>{t("agent.panel.discard")}</button></div></div>)}
+					{!loadingConversation && messages.length === 0 && settings && <div className="pt-3"><label className="agent-welcome-heading mt-1 font-medium leading-tight text-neutral-800">{t("agent.panel.welcome")}</label><p className="mt-2 text-xs leading-relaxed text-neutral-500">{t("agent.panel.welcomeDetail")}</p><div className="mt-5 grid grid-cols-1 gap-2 @[28rem]:grid-cols-2">{quickTasks.map((task) => { const Icon = task.icon; return <button key={task.id} type="button" className="agent-welcome-prompt flex w-full items-center gap-3 rounded-2xl bg-[#f0f3f9] px-3 py-2.5 text-left transition-colors hover:bg-[#e6ecf6] disabled:cursor-not-allowed disabled:opacity-50" disabled={tasksDisabled} onClick={() => runQuickTask(task)}><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-700"><Icon size={17} /></span><span className="min-w-0 font-medium text-neutral-800">{t(`agent.task.${task.id}.label`)}</span></button>; })}</div></div>}
+					{groupAgentMessages(messages).map((turn) => <AgentTurnView key={turn.id} turn={turn} draftActions={draftActions} onOpenDraft={openDraftComposer} onApproveDraft={(draftId, revision) => void startDraftReview(draftId, revision)} onApproveAction={(item, options) => void confirmAction(item, options)} approvingId={approvingId} />)}
+					{jobs.filter((job) => job.status === "completed" && job.draftId).slice(0, 5).map((job) => <div key={job.id} className="rounded-2xl border border-neutral-200 bg-white p-3"><p>{t("agent.panel.autoDraftReady")}</p><div className="mt-2 flex gap-3 text-blue-700"><button type="button" onClick={() => openDraftComposer(job.draftId!)}>{t("agent.panel.openDraft")}</button><button type="button" disabled={busy} onClick={() => submitMessage(t("agent.panel.regeneratePrompt", { id: job.sourceMessageId }))}>{t("agent.panel.regenerate")}</button><button type="button" className="text-red-600" onClick={() => void discardJobDraft(job.draftId!)}>{t("agent.panel.discard")}</button></div></div>)}
 				</div>
 			</div>
 			<QueuedAgentMessages messages={queuedMessages} running={busy} onRemove={(id) => { queuedMessagesRef.current = removeQueuedAgentMessage(queuedMessagesRef.current, id); setQueuedMessages(queuedMessagesRef.current); }} onEdit={(id, text) => { queuedMessagesRef.current = editQueuedAgentMessage(queuedMessagesRef.current, id, text); setQueuedMessages(queuedMessagesRef.current); }} onSteer={(id) => { queuedMessagesRef.current = steerQueuedAgentMessage(queuedMessagesRef.current, id); setQueuedMessages(queuedMessagesRef.current); if (runningRef.current) abort.current?.abort(); else { const [next, ...remaining] = queuedMessagesRef.current; if (next) { queuedMessagesRef.current = remaining; setQueuedMessages(remaining); void send(next.text, next); } } }} />
-			{busy && <div role="status" aria-live="polite" className="mx-auto w-full max-w-3xl space-y-1 px-5 py-2 text-sm text-neutral-500">
-				{activeTool && <div className="flex items-center gap-2"><LoaderCircle size={14} className="shrink-0 animate-spin" aria-hidden="true" /><span>{activeAgentToolLabel(activeTool.toolName, t)}</span></div>}
-				<div className="flex items-center gap-2"><LoaderCircle size={14} className="shrink-0 animate-spin" aria-hidden="true" /><span>{t("agent.panel.working")}</span></div>
-			</div>}
+			{busy && activeTool && <div role="status" aria-live="polite" className="mx-auto flex w-full max-w-3xl items-center gap-2 px-5 py-2 text-sm text-neutral-500"><LoaderCircle size={14} className="shrink-0 animate-spin" aria-hidden="true" /><span>{activeAgentToolLabel(activeTool.toolName, t)}</span></div>}
+			{messages.length > 0 && !loadingConversation && <div className="agent-task-chips mx-auto flex w-full max-w-3xl gap-1.5 overflow-x-auto px-3 pb-1.5" role="toolbar" aria-label={t("agent.panel.quickTasks")}>{quickTasks.map((task) => { const Icon = task.icon; return <button key={task.id} type="button" className="inline-flex shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-700 hover:border-blue-300 hover:text-blue-700 disabled:opacity-50" disabled={tasksDisabled} onClick={() => runQuickTask(task)}><Icon size={12} aria-hidden="true" />{t(`agent.task.${task.id}.label`)}</button>; })}</div>}
 			{openEmailId && <div className="mx-auto flex w-full max-w-3xl px-4 pb-1.5">
 				<span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-neutral-100 py-1 pl-3 pr-1 text-xs text-neutral-600"><FileText size={12} className="shrink-0" aria-hidden="true" /><span className="truncate">{t("agent.panel.currentEmail", { subject: openEmailSubjects[openEmailId] || t("list.noSubject") })}</span><button type="button" onClick={() => setDismissedMessageId(openEmailId)} className="shrink-0 rounded-full p-0.5 hover:bg-neutral-200" aria-label={t("agent.panel.removeCurrentEmail")} title={t("agent.panel.removeCurrentEmail")}><X size={12} aria-hidden="true" /></button></span>
 			</div>}
@@ -394,6 +442,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 				</div>
 			</form>
 		</>}
+		{view === "history" && <AgentConversationHistory conversations={conversations} currentId={conversationId} busyId={historyBusyId ?? deletingConversationId} onSelect={(id) => void selectConversation(id)} onNew={startNewChat} onRename={renameConversation} onDelete={(id) => void deleteConversation(id)} />}
 		{view === "settings" && <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 text-sm">
 			{!canManage && <p>{t("agent.panel.needPermission")}</p>}
 			{settings && <>
