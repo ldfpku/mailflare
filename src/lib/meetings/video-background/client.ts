@@ -6,6 +6,12 @@
  * `public/vendor/video-background/<version>/smj-video-background.js`, next to
  * the wasm, model and background images it loads.
  *
+ * The self view is mirrored by RealtimeKit (`video.mirror`), which would show
+ * the background's logo and text reversed. The processor also renders a
+ * preview track with the background flipped, and `showPreviewInSelfView` puts
+ * it into every mirrored self-view video, so on screen the person is mirrored
+ * and the background reads correctly; everyone else receives the normal track.
+ *
  * The choice is kept under the same localStorage key and shape as the web
  * client's Pinia store (`videoBackground`: `{ selected, customImage }`), so a
  * background picked in a call on /im is already on in the next meeting.
@@ -19,6 +25,9 @@ type VideoMiddleware = (helpers: { canvas: HTMLCanvasElement }) => Promise<void>
 type Meeting = {
 	self: {
 		rawVideoTrack?: MediaStreamTrack;
+		videoEnabled?: boolean;
+		/** RealtimeKit 2.0.2: sets a registered self video element's srcObject to the current video track */
+		updateVideo?: (element: HTMLVideoElement, ...rest: unknown[]) => void;
 		setVideoMiddlewareGlobalConfig(config: { disablePerFrameCanvasRendering: boolean }): Promise<void>;
 		addVideoMiddleware(middleware: VideoMiddleware): Promise<unknown>;
 		removeVideoMiddleware(middleware: VideoMiddleware): Promise<unknown>;
@@ -34,6 +43,8 @@ const BRAND: { id: Choice; label: string }[] = [
 ];
 const CUSTOM_MAX_WIDTH = 1280;
 const CUSTOM_MAX_HEIGHT = 720;
+
+const BRAND_FILES: Record<string, string> = { "smj-hook": "smj-hook.png", "smj-split": "smj-split.png", "smj-wall": "smj-wall.jpg" };
 
 type Saved = { selected: Choice; customImage: string };
 
@@ -57,7 +68,7 @@ function writeSaved(saved: Saved) {
 function effectOf({ selected, customImage }: Saved): BackgroundEffect {
 	if (selected === "blur") return { type: "blur" };
 	if (selected === "custom") return customImage ? { type: "image", src: customImage } : { type: "none" };
-	if (BRAND.some((item) => item.id === selected)) return { type: "image", src: `${ASSETS}backgrounds/${selected}.jpg` };
+	if (BRAND.some((item) => item.id === selected)) return { type: "image", src: `${ASSETS}backgrounds/${BRAND_FILES[selected]}` };
 	return { type: "none" };
 }
 
@@ -82,6 +93,43 @@ function readImageFile(file: File) {
 	});
 }
 
+/**
+ * Wraps RealtimeKit's self `updateVideo` so a mirrored self view shows the
+ * processor's preview track instead of the track being sent. Returns the
+ * setter for that track; null puts the sent track back.
+ */
+function showPreviewInSelfView(self: Meeting["self"]) {
+	const original = self.updateVideo;
+	if (typeof original !== "function") return () => {};
+	let preview: MediaStreamTrack | null = null;
+	const views = new Set<HTMLVideoElement>();
+	const watched = new WeakSet<HTMLVideoElement>();
+	const shown = (element: HTMLVideoElement) => (element.srcObject as MediaStream | null)?.getVideoTracks()[0];
+	const wantsPreview = (element: HTMLVideoElement) =>
+		!!preview && preview.readyState === "live" && !!self.videoEnabled && element.classList.contains("mirror");
+
+	self.updateVideo = function (element: HTMLVideoElement, ...rest: unknown[]) {
+		if (!element) return original.call(this, element, ...rest);
+		views.add(element);
+		if (!watched.has(element)) {
+			watched.add(element);
+			// the mirror class follows the "mirror my video" setting without another updateVideo call
+			new MutationObserver(() => self.updateVideo?.(element)).observe(element, { attributes: true, attributeFilter: ["class"] });
+		}
+		if (wantsPreview(element) && shown(element) === preview) return;
+		original.call(this, element, ...rest);
+		if (wantsPreview(element) && element.srcObject) element.srcObject = new MediaStream([preview!]);
+	};
+
+	return (track: MediaStreamTrack | null) => {
+		preview = track;
+		for (const element of views) {
+			if (!element.isConnected) views.delete(element);
+			else self.updateVideo?.(element);
+		}
+	};
+}
+
 export async function setupVideoBackground(meeting: Meeting, elements: { button: HTMLButtonElement; panel: HTMLElement; toast: HTMLElement }) {
 	const { button, panel, toast } = elements;
 	if (!(await VideoBackgroundProcessor.checkSupport())) {
@@ -96,6 +144,7 @@ export async function setupVideoBackground(meeting: Meeting, elements: { button:
 	let processor: VideoBackgroundProcessor | null = null;
 	let attached = false;
 	let toastTimer: ReturnType<typeof setTimeout> | undefined;
+	const setPreview = showPreviewInSelfView(meeting.self);
 
 	const say = (text: string) => {
 		toast.textContent = text;
@@ -111,6 +160,7 @@ export async function setupVideoBackground(meeting: Meeting, elements: { button:
 		const current = new VideoBackgroundProcessor({
 			assetsBase: ASSETS,
 			canvas,
+			preview: true,
 			onDegrade: () => say("设备性能有限，已自动降低背景处理帧率"),
 			onOverload: () => {
 				say("设备性能不足，已关闭视频背景");
@@ -125,6 +175,7 @@ export async function setupVideoBackground(meeting: Meeting, elements: { button:
 		}
 		if (!raw) return;
 		await current.start(raw);
+		if (processor === current) setPreview(current.previewTrack);
 		raw.addEventListener("ended", () => current.stop(), { once: true });
 	};
 
@@ -132,6 +183,7 @@ export async function setupVideoBackground(meeting: Meeting, elements: { button:
 	const apply = () => {
 		applying = applying.then(async () => {
 			if (effect.type === "none") {
+				setPreview(null);
 				if (attached) {
 					attached = false;
 					await meeting.self.removeVideoMiddleware(middleware);
@@ -154,6 +206,7 @@ export async function setupVideoBackground(meeting: Meeting, elements: { button:
 			await meeting.self.addVideoMiddleware(middleware);
 		}).catch((error) => {
 			console.warn("video background", error);
+			setPreview(null);
 			button.classList.remove("loading");
 			say("视频背景启用失败，已恢复原始画面");
 			saved = { ...saved, selected: "none" };
@@ -193,7 +246,7 @@ export async function setupVideoBackground(meeting: Meeting, elements: { button:
 		const options: { id: Choice; label: string; thumb?: string; style?: string }[] = [
 			{ id: "none", label: "无", style: "background:#2c3644" },
 			{ id: "blur", label: "模糊", style: "background:linear-gradient(135deg,#5b6b85 0%,#9aa8bd 50%,#4a5a73 100%)" },
-			...BRAND.map((item) => ({ ...item, thumb: `${ASSETS}backgrounds/${item.id}.jpg` })),
+			...BRAND.map((item) => ({ ...item, thumb: `${ASSETS}backgrounds/${BRAND_FILES[item.id]}` })),
 			{ id: "custom", label: saved.customImage ? "自定义" : "+ 上传图片", thumb: saved.customImage || undefined, style: "background:#2c3644" },
 		];
 		panel.replaceChildren();

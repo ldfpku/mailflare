@@ -16,7 +16,7 @@ const pkg = join(root, "node_modules", "@mediapipe", "tasks-vision");
 const version = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")).version;
 const output = join(root, "public", "vendor", "video-background", version);
 
-for (const file of ["selfie_segmenter_landscape.tflite", "backgrounds/smj-hook.jpg", "backgrounds/smj-split.jpg", "backgrounds/smj-wall.jpg"]) {
+for (const file of ["selfie_segmenter_landscape.tflite", "backgrounds/smj-hook.png", "backgrounds/smj-split.png", "backgrounds/smj-wall.jpg"]) {
 	if (!existsSync(join(output, file))) throw new Error(`Missing ${file} in ${output}; copy it from HuLa public/video-bg`);
 }
 
