@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { domains, mailboxes } from "@/db/schema";
 import { formatEmailAddress } from "@/lib/email/address";
 import { sendEmail } from "@/lib/email/send";
+import { occupiedMeetings } from "@/lib/im/call-busy";
 import { openSingleRoom, sendMessage, type ImDelivery } from "@/lib/im/chat";
 import { IM_ALL_STAFF_ROOM_ID, IM_MSG_TYPE, IM_ROOM_TYPE } from "@/lib/im/chat-utils";
 import { imAvatarUrl } from "@/lib/im/users-utils";
@@ -11,6 +12,8 @@ import {
 	MEETING_ID_PATTERN,
 	MeetingError,
 	formatMeetingTime,
+	meetingClosedReason,
+	meetingTiming,
 	invitationHtml,
 	invitationSubject,
 	invitationText,
@@ -19,6 +22,8 @@ import {
 	meetingUrl,
 	newMeetingId,
 	type MeetingCreateInput,
+	type MeetingStatus,
+	type MeetingTiming,
 } from "./meeting-utils";
 import { addRealtimeKitParticipant, createRealtimeKitMeeting, requireRealtimeKitConfig } from "./realtimekit";
 
@@ -50,6 +55,7 @@ interface MeetingRow {
 	duration_minutes: number;
 	sequence: number;
 	created_at: number;
+	/** Set only by cancelling, so it reads as “cancelled at”. */
 	ended_at: number | null;
 }
 
@@ -64,6 +70,16 @@ export interface MeetingView {
 	durationMinutes: number;
 	createdAt: number;
 	inviteeIds: string[];
+	/** Worked out on the server (`meetingTiming`), so the chat cards on every client agree. */
+	status: MeetingStatus;
+	endsAt: number;
+	joinableUntil: number | null;
+	cancelledAt: number | null;
+}
+
+/** What a chat card needs to show a meeting's state, and when to ask again. */
+export interface MeetingStatusView extends MeetingTiming {
+	id: string;
 }
 
 export interface MeetingCreated {
@@ -97,7 +113,18 @@ async function findMeeting(env: Env, id: string): Promise<MeetingRow> {
 	return row;
 }
 
-function toView(row: MeetingRow, hostName: string, origin: string): MeetingView {
+function timingOf(row: MeetingRow, now: number, occupied: boolean): MeetingTiming {
+	return meetingTiming({ startsAt: row.starts_at, createdAt: row.created_at, durationMinutes: row.duration_minutes, cancelledAt: row.ended_at }, now, occupied);
+}
+
+/** The row's status now; asks who is in the meeting only when the clock alone would call it ended. */
+async function currentTiming(env: Env, row: MeetingRow, now = Date.now()): Promise<MeetingTiming> {
+	const byClock = timingOf(row, now, false);
+	if (byClock.status !== "ended") return byClock;
+	return timingOf(row, now, (await occupiedMeetings(env, [row.id], now)).has(row.id));
+}
+
+function toView(row: MeetingRow, hostName: string, origin: string, timing: MeetingTiming = timingOf(row, Date.now(), false)): MeetingView {
 	let inviteeIds: string[] = [];
 	try {
 		const parsed = JSON.parse(row.invitee_ids);
@@ -116,13 +143,52 @@ function toView(row: MeetingRow, hostName: string, origin: string): MeetingView 
 		durationMinutes: row.duration_minutes,
 		createdAt: row.created_at,
 		inviteeIds,
+		status: timing.status,
+		endsAt: timing.endsAt,
+		joinableUntil: timing.joinableUntil,
+		cancelledAt: timing.cancelledAt,
 	};
 }
 
 export async function getMeeting(env: Env, id: string, origin: string): Promise<MeetingView> {
 	const row = await findMeeting(env, id);
 	const host = await getMeetingUser(env, row.host_id);
-	return toView(row, host?.name ?? "", origin);
+	return toView(row, host?.name ?? "", origin, await currentTiming(env, row));
+}
+
+/**
+ * The state of each meeting a chat card links to, for HuLa to label the card (待开始 / 进行中 / 已结束 / 已取消).
+ * The id is the secret in the link, as for the meeting page, so anyone signed in who has the link may ask;
+ * unknown ids are left out.
+ */
+export async function getMeetingStatuses(env: Env, ids: string[], now = Date.now()): Promise<MeetingStatusView[]> {
+	const wanted = [...new Set(ids.filter((id) => MEETING_ID_PATTERN.test(id)))].slice(0, 50);
+	if (!wanted.length) return [];
+	const result = await env.DB
+		.prepare(`SELECT * FROM im_meetings WHERE id IN (${wanted.map(() => "?").join(", ")})`)
+		.bind(...wanted)
+		.all<MeetingRow>();
+	const overdue = result.results.filter((row) => timingOf(row, now, false).status === "ended").map((row) => row.id);
+	const occupied = await occupiedMeetings(env, overdue, now);
+	return result.results.map((row) => ({ id: row.id, ...timingOf(row, now, occupied.has(row.id)) }));
+}
+
+/** Everyone whose chat may hold the meeting's card: the host, the invitees and the members of the chat it was started from. */
+export async function meetingAudience(env: Env, id: string): Promise<string[]> {
+	const row = await env.DB.prepare("SELECT host_id, room_id, invitee_ids FROM im_meetings WHERE id = ?").bind(id).first<Pick<MeetingRow, "host_id" | "room_id" | "invitee_ids">>();
+	if (!row) return [];
+	const ids = new Set<string>([row.host_id]);
+	try {
+		const invitees = JSON.parse(row.invitee_ids);
+		if (Array.isArray(invitees)) for (const invitee of invitees) if (typeof invitee === "string") ids.add(invitee);
+	} catch {
+		// A malformed list adds nobody.
+	}
+	if (row.room_id) {
+		const members = await env.DB.prepare("SELECT user_id FROM im_room_members WHERE room_id = ?").bind(row.room_id).all<{ user_id: string }>();
+		for (const member of members.results) ids.add(member.user_id);
+	}
+	return [...ids];
 }
 
 /** The room a meeting is started from must be one the host is in; a group's members become the default invitees. */
@@ -278,9 +344,11 @@ export interface MeetingJoin {
 /** Adds the user to the RealtimeKit meeting once and reuses that participant's token for every later join. */
 export async function joinMeeting(env: Env, id: string, user: MeetingUser, origin: string): Promise<MeetingJoin> {
 	const row = await findMeeting(env, id);
-	if (row.ended_at) throw new MeetingError(404, "会议已结束");
+	const timing = await currentTiming(env, row);
+	const closed = meetingClosedReason(timing.status);
+	if (closed) throw new MeetingError(410, closed);
 	const hostRecord = await getMeetingUser(env, row.host_id);
-	const meeting = toView(row, hostRecord?.name ?? "", origin);
+	const meeting = toView(row, hostRecord?.name ?? "", origin, timing);
 	const host = row.host_id === user.id;
 
 	const existing = await env.DB
@@ -315,6 +383,8 @@ export async function cancelMeeting(env: Env, id: string, user: MeetingUser, ori
 	if (row.host_id !== user.id) throw new MeetingError(403, "只有发起人可以取消会议");
 	if (row.ended_at) return { id: row.id, mailError: null };
 	const now = Date.now();
+	// Like other meeting services, a meeting that is over can no longer be cancelled: its card already reads “已结束”.
+	if ((await currentTiming(env, row, now)).status === "ended") throw new MeetingError(410, "会议已结束，无需取消");
 	await env.DB.prepare("UPDATE im_meetings SET ended_at = ?, sequence = sequence + 1 WHERE id = ?").bind(now, row.id).run();
 	const cancelled = { ...row, ended_at: now, sequence: row.sequence + 1 };
 
@@ -392,7 +462,7 @@ export interface MeetingPerson {
 /** The organisation directory for the meeting page's “添加参会人”, marking who is already invited or in the meeting. */
 export async function listMeetingPeople(env: Env, id: string, user: MeetingUser): Promise<MeetingPerson[]> {
 	const row = await findMeeting(env, id);
-	if (row.ended_at) throw new MeetingError(404, "会议已结束");
+	if (row.ended_at) throw new MeetingError(410, "会议已取消");
 	if (!(await canInvite(env, row, user.id))) throw new MeetingError(403, "加入会议后才能邀请他人");
 	const result = await env.DB
 		.prepare(
@@ -433,7 +503,7 @@ export async function inviteToMeeting(
 	origin: string,
 ): Promise<MeetingInvited> {
 	const row = await findMeeting(env, id);
-	if (row.ended_at) throw new MeetingError(404, "会议已结束");
+	if (row.ended_at) throw new MeetingError(410, "会议已取消");
 	if (!(await canInvite(env, row, inviter.id))) throw new MeetingError(403, "加入会议后才能邀请他人");
 	const wanted = [...new Set(input.userIds.filter((userId) => typeof userId === "string" && userId && userId !== inviter.id))].slice(0, 50);
 	const people = await activeUsers(env, wanted);

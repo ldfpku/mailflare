@@ -199,6 +199,8 @@ rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; 
 #status { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 24px; }
 #status[hidden] { display: none; }
 #status p { margin: 0; color: var(--smj-muted); }
+#status h2 { margin: 0; font-size: 18px; color: var(--smj-navy); }
+#status h2[hidden] { display: none; }
 #invite-dialog { border: 1px solid var(--smj-line); border-radius: 10px; padding: 0; width: min(420px, calc(100vw - 32px)); color: var(--smj-navy); }
 #invite-dialog::backdrop { background: rgba(26, 43, 74, 0.35); }
 #invite-dialog form { display: flex; flex-direction: column; gap: 12px; padding: 16px; max-height: calc(100vh - 4rem); }
@@ -275,7 +277,7 @@ html, body { height: 100dvh; }
 <div id="bg-toast" hidden></div>
 <main>
 	<rtk-meeting id="meeting" mode="fill" show-setup-screen="true"></rtk-meeting>
-	<div id="status"><p id="status-text">正在进入会议…</p><button type="button" class="primary" id="retry" hidden>重新进入</button></div>
+	<div id="status"><h2 id="status-title" hidden></h2><p id="status-text">正在进入会议…</p><button type="button" class="primary" id="retry" hidden>重新进入</button></div>
 </main>
 <dialog id="invite-dialog">
 	<form method="dialog" id="invite-form">
@@ -359,7 +361,37 @@ async function participantToken() {
 	return data.authToken;
 }
 
+/**
+ * A cancelled meeting, or one past its end and grace with nobody left in it, says so here instead of
+ * opening an empty room (the desktop app's link carries a token that would still let RealtimeKit in).
+ */
+async function closedMeeting() {
+	let data;
+	try {
+		const response = await fetch("/api/meetings/" + config.id + "/status", { cache: "no-store" });
+		if (response.status === 404) { show("会议不存在，请检查会议链接", false); return true; }
+		if (!response.ok) return false;
+		data = await response.json();
+	} catch {
+		// The join itself reports network trouble.
+		return false;
+	}
+	const meeting = data && data.meeting;
+	if (!meeting || (meeting.status !== "cancelled" && meeting.status !== "ended")) return false;
+	if (location.hash) history.replaceState(null, "", location.pathname);
+	describe(meeting);
+	document.getElementById("calendar").hidden = true;
+	document.getElementById("copy").hidden = true;
+	document.getElementById("meeting").hidden = true;
+	const title = document.getElementById("status-title");
+	title.textContent = meeting.status === "cancelled" ? "会议已取消" : "会议已结束";
+	title.hidden = false;
+	show(meeting.status === "cancelled" ? "发起人已取消该会议，无法加入。" : "该会议已结束，无法再加入。如需继续沟通，请重新发起会议。", false);
+	return true;
+}
+
 async function start() {
+	if (await closedMeeting()) return;
 	const token = await participantToken();
 	if (!token) return;
 	const [loader] = await Promise.all([import(config.ui + "/loader/index.es2017.js"), loadScript(config.core + "/browser.js?r=" + config.coreRevision)]);
