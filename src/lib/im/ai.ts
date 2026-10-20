@@ -3,7 +3,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { getDb } from "@/db";
 import { getAgentEnabled, getAgentProviderConfig } from "@/lib/agent/provider";
 import { DEFAULT_CLOUDFLARE_MODEL } from "@/lib/agent/provider-constants";
-import { allowAgentRequest } from "@/lib/agent/rate-limit";
+import { agentLimitMessage, checkAgentLimits } from "@/lib/agent/rate-limit";
 import { recordAiUsage } from "@/lib/ai/usage";
 import { getEmailAddress, getEmailDisplayName } from "@/lib/email/address";
 import { getMailboxAccessLevel } from "@/lib/mailboxes/access";
@@ -46,7 +46,8 @@ function imAiModelId(env: Env, configured: { provider: string; model: string }):
 async function imAiModel(env: Env, userId: string) {
 	if (!env.AI) throw new ImChatError(400, "AI 功能未开启，请联系管理员");
 	if (!(await getAgentEnabled(env))) throw new ImChatError(403, "管理员已关闭 AI 功能");
-	if (!(await allowAgentRequest(env, `im-ai:${userId}`, `user:${userId}`))) throw new ImChatError(400, "请求太频繁或今日 AI 次数已用完，请稍后再试");
+	const limit = await checkAgentLimits(env, `im-ai:${userId}`, `user:${userId}`);
+	if (!limit.allowed) throw new ImChatError(400, agentLimitMessage(limit));
 	const config = await getAgentProviderConfig(env);
 	const modelIds = imAiModelChain(imAiModelId(env, config));
 	const workersAi = createWorkersAI({ binding: env.AI });

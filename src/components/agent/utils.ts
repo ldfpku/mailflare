@@ -1,6 +1,15 @@
 import type { Translator } from "../../lib/i18n/utils";
 import type { KeyboardEvent } from "react";
-import type { AgentActionProposal, AgentDraftAction, AgentEmailReference, AgentEvent, AgentMessage, AgentTurn, QueuedAgentMessage } from "./types";
+import type { TranslationKey } from "../../lib/i18n/types";
+import type { AgentActionProposal, AgentDraftAction, AgentEmailReference, AgentErrorResponse, AgentEvent, AgentMessage, AgentTurn, QueuedAgentMessage } from "./types";
+
+/** The message for each refusal reason the assistant routes return with their 429 or 503. */
+export const AGENT_LIMIT_MESSAGE_KEYS: Record<NonNullable<AgentErrorResponse["reason"]>, TranslationKey> = {
+	rate: "agent.panel.limit.rate",
+	"user-daily": "agent.panel.limit.userDaily",
+	"global-daily": "agent.panel.limit.globalDaily",
+	unavailable: "agent.panel.limit.unavailable",
+};
 
 export function enqueueAgentMessage(messages: QueuedAgentMessage[], text: string): QueuedAgentMessage[] {
 	return [...messages, { id: crypto.randomUUID(), text: text.trim() }];

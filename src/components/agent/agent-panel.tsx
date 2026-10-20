@@ -20,7 +20,7 @@ import { SendReview } from "./send-review";
 import type { ReviewSnapshot } from "./send-review-types";
 import { approveAgentAction, requestDraftReview } from "./client-actions";
 import type { AgentConversation, AgentConversationsResponse, AgentErrorResponse, AgentEvent, AgentHistoryResponse, AgentJob, AgentJobsResponse, AgentMessage, AgentPanelProps, AgentPanelView, AgentSettings, AgentSettingsResponse, QueuedAgentMessage } from "./types";
-import { activeAgentTool, activeAgentToolLabel, appendAgentReasoning, consumeAgentStream, editQueuedAgentMessage, enqueueAgentMessage, groupAgentMessages, isAgentScrollAtBottom, markAgentDraftSent, normalizeAgentHistory, readAgentConversationId, removeQueuedAgentMessage, resizeAgentInput, saveAgentConversationId, shouldSubmitAgentInput, steerQueuedAgentMessage, uniqueAgentDraftActions } from "./utils";
+import { AGENT_LIMIT_MESSAGE_KEYS, activeAgentTool, activeAgentToolLabel, appendAgentReasoning, consumeAgentStream, editQueuedAgentMessage, enqueueAgentMessage, groupAgentMessages, isAgentScrollAtBottom, markAgentDraftSent, normalizeAgentHistory, readAgentConversationId, removeQueuedAgentMessage, resizeAgentInput, saveAgentConversationId, shouldSubmitAgentInput, steerQueuedAgentMessage, uniqueAgentDraftActions } from "./utils";
 
 export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentPanelProps) {
 	const { t } = useLanguage();
@@ -251,7 +251,10 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		setMessages((current) => [...current, { id: userMessageId, role: "user", content: text, createdAt: new Date(startedAt).toISOString() }, { id: assistantMessageId, role: "assistant", content: "", pending: true }]);
 		try {
 			const response = await authFetch("/api/agent/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mailboxId, ...(selectedConversationRef.current ? { conversationId: selectedConversationRef.current } : {}), ...(openEmailIdRef.current ? { currentMessageId: openEmailIdRef.current } : {}), text, timeZone: getUserTimeZone() }), signal: controller.signal });
-			if (!response.ok) throw new Error(((await response.json()) as AgentErrorResponse).error || t("agent.panel.unavailable"));
+			if (!response.ok) {
+				const failure = (await response.json().catch(() => ({}))) as AgentErrorResponse;
+				throw new Error(failure.reason ? t(AGENT_LIMIT_MESSAGE_KEYS[failure.reason]) : failure.error || t("agent.panel.unavailable"));
+			}
 			accepted = true;
 			const responseConversationId = response.headers.get("X-Conversation-Id");
 			if (responseConversationId && generation === queueGenerationRef.current) { selectedConversationRef.current = responseConversationId; saveAgentConversationId(mailboxId, responseConversationId); setConversationId(responseConversationId); }
