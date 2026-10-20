@@ -7,11 +7,11 @@ import { useLanguage } from "@/components/language-provider";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { TurnstileField } from "@/components/auth/turnstile";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { LoginNameInput } from "@/components/auth/login-name-input";
 import { Label } from "@/components/ui/label";
 import { requestPasswordReset } from "./utils";
 
-export function ForgotPasswordClient() {
+export function ForgotPasswordClient({ loginDomain = null }: { loginDomain?: string | null }) {
 	const { t } = useLanguage();
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -57,7 +57,7 @@ export function ForgotPasswordClient() {
 				<form onSubmit={onSubmit} className="space-y-5">
 					<div className="space-y-2">
 						<Label htmlFor="email">{t("auth.email")}</Label>
-						<Input id="email" name="email" type="email" autoComplete="email" required autoFocus />
+						<LoginNameInput id="email" name="email" domain={loginDomain} prefill autoComplete="username" required autoFocus />
 					</div>
 					{error && (
 						<p role="alert" className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>

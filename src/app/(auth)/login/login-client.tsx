@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TurnstileField } from "@/components/auth/turnstile";
+import { LoginNameInput, rememberLoginName } from "@/components/auth/login-name-input";
 import { submitLogin, submitMfaCode } from "./utils";
 
-export function LoginClient({ adding = false }: { adding?: boolean }) {
+export function LoginClient({ adding = false, loginDomain = null }: { adding?: boolean; loginDomain?: string | null }) {
   const { t } = useLanguage();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -41,12 +42,14 @@ export function LoginClient({ adding = false }: { adding?: boolean }) {
     setError(null);
 
     try {
-      const { ok, data } = await submitLogin(new FormData(e.currentTarget));
+      const form = new FormData(e.currentTarget);
+      const { ok, data } = await submitLogin(form);
       if (!ok) {
         setError(data.error ?? t("auth.loginFailed"));
         setTurnstileReset((value) => value + 1);
         return;
       }
+      rememberLoginName(String(form.get("email") ?? ""));
       if (data.mfaRequired && data.challengeToken) {
         setChallengeToken(data.challengeToken);
         return;
@@ -147,11 +150,12 @@ export function LoginClient({ adding = false }: { adding?: boolean }) {
       <form method="post" onSubmit={onSubmit} className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor="email">{t("auth.email")}</Label>
-          <Input
+          <LoginNameInput
             id="email"
             name="email"
-            type="email"
-            autoComplete="email"
+            domain={loginDomain}
+            prefill={!adding}
+            autoComplete="username"
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "login-error" : undefined}
             required

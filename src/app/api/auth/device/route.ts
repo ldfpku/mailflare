@@ -13,6 +13,7 @@ import { consumeLoginChallenge, createLoginChallenge, getLoginChallengeUserId } 
 import { verifySecondFactor } from "@/lib/auth/mfa";
 import { createDeviceKey, revokeDeviceKey } from "@/lib/auth/device-keys";
 import { authenticateApiRequest } from "@/lib/api/key-auth";
+import { resolveLoginEmail } from "@/lib/auth/login-domain";
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
 	return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
 	const db = getDb(env);
 	let userId: string;
 	if ("password" in parsed.data) {
-		const [user] = await db.select().from(users).where(eq(users.email, parsed.data.email)).limit(1);
+		const [user] = await db.select().from(users).where(eq(users.email, await resolveLoginEmail(env, parsed.data.email))).limit(1);
 		if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) return json({ error: "Invalid credentials" }, 401);
 		if (user.disabled || user.deletedAt) return json({ error: "Account disabled" }, 403);
 		if (user.totpEnabled && user.totpSecret) {

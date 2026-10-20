@@ -4,6 +4,7 @@ import { AuthGuard } from "@/components/auth/auth-guard";
 import { hasAdminAccount } from "@/lib/auth/setup";
 import { getUserFromSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { getEnv } from "@/lib/cloudflare";
+import { getLoginDomain } from "@/lib/auth/login-domain";
 import { authPageMetadata } from "../auth-metadata";
 import { LoginClient } from "./login-client";
 
@@ -23,7 +24,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
 	return (
 		<AuthGuard mode="public" allowAuthenticated={adding}>
-			<LoginClient adding={adding} />
+			<LoginClient adding={adding} loginDomain={await getLoginDomain(env)} />
 		</AuthGuard>
 	);
 }

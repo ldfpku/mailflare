@@ -140,6 +140,8 @@ Chat has its own index, `im_messages_fts` (migration 0072), with the trigram tok
 
 Two independent auth surfaces:
 
+Sign-in names may omit the domain: `/api/auth/login`, `/api/auth/device`, the password-reset request and HuLa's `oauth/anyTenant/login` complete a bare name with `resolveLoginEmail` (`src/lib/auth/login-domain.ts`: `LOGIN_DOMAIN`, else the first domain added), and the login and forgot-password forms show that domain after the box (`LoginNameInput`, which also remembers the last name). HuLa reads it as `loginDomain` from `system/anyTenant/config/init`.
+
 - **Session cookie** (`ep_session`) — `getCurrentUser` / `requireUser` in `src/lib/auth/cookies.ts`, backed by `src/lib/auth/session.ts`. Used by dashboard/admin API routes. `requireUser` *throws*, which Next surfaces as a 500; prefer `requireSessionUser` from `src/lib/api/auth.ts`, which returns a proper 401 response. Most older routes still use `requireUser` and 500 on unauthenticated requests.
 - **API key bearer token** — `authenticateApiKey` + `requireScope` in `src/lib/api/auth.ts`, used by the public `/api/v1/*` surface.
 

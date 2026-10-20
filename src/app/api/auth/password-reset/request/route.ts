@@ -7,6 +7,7 @@ import { readJsonBody } from "@/lib/http/request";
 import { RequestBodyTooLargeError } from "@/lib/http/errors";
 import { requestPasswordReset } from "@/lib/auth/password-reset";
 import { getServerTranslator } from "@/lib/i18n/server";
+import { resolveLoginEmail } from "@/lib/auth/login-domain";
 
 /**
  * Always answers 200 once the input is well-formed, whether or not the
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
 
 	const origin = env.APP_URL?.trim() || new URL(request.url).origin;
 	try {
-		await requestPasswordReset(env, parsed.data.email, origin, await getServerTranslator());
+		await requestPasswordReset(env, await resolveLoginEmail(env, parsed.data.email), origin, await getServerTranslator());
 	} catch (error) {
 		// Delivery problems are logged, never surfaced: the answer stays uniform.
 		console.error("Password reset request failed", error);

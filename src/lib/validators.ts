@@ -78,13 +78,16 @@ export const addDomainSchema = z.object({
 	receivingProvider: z.enum(["none", "cloudflare", "resend", "ses"]).optional(),
 });
 
+// Sign-in names may omit the domain; routes complete them with resolveLoginEmail.
+const loginNameSchema = z.string().trim().min(1).max(254);
+
 export const loginSchema = z.object({
-	email: z.string().email(),
+	email: loginNameSchema,
 	password: z.string().min(1),
 });
 
 export const passwordResetRequestSchema = z.object({
-	email: z.string().trim().email(),
+	email: loginNameSchema,
 });
 
 export const passwordResetConfirmSchema = z.object({
@@ -94,7 +97,7 @@ export const passwordResetConfirmSchema = z.object({
 
 /** `/api/auth/device`: either email + password, or a challenge + code after MFA. */
 export const deviceLoginSchema = z.union([
-	z.object({ email: z.string().trim().email(), password: z.string().min(1), deviceName: z.string().trim().min(1).max(100) }),
+	z.object({ email: loginNameSchema, password: z.string().min(1), deviceName: z.string().trim().min(1).max(100) }),
 	z.object({ challengeToken: z.string().min(8).max(200), code: z.string().trim().min(6).max(32), deviceName: z.string().trim().min(1).max(100) }),
 ]);
 
