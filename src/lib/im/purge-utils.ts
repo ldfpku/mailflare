@@ -19,7 +19,7 @@ export const IM_PURGE_CATEGORY_LABELS: Record<ImPurgeCategory, string> = {
 export const IM_PURGE_DEFAULT_CATEGORIES: ImPurgeCategory[] = ["test", "admin"];
 
 /** Accounts of real people whose chats are not test data unless the admin says so; editable on the page. */
-export const IM_PURGE_DEFAULT_REAL_EMAILS = ["ninggd@smjtools.com", "yangzf@smjtools.com"];
+export const IM_PURGE_DEFAULT_REAL_EMAILS = ["ninggd@smjtools.com", "yangzf@smjtools.com", "lisy@smjtools.com", "lisg@smjtools.com"];
 
 export const IM_PURGE_CONFIRM_TEXT = "确认清理";
 
