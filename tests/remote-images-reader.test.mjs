@@ -101,3 +101,12 @@ test("images on this application's own origin load directly, not through the pro
 		assert.doesNotMatch(result.html, /\/api\/remote-images/);
 	}
 });
+
+test("a mail cannot make the reader request this application's API with the session cookie", () => {
+	const api = "https://mail.example/api/settings/remote-content?x=1";
+	const blocked = prepareReaderEmailHtml(`<img src="${api}">`, { reader: true, allowRemote: false });
+	assert.equal(blocked.hasRemote, true);
+	assert.ok(!blocked.html.includes(`src="${api}"`));
+	const allowed = prepareReaderEmailHtml(`<img src="${api}">`, { reader: true, allowRemote: true });
+	assert.ok(!allowed.html.includes(`src="${api}"`));
+});

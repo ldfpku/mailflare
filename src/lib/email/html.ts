@@ -217,6 +217,11 @@ function outgoingFragment(template: HTMLTemplateElement, doc: MailDocument): str
 	return template.innerHTML;
 }
 
+/** Same-origin paths an incoming mail may load as an image: anything outside the API surfaces. */
+export function isStaticSameOriginPath(pathname: string): boolean {
+	return !/^\/(api|jmap|\.well-known|meet)(\/|$)/i.test(pathname);
+}
+
 export function prepareEmailHtml(source: string, options: Options = {}) {
 	const outgoing = !!options.forOutgoing && !options.editor;
 	const doc = mailDocument(source, outgoing);
@@ -234,7 +239,8 @@ export function prepareEmailHtml(source: string, options: Options = {}) {
 			if (!["http:", "https:"].includes(url.protocol) || url.hostname === "invalid.invalid") return null;
 			// Our own origin (the brand signature's symbol) tells no third party that the mail was opened,
 			// so the composer and the reader show it without asking and without the remote-image proxy.
-			if ((options.editor || options.reader) && typeof location !== "undefined" && url.origin === location.origin) return url.href;
+			// The reader takes only static files: a received mail must not make it fire GETs at our API with the session cookie.
+			if ((options.editor || (options.reader && isStaticSameOriginPath(url.pathname))) && typeof location !== "undefined" && url.origin === location.origin) return url.href;
 			hasRemote = true;
 			return options.allowRemote || (options.forOutgoing && !options.editor) ? url.href : null;
 		} catch { return null; }
