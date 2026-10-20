@@ -6,6 +6,7 @@ import { useLanguage } from "@/components/language-provider";
 import type { AgentDraftAction, AgentEmailReference, AgentMessage, AgentTurnProps } from "./types";
 import { agentActionProposal, agentToolLabel, draftFromToolContent, parseAgentToolContent } from "./utils";
 import { AgentEmailLink } from "./email-link";
+import { AgentMeetingProposalCard, AgentTodoProposalCard } from "./task-cards";
 
 function emailReferences(value: Record<string, unknown>): AgentEmailReference[] {
 	if (Array.isArray(value.emails)) return value.emails.filter((item): item is AgentEmailReference => !!item && typeof item === "object" && typeof item.id === "string");
@@ -33,7 +34,8 @@ export function AgentToolActivity({ item, forceOpen }: { item: AgentMessage; for
 		<div className="mt-1.5 space-y-2 pl-[18px] text-neutral-600">
 			<p>{display.description}</p>
 			{emails.length > 0 && <ul className="space-y-1.5">{emails.map((email) => <li key={email.id} className="break-words"><AgentEmailLink email={email} className="font-medium text-blue-700 hover:underline" />{email.from && <span className="text-neutral-500"> · {email.from}</span>}{email.snippet && <p className="line-clamp-2 text-neutral-500">{email.snippet}</p>}</li>)}</ul>}
-			{result && Object.entries(result).filter(([key, value]) => !["emails", "text", "attachments", "result", "id", "subject", "from", "snippet", "url", "reviewUrl", "action", "status"].includes(key) && value !== null && typeof value !== "object").map(([key, value]) => <p key={key} className="break-words"><span className="text-neutral-500">{key.replace(/([A-Z])/g, " $1")}: </span>{String(value)}</p>)}
+			{typeof result?.filename === "string" && <p className="break-words font-medium">{result.filename}</p>}
+			{typeof result?.reason === "string" && <p className="break-words text-amber-700">{result.reason}</p>}
 			{typeof result?.text === "string" && <p className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words">{result.text}</p>}
 			{Array.isArray(result?.attachments) && result.attachments.length > 0 && <p>{t("agent.activity.attachments", { list: result.attachments.map((file: { filename?: string }) => file.filename || t("agent.activity.attachment")).join(", ") })}</p>}
 			{!result && item.content && <p className="whitespace-pre-wrap break-words">{item.content}</p>}
@@ -52,6 +54,8 @@ export function AgentDraftActions({ action, onOpenDraft, onApproveDraft, approvi
 export function AgentPendingActions({ item, onApproveAction, approvingId }: Pick<AgentTurnProps, "onApproveAction" | "approvingId"> & { item: AgentMessage }) {
 	const { t } = useLanguage();
 	const proposal = agentActionProposal(item.content);
+	if (proposal?.action === "create_todos") return <AgentTodoProposalCard item={item} proposal={proposal} onApproveAction={onApproveAction} approvingId={approvingId} />;
+	if (proposal?.action === "schedule_meeting") return <AgentMeetingProposalCard item={item} proposal={proposal} onApproveAction={onApproveAction} approvingId={approvingId} />;
 	if (proposal?.status !== "pending_approval" || draftFromToolContent(item.content)) return null;
 	return <div className="space-y-2 text-xs">
 		{proposal.emails && <ul className="space-y-1">{proposal.emails.map((email) => <li key={email.id}><AgentEmailLink email={email} className="text-blue-700 hover:underline" /></li>)}</ul>}
