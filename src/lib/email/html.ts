@@ -217,9 +217,9 @@ function outgoingFragment(template: HTMLTemplateElement, doc: MailDocument): str
 	return template.innerHTML;
 }
 
-/** Same-origin paths an incoming mail may load as an image: anything outside the API surfaces. */
+/** Same-origin paths an incoming mail may load as an image: only the brand files, never the API. */
 export function isStaticSameOriginPath(pathname: string): boolean {
-	return !/^\/(api|jmap|\.well-known|meet)(\/|$)/i.test(pathname);
+	return /^\/brand\/[\w.@-]+$/.test(pathname);
 }
 
 export function prepareEmailHtml(source: string, options: Options = {}) {

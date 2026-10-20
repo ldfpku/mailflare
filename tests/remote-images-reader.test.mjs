@@ -110,3 +110,11 @@ test("a mail cannot make the reader request this application's API with the sess
 	const allowed = prepareReaderEmailHtml(`<img src="${api}">`, { reader: true, allowRemote: true });
 	assert.ok(!allowed.html.includes(`src="${api}"`));
 });
+
+test("only the brand directory loads directly; encoded or doubled slashes still go to the proxy", () => {
+	for (const path of ["/%61pi/settings", "//api/settings", "/brand/../api/x", "/brand/a/b.png", "/im/index.html"]) {
+		const src = `https://mail.example${path}`;
+		const result = prepareReaderEmailHtml(`<img src="${src}">`, { reader: true, allowRemote: true });
+		assert.doesNotMatch(result.html, new RegExp(`src="https://mail\\.example`), path);
+	}
+});

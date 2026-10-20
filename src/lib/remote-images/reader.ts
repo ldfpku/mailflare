@@ -1,13 +1,13 @@
 import * as css from "css-tree";
 import parseSrcset from "parse-srcset";
-import { prepareEmailHtml } from "@/lib/email/html";
+import { isStaticSameOriginPath, prepareEmailHtml } from "@/lib/email/html";
 
 export function remoteImageUrl(value: string): string {
 	try {
 		const url = new URL(value);
 		if (url.protocol !== "https:" && url.protocol !== "http:") return value;
 		// The proxy refuses this application's own URLs; they load directly.
-		if (typeof location !== "undefined" && url.origin === location.origin && !/^\/(api|jmap|\.well-known|meet)(\/|$)/i.test(url.pathname)) return url.href;
+		if (typeof location !== "undefined" && url.origin === location.origin && isStaticSameOriginPath(url.pathname)) return url.href;
 		return `/api/remote-images?url=${encodeURIComponent(url.href)}`;
 	} catch {
 		return value;
