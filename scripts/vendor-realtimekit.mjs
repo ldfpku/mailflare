@@ -1,6 +1,7 @@
 // Copies the RealtimeKit browser build and UI Kit into public/vendor so the
 // meeting page loads nothing from a CDN, patches out the UI Kit's Google
-// Fonts loader, and patches how the core picks the received video quality.
+// Fonts loader, and patches how the core picks the received video quality and the screen
+// share bitrate.
 // The output is committed; rerun this only to change version, and bump
 // CORE_REVISION in src/lib/meetings/page.ts whenever the core file changes:
 //
@@ -71,8 +72,14 @@ const ORIGINAL_LAYER_PICK =
 const PATCHED_LAYER_PICK =
 	'g(this,Sl,Ou(()=>{clearTimeout(this.smjLayerTimer);const els=Array.from(a(this,Zr).keys());if(!els.length)return;this.smjLayerTimer=setTimeout(()=>a(this,Sl).call(this),5e3);if(!this.videoTrack)return;let w=0,h=0;for(const el of els)if(el.isConnected&&el.clientWidth*el.clientHeight>w*h){w=el.clientWidth;h=el.clientHeight}if(!w||!h)return;const size=Math.min(w,h*16/9)*(window.devicePixelRatio||1),cur=a(this,mr),next=size>=pD?1:size<mD?0:cur,now=Date.now();(window.__smjLayers||(window.__smjLayers={}))[this.id]={w,h,layer:next,at:now};if(next!==cur||now-(this.smjLayerAt||0)>3e4){f(this,mr,next);this.smjLayerAt=now;a(this,$t).getValue("peerSessionStore").emit(k.MAX_SPATIAL_LAYER_CHANGE,{peerId:this.id,maxSpatialLayer:next})}},2e3))';
 
+// Screen share is produced with one encoding and no bitrate cap, so Chrome
+// limits it to its 2.5 Mbps default and text on a 2K screen blurs; give it
+// 6 Mbps and up to 30 fps (the SFU only takes VP8 for it).
+const SCREEN_SHARE_PRODUCE = 'codecOptions:[{name:"VP8"}],appData:{screenShare:!0';
+
 const CORE_PATCHES = [
 	['preferredRid:e===0?"q":"h"', 'preferredRid:e===0?"h":"f"'],
+	[SCREEN_SHARE_PRODUCE, `encodings:[{maxBitrate:6e6,maxFramerate:30,priority:"high"}],${SCREEN_SHARE_PRODUCE}`],
 	["const pD=.8,mD=1.2;", "const pD=580,mD=530;"],
 	[ORIGINAL_LAYER_PICK, PATCHED_LAYER_PICK],
 ];

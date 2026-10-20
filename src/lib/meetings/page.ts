@@ -27,9 +27,11 @@
 const REALTIMEKIT_VERSION = "2.0.2";
 /** RealtimeKit's capture preset for meetings (`qvga`, `vga`, `hd`, `fhd`); the presets' own default is `vga`. */
 const MEETING_VIDEO_QUALITY = "hd";
+/** Screen share capture; RealtimeKit's own default is 5 fps at most 1920×1080, which makes shared text blurry and scrolling choppy. */
+const MEETING_SCREENSHARE = { width: { max: 2560 }, height: { max: 1600 }, frameRate: { ideal: 15, max: 30 } };
 const VENDOR = `/vendor/realtimekit/${REALTIMEKIT_VERSION}`;
 /** /vendor is cached as immutable: bump this whenever the patched core changes (scripts/vendor-realtimekit.mjs). */
-const CORE_REVISION = "4";
+const CORE_REVISION = "5";
 const REALTIMEKIT_HOSTS = "https://*.realtime.cloudflare.com";
 /** /vendor is cached as immutable: a new directory whenever the bundle, wasm or images change (REVISION in scripts/vendor-video-background.mjs). */
 const VIDEO_BACKGROUND = "/vendor/video-background/0.10.21-2/smj-video-background.js";
@@ -168,7 +170,7 @@ const ZH: Record<string, string> = {
 const SCREEN_LOCK_MESSAGE = "smj-screenshare-lock";
 
 export function renderMeetingPage(id: string, hostPreset = "group_call_host"): string {
-	const config = JSON.stringify({ id, hostPreset, videoQuality: MEETING_VIDEO_QUALITY, lockMessage: SCREEN_LOCK_MESSAGE, core: `${VENDOR}/core`, coreRevision: CORE_REVISION, ui: `${VENDOR}/ui`, videoBackground: VIDEO_BACKGROUND, font: FONT_STACK, zh: ZH }).replace(/</g, "\\u003c");
+	const config = JSON.stringify({ id, hostPreset, videoQuality: MEETING_VIDEO_QUALITY, screenshare: MEETING_SCREENSHARE, lockMessage: SCREEN_LOCK_MESSAGE, core: `${VENDOR}/core`, coreRevision: CORE_REVISION, ui: `${VENDOR}/ui`, videoBackground: VIDEO_BACKGROUND, font: FONT_STACK, zh: ZH }).replace(/</g, "\\u003c");
 	return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -410,7 +412,7 @@ async function start() {
 		console.warn("RealtimeKit UI helpers unavailable", error);
 	}
 	// The presets default to VGA; 720p (with the UI Kit's simulcast layers) is what a meeting should look like.
-	const meeting = await window.RealtimeKitClient.init({ authToken: token, defaults: { audio: true, video: true, mediaConfiguration: { video: config.videoQuality } } });
+	const meeting = await window.RealtimeKitClient.init({ authToken: token, defaults: { audio: true, video: true, mediaConfiguration: { video: config.videoQuality, screenshare: config.screenshare } } });
 	element.showSetupScreen = true;
 	element.meeting = meeting;
 	statusBox.hidden = true;
