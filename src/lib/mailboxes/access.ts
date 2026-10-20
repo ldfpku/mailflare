@@ -20,25 +20,28 @@ export async function getMailboxAccessLevel(
 	user: Pick<SessionUser, "id" | "role">,
 	mailboxId: string,
 ): Promise<MailboxAccessLevel | null> {
-	const [mailbox] = await db.select().from(mailboxes).where(eq(mailboxes.id, mailboxId)).limit(1);
+	// The mailbox and the caller's delegation in one round trip.
+	const [row] = await db
+		.select({ mailbox: mailboxes, permission: mailboxAccess.permission })
+		.from(mailboxes)
+		.leftJoin(mailboxAccess, and(eq(mailboxAccess.mailboxId, mailboxes.id), eq(mailboxAccess.userId, user.id)))
+		.where(eq(mailboxes.id, mailboxId))
+		.limit(1);
+	const mailbox = row?.mailbox;
 	if (!mailbox || mailbox.disabled) return null;
 
 	const isOwner = mailbox.userId === user.id;
 	if (isOwner) return buildAccess(mailbox, "full_access", true);
 	if (mailbox.type !== "shared") return null;
 
-	const [delegatedAccess] = await db
-		.select({ permission: mailboxAccess.permission })
-		.from(mailboxAccess)
-		.where(and(eq(mailboxAccess.mailboxId, mailbox.id), eq(mailboxAccess.userId, user.id)))
-		.limit(1);
-	if (delegatedAccess) return buildAccess(mailbox, delegatedAccess.permission, false);
+	if (row.permission) return buildAccess(mailbox, row.permission, false);
 
 	return null;
 }
 
 export async function listAccessibleMailboxes(db: AppDatabase, user: Pick<SessionUser, "id" | "email" | "role">) {
-	const ownedRows = await db
+	// Owned and shared lists are independent queries; run them together.
+	const [ownedRows, sharedRows] = await Promise.all([db
 		.select({
 			id: mailboxes.id,
 			userId: mailboxes.userId,
@@ -58,19 +61,8 @@ export async function listAccessibleMailboxes(db: AppDatabase, user: Pick<Sessio
 		})
 		.from(mailboxes)
 		.innerJoin(domains, eq(mailboxes.domainId, domains.id))
-		.where(and(eq(mailboxes.userId, user.id), eq(mailboxes.disabled, false)));
-	const owned = ownedRows
-		.map((row) => {
-			const { avatarKey, ...mailbox } = row;
-			return {
-				...mailbox,
-				hasAvatar: !!avatarKey,
-				permission: "full_access" as MailboxPermission,
-				isPrimary: `${row.localPart}@${row.hostname}` === user.email,
-			};
-		});
-
-	const sharedRows = await db
+		.where(and(eq(mailboxes.userId, user.id), eq(mailboxes.disabled, false))),
+	db
 		.select({
 			id: mailboxes.id,
 			userId: mailboxes.userId,
@@ -98,7 +90,18 @@ export async function listAccessibleMailboxes(db: AppDatabase, user: Pick<Sessio
 				eq(mailboxes.type, "shared"),
 				eq(mailboxes.disabled, false),
 			),
-		);
+		)]);
+	const owned = ownedRows
+		.map((row) => {
+			const { avatarKey, ...mailbox } = row;
+			return {
+				...mailbox,
+				hasAvatar: !!avatarKey,
+				permission: "full_access" as MailboxPermission,
+				isPrimary: `${row.localPart}@${row.hostname}` === user.email,
+			};
+		});
+
 	const shared = sharedRows.map((row) => {
 		const { avatarKey, ...mailbox } = row;
 		return {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
+import { authFetch } from "@/lib/auth/client";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,7 +31,7 @@ export function DesktopDownloadSettings() {
 
 	useEffect(() => {
 		let cancelled = false;
-		fetch("/api/desktop/latest")
+		authFetch("/api/desktop/latest", { redirectOnUnauthorized: false })
 			.then((res) => (res.ok ? (res.json() as Promise<{ release: DesktopReleaseInfo | null }>) : Promise.reject(new Error(String(res.status)))))
 			.then((data) => { if (!cancelled) setState({ status: "ready", release: data.release }); })
 			.catch(() => { if (!cancelled) setState({ status: "error" }); });

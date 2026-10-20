@@ -40,11 +40,14 @@ export async function GET(request: Request) {
 	const groupByThread = url.searchParams.get("group") === "thread" && status !== "draft";
 
 	const db = getDb(env);
-	const accessibleMailboxes = await listAccessibleMailboxes(db, user);
+	// Independent lookups share one round trip; D1 can be far from the Worker.
+	const [accessibleMailboxes, access] = await Promise.all([
+		listAccessibleMailboxes(db, user),
+		mailboxId ? getMailboxAccessLevel(db, user, mailboxId) : null,
+	]);
 	const accessibleMailboxIds = accessibleMailboxes.map((mailbox) => mailbox.id);
 	const conditions: SQL[] = [];
 	if (mailboxId) {
-		const access = await getMailboxAccessLevel(db, user, mailboxId);
 		if (!access?.canRead) {
 			return NextResponse.json({ error: "Mailbox not found" }, { status: 404 });
 		}
@@ -133,21 +136,26 @@ export async function GET(request: Request) {
 			}
 		}
 	} else {
-		const [totalRow] = await db.select({ total: count() }).from(messages).where(where);
+		const [[totalRow], pageRows] = await Promise.all([
+			db.select({ total: count() }).from(messages).where(where),
+			db
+				.select(messageListColumns)
+				.from(messages)
+				.where(where)
+				.orderBy(desc(messages.createdAt))
+				.limit(limit)
+				.offset(offset),
+		]);
 		total = totalRow?.total ?? 0;
-		rows = await db
-			.select(messageListColumns)
-			.from(messages)
-			.where(where)
-			.orderBy(desc(messages.createdAt))
-			.limit(limit)
-			.offset(offset);
+		rows = pageRows;
 	}
 	// Conversation sizes for the rows on this page, so the list can show "(3)"
 	// next to a subject the way threaded clients do.
 	const threadIds = Array.from(new Set(rows.map((row) => row.threadId).filter((id): id is string => !!id)));
 	const threadCounts = new Map<string, { total: number; unread: number }>();
-	if (threadIds.length > 0) {
+	// Thread sizes, scheduled times and contact names only need the page's rows: fetch them together.
+	const loadThreadCounts = async () => {
+		if (threadIds.length === 0) return;
 		const scope = mailboxId
 			? eq(messages.mailboxId, mailboxId)
 			: accessibleMailboxIds.length > 0
@@ -165,9 +173,10 @@ export async function GET(request: Request) {
 		for (const row of countRows) {
 			if (row.threadId) threadCounts.set(row.threadId, { total: row.total, unread: Number(row.unread ?? 0) });
 		}
-	}
+	};
 	const scheduledAtByMessageId = new Map<string, string>();
-	if (scheduled === "true" && rows.length > 0) {
+	const loadScheduledTimes = async () => {
+		if (scheduled !== "true" || rows.length === 0) return;
 		const jobs = await db
 			.select({ messageId: outboundJobs.messageId, scheduledAt: outboundJobs.scheduledAt })
 			.from(outboundJobs)
@@ -175,7 +184,7 @@ export async function GET(request: Request) {
 		for (const job of jobs) {
 			if (job.messageId && job.scheduledAt) scheduledAtByMessageId.set(job.messageId, job.scheduledAt.toISOString());
 		}
-	}
+	};
 	const mailboxNameMap = new Map(
 		accessibleMailboxes.map((mailbox) => [
 			mailbox.id,
@@ -184,8 +193,8 @@ export async function GET(request: Request) {
 				: mailbox.displayName ?? mailbox.localPart,
 		]),
 	);
-	const contactMapsByUserId = new Map(
-		await Promise.all(
+	const [contactMapEntries] = await Promise.all([
+		Promise.all(
 			Array.from(new Set(rows.map((message) => message.userId))).map(async (userId) => [
 				userId,
 				await getContactDisplayNameMap(
@@ -197,7 +206,10 @@ export async function GET(request: Request) {
 				),
 			] as const),
 		),
-	);
+		loadThreadCounts(),
+		loadScheduledTimes(),
+	]);
+	const contactMapsByUserId = new Map(contactMapEntries);
 	// `Message.textBody`/`htmlBody` are optional on the wire type and the
 	// reading pane loads them from /api/messages/[id]/thread, so they are
 	// neither selected nor sent here.

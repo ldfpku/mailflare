@@ -151,11 +151,10 @@ function avatarUrl(origin: string, userId: string) {
 }
 
 export async function getBusinessCardSettings(env: Env, userId: string, origin: string): Promise<BusinessCardSettings | null> {
-	const current = await loadBusinessCard(env, userId);
+	const [current, mailboxes] = await Promise.all([loadBusinessCard(env, userId), listOwnMailboxes(env, userId)]);
 	if (!current) return null;
 	const pageUrl = businessCardPageUrl(origin, current.token);
 	const signatureHtml = signatureFor(current.card, current.token, origin);
-	const mailboxes = await listOwnMailboxes(env, userId);
 	return {
 		card: current.card,
 		userId,
