@@ -272,6 +272,35 @@ test("the directory lists every other active account and the all-staff room foll
 	assert.deepEqual(people.map((person) => person.uid), ["u2"]);
 });
 
+test("the directory search finds anyone by name, pinyin mailbox, department or title", async (t) => {
+	const { database, call, login, addUser } = await fixture(t);
+	addUser("u2", "wangxx@one.test", "王小霞");
+	addUser("u3", "zhaoxia@one.test", "赵霞");
+	addUser("u4", "lisi@one.test", "李四");
+	addUser("u5", "xiale@one.test", "夏乐");
+	database.db.prepare("INSERT INTO business_cards (user_id, token, title, department, updated_at) VALUES (?, ?, ?, ?, ?)")
+		.run("u4", "card-u4", "工程师", "生产制造部", 1);
+	const { token } = (await login()).data;
+	const search = async (key) => (await call("GET", "im/user/friend/search", { token, query: { key } })).data;
+
+	assert.deepEqual((await search("霞")).map((person) => person.uid), ["u2", "u3"]);
+	assert.equal((await search("霞"))[0].name, "王小霞");
+	assert.deepEqual((await search("WANGXX")).map((person) => person.uid), ["u2"], "the mailbox name is the pinyin");
+	assert.deepEqual((await search("xia")).map((person) => person.uid), ["u5", "u3"], "a leading match ranks first");
+	assert.deepEqual((await search("one.test")).map((person) => person.uid), [], "the domain alone matches nobody");
+	assert.deepEqual((await search("lisi@one")).map((person) => person.uid), ["u4"]);
+	const engineer = await search("制造");
+	assert.deepEqual(engineer.map((person) => person.uid), ["u4"]);
+	assert.equal(engineer[0].department, "生产制造部");
+	assert.equal(engineer[0].title, "工程师");
+	assert.deepEqual((await search("sam")).map((person) => person.uid), [], "the caller is left out");
+	assert.deepEqual(await search("  "), []);
+
+	database.db.prepare("UPDATE users SET disabled = 1 WHERE id = 'u3'").run();
+	assert.deepEqual((await search("霞")).map((person) => person.uid), ["u2"]);
+	assert.equal((await call("GET", "im/user/friend/search", { query: { key: "霞" } })).code, 401);
+});
+
 test("one-to-one chat: open from a contact, send, push, sync, unread and read", async (t) => {
 	const { call, login, addUser, pushes } = await fixture(t);
 	addUser("u2", "kim@one.test", "Kim");
