@@ -49,8 +49,11 @@ export function AgentMeetingProposalCard({ item, proposal, onApproveAction, appr
 		const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
 		const link = document.createElement("a");
 		link.href = url;
-		link.download = `${(proposal.title || "meeting").replace(/[\\/:*?"<>|]+/g, " ").trim() || "meeting"}.ics`;
+		// Chromium drops a non-ASCII download name and saves as "download", so the file is named by date.
+		link.download = `smj-meeting-${(proposal.startsAt ?? "").slice(0, 10) || "invite"}.ics`;
+		document.body.appendChild(link);
 		link.click();
+		link.remove();
 		window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 	}
 	return <div className="rounded-2xl border border-neutral-200 bg-white p-3 text-sm">

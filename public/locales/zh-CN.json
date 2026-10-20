@@ -1781,7 +1781,7 @@
 	"agent.panel.regenerate": "重新生成",
 	"agent.panel.discard": "丢弃",
 	"agent.panel.working": "处理中…",
-	"agent.panel.promptPlaceholder": "输入问题或任务，例如“总结今天的邮件”",
+	"agent.panel.promptPlaceholder": "输入问题或任务…",
 	"agent.panel.currentEmail": "当前邮件：{subject}",
 	"agent.panel.removeCurrentEmail": "不使用这封邮件",
 	"agent.panel.stop": "停止回复",
