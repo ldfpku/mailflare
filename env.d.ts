@@ -2,6 +2,8 @@ interface CloudflareEnv {
 	DB: D1Database;
 	EMAIL: SendEmail;
 	BUCKET: R2Bucket;
+	/** SMJ desktop installers, update bundles and latest.json, uploaded by HuLa's desktop-release workflow. */
+	DESKTOP_BUCKET?: R2Bucket;
 	INBOUND_QUEUE: Queue<import("./src/lib/email/inbound").InboundQueueMessage>;
 	AGENT_QUEUE?: Queue<{ kind: "agent.draft"; jobId: string }>;
 	AI?: Ai;

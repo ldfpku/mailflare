@@ -2165,5 +2165,22 @@
 	"agent.tool.propose_meeting.description": "已整理出会议供你确认，尚未预约或发送。",
 	"agent.tool.read_attachment.running": "正在读取附件…",
 	"agent.tool.read_attachment.completed": "已读取附件",
-	"agent.tool.read_attachment.description": "已读取附件的文字内容。"
+	"agent.tool.read_attachment.description": "已读取附件的文字内容。",
+	"settings.nav.desktop": "桌面版",
+	"settingsPage.desktop.title": "下载桌面版",
+	"settingsPage.desktop.description": "桌面版多了远程协助、共享屏幕时的绿色边框、托盘图标、开机自启和全局快捷键，其余功能在浏览器里也都能用。",
+	"settingsPage.desktop.loading": "正在查询最新版本…",
+	"settingsPage.desktop.notPublished": "桌面版还没有发布，请联系管理员。",
+	"settingsPage.desktop.loadFailed": "读取最新版本失败，请稍后再试。",
+	"settingsPage.desktop.version": "版本 {version}",
+	"settingsPage.desktop.published": "更新于 {date}",
+	"settingsPage.desktop.recommended": "适合这台电脑",
+	"settingsPage.desktop.windows": "Windows 10 / 11（64 位）",
+	"settingsPage.desktop.macos": "macOS 10.13 及以上（Apple 芯片和 Intel 通用）",
+	"settingsPage.desktop.download": "下载",
+	"settingsPage.desktop.notes": "本版更新",
+	"settingsPage.desktop.installTitle": "安装说明",
+	"settingsPage.desktop.windowsSteps": "双击下载的安装程序，只为当前账户安装，不需要管理员密码。如果出现“Windows 已保护你的电脑”（未知发布者），点“更多信息”再点“仍要运行”。",
+	"settingsPage.desktop.macSteps": "打开 .dmg，把 SMJ 拖进“应用程序”。目前还没有经过 Apple 公证，第一次打开请在“应用程序”里右键 SMJ 选“打开”（macOS 15 及以上：先打开一次，再到“系统设置 > 隐私与安全性”点“仍要打开”）。要使用远程协助，还需在同一页面的“屏幕录制”和“辅助功能”里允许 SMJ。",
+	"settingsPage.desktop.updates": "用邮箱账号登录即可。桌面版会自动检查新版本，更新前会先询问。"
 }
