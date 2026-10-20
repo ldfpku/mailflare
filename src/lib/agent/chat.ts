@@ -80,7 +80,6 @@ export async function createAgentChatStream(context: AgentToolContext, text: str
 		async start(controller) {
 			let response = "";
 			let stepText = "";
-			let reasoning = "";
 			const emit = (event: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
 			emit({ type: "conversation", conversationId: id });
 			try {
@@ -89,13 +88,11 @@ export async function createAgentChatStream(context: AgentToolContext, text: str
 						response += part.text;
 						stepText += part.text;
 						emit({ type: "text", text: part.text });
-					} else if (part.type === "reasoning-delta") {
-						reasoning += part.text;
-						emit({ type: "reasoning", text: part.text });
 					} else if (part.type === "finish-step") {
+						// The model's thinking, and text it wrote before calling a tool, are often English
+						// and are never shown or kept: the panel shows only "正在思考…" until the answer.
 						if (part.finishReason === "tool-calls" && stepText) {
 							response = response.slice(0, -stepText.length);
-							reasoning += stepText;
 							emit({ type: "reclassify", text: stepText });
 						}
 						stepText = "";
@@ -113,12 +110,10 @@ export async function createAgentChatStream(context: AgentToolContext, text: str
 						emit({ type: "error", message: agentProviderErrorMessage(part.error) });
 					}
 				}
-				if (reasoning.trim()) await db.insert(agentChatMessages).values({ id: newId("chat"), conversationId: id, role: "tool", toolName: "__reasoning__", content: reasoning.slice(0, 20_000) });
 				if (response.trim()) await db.insert(agentChatMessages).values({ id: newId("chat"), conversationId: id, role: "assistant", content: response });
 				await db.update(agentConversations).set({ updatedAt: new Date() }).where(eq(agentConversations.id, id));
 				emit({ type: "done" });
 			} catch (error) {
-				if (reasoning.trim()) await db.insert(agentChatMessages).values({ id: newId("chat"), conversationId: id, role: "tool", toolName: "__reasoning__", content: reasoning.slice(0, 20_000) });
 				if (response.trim()) await db.insert(agentChatMessages).values({ id: newId("chat"), conversationId: id, role: "assistant", content: response });
 				emit({ type: "error", message: agentProviderErrorMessage(error) });
 			} finally {

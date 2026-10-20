@@ -122,19 +122,14 @@ export function shouldSubmitAgentInput(event: KeyboardEvent<HTMLTextAreaElement>
 	return event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.nativeEvent.isComposing;
 }
 
-export function appendAgentReasoning(messages: AgentMessage[], assistantId: string, text: string, reclassify = false): AgentMessage[] {
-	const reasoningId = `${assistantId}:reasoning`;
-	const existing = messages.some((item) => item.id === reasoningId);
-	const updated = messages.map((item) => {
-		if (item.id === reasoningId) return { ...item, content: item.content + text };
-		if (reclassify && item.id === assistantId && item.content.endsWith(text)) return { ...item, content: item.content.slice(0, -text.length) };
-		return item;
-	});
-	return existing ? updated : [...updated, { id: reasoningId, role: "reasoning", content: text }];
+/** Drops text the model wrote before calling a tool from the streamed answer; it is not shown anywhere. */
+export function removeAgentStepText(messages: AgentMessage[], assistantId: string, text: string): AgentMessage[] {
+	return messages.map((item) => item.id === assistantId && item.content.endsWith(text) ? { ...item, content: item.content.slice(0, -text.length) } : item);
 }
 
+/** Older chats stored the model's thinking as `__reasoning__` rows; they stay hidden. */
 export function normalizeAgentHistory(messages: AgentMessage[]): AgentMessage[] {
-	return messages.map((item) => item.role === "tool" && item.toolName === "__reasoning__" ? { ...item, role: "reasoning" as const } : item.role === "tool" ? { ...item, recordId: item.id } : item);
+	return messages.filter((item) => !(item.role === "tool" && item.toolName === "__reasoning__")).map((item) => item.role === "tool" ? { ...item, recordId: item.id } : item);
 }
 
 export function groupAgentMessages(messages: AgentMessage[]): AgentTurn[] {

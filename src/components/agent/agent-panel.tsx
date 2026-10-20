@@ -22,7 +22,7 @@ import { approveAgentAction, requestDraftReview } from "./client-actions";
 import { AgentConversationHistory } from "./conversation-history";
 import { agentQuickTasks, agentQuickTaskTitle } from "./quick-tasks";
 import type { AgentApproveOptions, AgentConversation, AgentConversationsResponse, AgentQuickTask, AgentErrorResponse, AgentEvent, AgentHistoryResponse, AgentJob, AgentJobsResponse, AgentMessage, AgentPanelProps, AgentPanelView, AgentSettings, AgentSettingsResponse, QueuedAgentMessage } from "./types";
-import { AGENT_LIMIT_MESSAGE_KEYS, activeAgentTool, activeAgentToolLabel, appendAgentReasoning, consumeAgentStream, editQueuedAgentMessage, enqueueAgentMessage, groupAgentMessages, isAgentScrollAtBottom, markAgentDraftSent, normalizeAgentHistory, readAgentConversationId, removeQueuedAgentMessage, resizeAgentInput, saveAgentConversationId, shouldSubmitAgentInput, steerQueuedAgentMessage, uniqueAgentDraftActions } from "./utils";
+import { AGENT_LIMIT_MESSAGE_KEYS, activeAgentTool, activeAgentToolLabel, consumeAgentStream, editQueuedAgentMessage, enqueueAgentMessage, groupAgentMessages, isAgentScrollAtBottom, markAgentDraftSent, normalizeAgentHistory, readAgentConversationId, removeAgentStepText, removeQueuedAgentMessage, resizeAgentInput, saveAgentConversationId, shouldSubmitAgentInput, steerQueuedAgentMessage, uniqueAgentDraftActions } from "./utils";
 
 export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentPanelProps) {
 	const { t, locale } = useLanguage();
@@ -239,8 +239,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 				if (generation !== queueGenerationRef.current) return;
 				if (event.type === "conversation") { selectedConversationRef.current = event.conversationId; saveAgentConversationId(mailboxId, event.conversationId); setConversationId(event.conversationId); }
 				if (event.type === "text") setMessages((current) => current.map((item) => item.id === assistantMessageId ? { ...item, content: item.content + event.text } : item));
-				if (event.type === "reasoning") setMessages((current) => appendAgentReasoning(current, assistantMessageId, event.text));
-				if (event.type === "reclassify") setMessages((current) => appendAgentReasoning(current, assistantMessageId, event.text, true));
+				if (event.type === "reclassify") setMessages((current) => removeAgentStepText(current, assistantMessageId, event.text));
 				if (event.type === "tool") {
 					const toolId = `${assistantMessageId}:tool:${event.id}`;
 					const content = event.state === "running" ? "" : typeof event.result === "string" ? event.result : JSON.stringify(event.result) ?? "";
