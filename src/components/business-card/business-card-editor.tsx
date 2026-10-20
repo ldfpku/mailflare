@@ -13,6 +13,7 @@ import { BUSINESS_CARD_LIMITS, buildBusinessCardSignatureHtml } from "@/lib/busi
 import type { BusinessCardFields, BusinessCardSettings } from "@/lib/business-card/card-types";
 import type { TranslationKey } from "@/lib/i18n/types";
 import { cn } from "@/lib/utils";
+import { dispatchMailboxSignaturesChanged } from "@/lib/business-card/signature-client";
 import { BusinessCardBack, BusinessCardFront } from "./business-card-faces";
 import {
 	fieldsOf,
@@ -85,6 +86,7 @@ export function BusinessCardEditor({ accountId, editable = true }: { accountId?:
 		setStatus(null);
 		try {
 			const next = await action();
+			dispatchMailboxSignaturesChanged();
 			setSettings(next);
 			setFields(fieldsOf(next));
 			if (done) setStatus(done);

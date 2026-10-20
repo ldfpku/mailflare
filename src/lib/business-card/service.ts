@@ -67,6 +67,11 @@ function signatureFor(card: BusinessCardData, token: string, origin: string): st
 	return buildBusinessCardSignatureHtml(card, origin, businessCardPageUrl(origin, token));
 }
 
+/** The first version of the same signature, with M / T / E letters where the icons now are. */
+function letterSignatureFor(card: BusinessCardData, token: string, origin: string): string {
+	return buildBusinessCardSignatureHtml(card, origin, businessCardPageUrl(origin, token), { letters: true });
+}
+
 interface MailboxRow {
 	id: string;
 	local_part: string;
@@ -87,11 +92,17 @@ async function listOwnMailboxes(env: Env, userId: string): Promise<MailboxRow[]>
  * Mailboxes still carrying the card signature as it was before an edit get the new one, so turning the
  * signature on once keeps it current; a signature the person wrote themselves is left alone.
  */
-async function replaceCardSignature(env: Env, userId: string, previous: string, next: string) {
-	if (previous === next) return;
-	await env.DB.prepare("UPDATE mailboxes SET signature = ? WHERE user_id = ? AND type = 'personal' AND signature = ?")
-		.bind(next, userId, previous)
+async function replaceCardSignature(env: Env, userId: string, previous: string[], next: string) {
+	const stale = previous.filter((signature) => signature !== next);
+	if (!stale.length) return;
+	await env.DB.prepare(`UPDATE mailboxes SET signature = ? WHERE user_id = ? AND type = 'personal' AND signature IN (${stale.map(() => "?").join(", ")})`)
+		.bind(next, userId, ...stale)
 		.run();
+}
+
+/** Both forms a mailbox may still carry for this card: the current one and the letter-prefixed first version. */
+function cardSignatures(card: BusinessCardData, token: string, origin: string): string[] {
+	return [signatureFor(card, token, origin), letterSignatureFor(card, token, origin)];
 }
 
 export async function saveBusinessCard(env: Env, userId: string, fields: BusinessCardFields, origin: string) {
@@ -103,7 +114,7 @@ export async function saveBusinessCard(env: Env, userId: string, fields: Busines
 	).bind(fields.title, fields.department, fields.nameEn, fields.titleEn, fields.mobile, fields.phone, fields.placement,
 		fields.published ? 1 : 0, Date.now(), userId).run();
 	const next = { ...current.card, ...fields };
-	await replaceCardSignature(env, userId, signatureFor(current.card, current.token, origin), signatureFor(next, current.token, origin));
+	await replaceCardSignature(env, userId, cardSignatures(current.card, current.token, origin), signatureFor(next, current.token, origin));
 	return { card: next, token: current.token };
 }
 
@@ -113,7 +124,7 @@ export async function resetBusinessCardToken(env: Env, userId: string, origin: s
 	if (!current) return null;
 	const token = nanoid();
 	await env.DB.prepare("UPDATE business_cards SET token = ?, updated_at = ? WHERE user_id = ?").bind(token, Date.now(), userId).run();
-	await replaceCardSignature(env, userId, signatureFor(current.card, current.token, origin), signatureFor(current.card, token, origin));
+	await replaceCardSignature(env, userId, cardSignatures(current.card, current.token, origin), signatureFor(current.card, token, origin));
 	return { card: current.card, token };
 }
 
@@ -130,7 +141,7 @@ export async function setBusinessCardSignature(env: Env, userId: string, enabled
 	for (const mailbox of targets) {
 		if (enabled) {
 			await env.DB.prepare("UPDATE mailboxes SET signature = ? WHERE id = ?").bind(signature, mailbox.id).run();
-		} else if (mailbox.signature === signature) {
+		} else if (mailbox.signature && cardSignatures(current.card, current.token, origin).includes(mailbox.signature)) {
 			await env.DB.prepare("UPDATE mailboxes SET signature = NULL WHERE id = ?").bind(mailbox.id).run();
 		}
 	}
@@ -155,6 +166,8 @@ export async function getBusinessCardSettings(env: Env, userId: string, origin: 
 	if (!current) return null;
 	const pageUrl = businessCardPageUrl(origin, current.token);
 	const signatureHtml = signatureFor(current.card, current.token, origin);
+	// Mailboxes still on the letter-prefixed first version move to the icon version the first time the card is opened.
+	await replaceCardSignature(env, userId, [letterSignatureFor(current.card, current.token, origin)], signatureHtml);
 	const mailboxes = await listOwnMailboxes(env, userId);
 	return {
 		card: current.card,
