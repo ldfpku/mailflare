@@ -1,19 +1,30 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { X } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { Label } from "@/components/ui/label";
+import { authFetch } from "@/lib/auth/client";
 import { getEmailAddress } from "@/lib/email/address";
 import { cn } from "@/lib/utils";
-import type { RecipientInputProps } from "./recipient-input-types";
-import { getRecipientLabel, isValidRecipient, parseRecipientEntries } from "./recipient-utils";
+import type { DirectorySuggestion, RecipientInputProps } from "./recipient-input-types";
+import {
+	directorySuggestionEntries,
+	getRecipientLabel,
+	isValidRecipient,
+	parseRecipientEntries,
+	shouldSuggestRecipients,
+} from "./recipient-utils";
+
+/** Wait this long after the last keystroke before asking the directory. */
+const SUGGEST_DELAY_MS = 200;
 
 /**
  * A To/Cc/Bcc row. Addresses become chips as soon as the user types a comma,
  * presses Enter or Tab, pastes a list, or leaves the field; Backspace on an
- * empty field pulls the last chip back out for editing.
+ * empty field pulls the last chip back out for editing. While typing, colleagues
+ * from the company directory are offered by name, mailbox or department.
  */
 export function RecipientInput({
 	id,
@@ -29,6 +40,30 @@ export function RecipientInput({
 	const { t } = useLanguage();
 	const [draft, setDraft] = useState("");
 	const inputRef = useRef<HTMLInputElement | null>(null);
+	// The directory's answer is kept with the term it answers, so an answer for older text never shows.
+	const [found, setFound] = useState<{ term: string; people: DirectorySuggestion[] }>({ term: "", people: [] });
+	const [highlight, setHighlight] = useState(0);
+	const term = draft.trim();
+	const suggestions = shouldSuggestRecipients(term) && found.term === term ? directorySuggestionEntries(found.people, value) : [];
+
+	useEffect(() => {
+		if (!shouldSuggestRecipients(term)) return;
+		let cancelled = false;
+		const timer = setTimeout(() => {
+			void authFetch(`/api/directory?q=${encodeURIComponent(term)}`, { cache: "no-store" })
+				.then(async (response) => (response.ok ? ((await response.json()) as { people: DirectorySuggestion[] }).people : []))
+				.catch(() => [])
+				.then((people) => {
+					if (cancelled) return;
+					setFound({ term, people });
+					setHighlight(0);
+				});
+		}, SUGGEST_DELAY_MS);
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	}, [term]);
 
 	function commit(raw = draft) {
 		const entries = parseRecipientEntries(raw, value);
@@ -36,7 +71,31 @@ export function RecipientInput({
 		setDraft("");
 	}
 
+	function pick(entry: string) {
+		onChange([...value, entry]);
+		setDraft("");
+		inputRef.current?.focus();
+	}
+
 	function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+		if (suggestions.length > 0) {
+			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+				event.preventDefault();
+				const step = event.key === "ArrowDown" ? 1 : -1;
+				setHighlight((current) => (current + step + suggestions.length) % suggestions.length);
+				return;
+			}
+			if (event.key === "Enter" || event.key === "Tab") {
+				event.preventDefault();
+				pick(suggestions[Math.min(highlight, suggestions.length - 1)].entry);
+				return;
+			}
+			if (event.key === "Escape") {
+				event.preventDefault();
+				setFound({ term: "", people: [] });
+				return;
+			}
+		}
 		if (event.key === "," || event.key === ";" || event.key === "Enter" || (event.key === "Tab" && draft.trim())) {
 			if (event.key !== "Tab") event.preventDefault();
 			commit();
@@ -52,7 +111,7 @@ export function RecipientInput({
 
 	return (
 		<div
-			className="flex min-h-9 items-center gap-2 border-b border-neutral-100 px-4 py-1"
+			className="relative flex min-h-9 items-center gap-2 border-b border-neutral-100 px-4 py-1"
 			onClick={() => inputRef.current?.focus()}
 		>
 			<Label htmlFor={id} className="w-8 shrink-0 text-sm text-neutral-500">
@@ -102,9 +161,15 @@ export function RecipientInput({
 						setDraft(event.target.value);
 					}}
 					onKeyDown={onKeyDown}
-					onBlur={() => commit()}
+					onBlur={() => {
+						commit();
+						setFound({ term: "", people: [] });
+					}}
 					type="text"
 					autoComplete="off"
+					role="combobox"
+					aria-expanded={suggestions.length > 0}
+					aria-controls={`${id}-suggestions`}
 					autoFocus={autoFocus}
 					spellCheck={false}
 					placeholder={value.length === 0 ? placeholder : undefined}
@@ -114,6 +179,37 @@ export function RecipientInput({
 					className="h-7 min-w-32 flex-1 border-0 bg-transparent p-0 text-sm outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed"
 				/>
 			</div>
+			{suggestions.length > 0 && (
+				<ul
+					id={`${id}-suggestions`}
+					role="listbox"
+					className="absolute left-12 right-4 top-full z-50 mt-0.5 max-h-72 overflow-y-auto rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+				>
+					{suggestions.map(({ person, entry }, index) => (
+						<li
+							key={person.email}
+							role="option"
+							aria-selected={index === highlight}
+							title={person.email}
+							className={cn(
+								"flex cursor-pointer items-baseline gap-2 px-3 py-1.5 text-sm",
+								index === highlight ? "bg-neutral-100 dark:bg-neutral-800" : "hover:bg-neutral-50 dark:hover:bg-neutral-800/60",
+							)}
+							// mousedown, not click: the input's blur would otherwise commit the half-typed text first.
+							onMouseDown={(event) => {
+								event.preventDefault();
+								pick(entry);
+							}}
+							onMouseEnter={() => setHighlight(index)}
+						>
+							<span className="shrink-0 font-medium text-neutral-900 dark:text-neutral-100">{person.name || person.email}</span>
+							<span className="truncate text-xs text-neutral-500">
+								{[person.email, person.department, person.title].filter(Boolean).join(" · ")}
+							</span>
+						</li>
+					))}
+				</ul>
+			)}
 			{trailing && (
 				// Toggles live inside the clickable row; keep their clicks from refocusing this field.
 				<div

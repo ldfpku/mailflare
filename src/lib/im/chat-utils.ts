@@ -207,6 +207,16 @@ export function sessionPreview(options: {
 	return `${senderName}:${text}`;
 }
 
+/** Longest search term the staff directory accepts; longer input is cut, not refused. */
+export const DIRECTORY_SEARCH_KEY_LIMIT = 40;
+/** Most people one directory search returns. */
+export const DIRECTORY_SEARCH_LIMIT = 50;
+
+/** The staff directory search term: trimmed, lower-cased (SQLite's `lower` only folds ASCII, as this does for Chinese). */
+export function normalizeDirectoryKey(key: unknown): string {
+	return typeof key === "string" ? key.trim().toLowerCase().slice(0, DIRECTORY_SEARCH_KEY_LIMIT) : "";
+}
+
 export function imUserName(user: Pick<ImUserRow, "name" | "email"> | null | undefined): string {
 	if (!user) return "已删除用户";
 	return user.name || user.email;

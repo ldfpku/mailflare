@@ -33,6 +33,7 @@ import {
 	readCounts,
 	recallMessage,
 	removeMembers,
+	searchImDirectory,
 	sendMessageWithToken,
 	setAdmins,
 	updateMemberFlags,
@@ -131,6 +132,8 @@ const userRoutes: ImRouteTable<ImContext> = {
 	"POST im/user/state/changeState": () => imOk(true),
 	// Contacts come from the organisation directory and there are no friend requests.
 	"GET im/user/friend/page": async ({ env, user }) => imOk({ list: await listDirectory(env, user.id), cursor: "", isLast: true }),
+	// HuLa's people search (its search box and add-contact window) covers the whole directory, not only open chats.
+	"GET im/user/friend/search": async ({ env, user, url, origin }) => imOk(await searchImDirectory(env, user.id, url.searchParams.get("key"), origin)),
 	"GET im/room/notice/page": () => imOk(EMPTY_CURSOR_PAGE),
 	"POST im/user/getUserByIds": async ({ request, env, origin }) => imOk(await getPeople(env, (await readBody(request)).uidList, origin)),
 

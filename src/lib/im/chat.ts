@@ -1,5 +1,6 @@
 import { newId } from "@/lib/ids";
 import {
+	DIRECTORY_SEARCH_LIMIT,
 	IM_ALL_STAFF_ROOM_ID,
 	IM_ALL_STAFF_ROOM_NAME,
 	IM_GROUP_MEMBER_LIMIT,
@@ -16,6 +17,7 @@ import {
 	defaultGroupName,
 	deletedFileNotice,
 	imUserName,
+	normalizeDirectoryKey,
 	parseImMessageId,
 	parseMediaBody,
 	parseTextBody,
@@ -356,6 +358,52 @@ export async function listDirectory(env: Env, userId: string) {
 		hideMyPosts: false,
 		hideTheirPosts: false,
 	}));
+}
+
+interface DirectoryRow extends PersonRow {
+	department: string | null;
+	title: string | null;
+}
+
+/**
+ * Searches every active account, not only people the caller has talked to: the name, the email's local part (which
+ * is the name in pinyin, e.g. gaozq), the whole address once the term has an @, and the business card's department
+ * and title. Exact and leading name matches come first. Used by HuLa's search box and the mail composer.
+ */
+export async function searchDirectory(env: Env, key: unknown, options: { excludeUserId?: string; limit?: number } = {}) {
+	const term = normalizeDirectoryKey(key);
+	if (!term) return [];
+	const limit = Math.min(Math.max(Math.trunc(options.limit ?? DIRECTORY_SEARCH_LIMIT), 1), DIRECTORY_SEARCH_LIMIT);
+	const localPart = "lower(substr(u.email, 1, instr(u.email, '@') - 1))";
+	const name = "lower(u.name)";
+	const result = await db(env)
+		.prepare(
+			`SELECT ${PERSON_COLUMNS}, c.department, c.title
+			FROM users u LEFT JOIN im_presence p ON p.user_id = u.id LEFT JOIN business_cards c ON c.user_id = u.id
+			WHERE ${ACTIVE_USER} AND u.id <> ? AND (
+				instr(${name}, ?) > 0
+				OR instr(${localPart}, ?) > 0
+				OR (instr(?, '@') > 0 AND instr(lower(u.email), ?) > 0)
+				OR instr(lower(coalesce(c.department, '')), ?) > 0
+				OR instr(lower(coalesce(c.title, '')), ?) > 0
+			)
+			ORDER BY CASE
+				WHEN ${name} = ? OR ${localPart} = ? THEN 0
+				WHEN instr(${name}, ?) = 1 OR instr(${localPart}, ?) = 1 THEN 1
+				WHEN instr(${name}, ?) > 0 OR instr(${localPart}, ?) > 0 THEN 2
+				ELSE 3
+			END, u.name, u.email
+			LIMIT ?`,
+		)
+		.bind(options.excludeUserId ?? "", ...Array<string>(12).fill(term), limit)
+		.all<DirectoryRow>();
+	return result.results;
+}
+
+/** HuLa's people search: a person as `getUserByIds` returns one, plus the card's department and title. */
+export async function searchImDirectory(env: Env, userId: string, key: unknown, origin: string) {
+	const rows = await searchDirectory(env, key, { excludeUserId: userId });
+	return rows.map((row) => ({ ...toPerson(row, origin), department: row.department ?? "", title: row.title ?? "" }));
 }
 
 export async function getPeople(env: Env, uids: unknown, origin: string) {
