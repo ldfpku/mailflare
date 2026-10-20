@@ -1024,6 +1024,23 @@ export const imPresence = sqliteTable("im_presence", {
 });
 
 /**
+ * Who is in a call or meeting right now, so a new call to them is answered "busy" instead of ringing. `ref` is
+ * `call:<roomId>` or `meeting:<id>`; each row lives until `busy_until` unless the call or meeting renews it. Kept by
+ * `src/lib/im/call-busy.ts`; derived, so it is not backed up.
+ */
+export const imCallBusy = sqliteTable(
+	"im_call_busy",
+	{
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		ref: text("ref").notNull(),
+		busyUntil: integer("busy_until").notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.userId, table.ref] })],
+);
+
+/**
  * Files sent in HuLa chats. The id is the unguessable part of the download URL; the upload token is single-use and
  * short-lived, and only its hash is kept.
  */
@@ -1270,6 +1287,7 @@ export const schema = {
 	imRoomMembers,
 	imMessages,
 	imPresence,
+	imCallBusy,
 	imFiles,
 	imMailShares,
 	imRoomMailboxes,

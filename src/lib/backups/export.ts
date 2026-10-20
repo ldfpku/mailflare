@@ -38,6 +38,8 @@ const INTERNAL_TABLES = [
 	"push_devices",
 	// Chat presence is rewritten by the socket hub as clients connect.
 	"im_presence",
+	// Who is in a call right now: expires within a minute and means nothing after a restore.
+	"im_call_busy",
 	// Parsed meeting invitations, re-read from the restored attachments when needed.
 	"im_calendar_invites",
 	// Assistant daily call counters (src/lib/agent/rate-limit.ts): per-day operational state that

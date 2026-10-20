@@ -90,7 +90,12 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 		if (!userId) return;
 		const relay = await resolveRtcRelay(this.env, userId, frame).catch(() => null);
 		if (!relay) return;
-		await notifyImUsers(this.env, [relay.peerUid], relay.toPeer);
+		if (relay.toSender) {
+			try {
+				socket.send(JSON.stringify(relay.toSender));
+			} catch {}
+		}
+		if (relay.toPeer) await notifyImUsers(this.env, [relay.peerUid], relay.toPeer);
 		if (relay.toOwnOtherDevices) this.sendToOthers(socket, relay.toOwnOtherDevices);
 	}
 
