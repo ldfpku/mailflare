@@ -408,10 +408,10 @@ export default function CalendarPage() {
                     {formatUserDate(pickerMonth, { month: "long", year: "numeric" })}
                   </h2>
                   <div className="flex items-center gap-2">
-                    <button type="button" aria-label={t("calendar.previousMonth")} onClick={() => setPickerMonth(addMonths(pickerMonth, -1))} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200/70">
+                    <button type="button" aria-label={t("calendar.previousMonth")} title={t("calendar.previousMonth")} onClick={() => setPickerMonth(addMonths(pickerMonth, -1))} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200/70">
                       <ChevronLeft className="h-6 w-6" />
                     </button>
-                    <button type="button" aria-label={t("calendar.nextMonth")} onClick={() => setPickerMonth(addMonths(pickerMonth, 1))} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200/70">
+                    <button type="button" aria-label={t("calendar.nextMonth")} title={t("calendar.nextMonth")} onClick={() => setPickerMonth(addMonths(pickerMonth, 1))} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200/70">
                       <ChevronRight className="h-6 w-6" />
                     </button>
                   </div>
@@ -440,12 +440,12 @@ export default function CalendarPage() {
           </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <button type="button" aria-label={t(view === "week" ? "calendar.previousView.week" : "calendar.previousView.day")} onClick={() => setVisibleDate(addDays(visibleDate, view === "week" ? -7 : -1))} className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-600 hover:bg-white"><ChevronLeft className="h-6 w-6" /></button>
-            <button type="button" aria-label={t(view === "week" ? "calendar.nextView.week" : "calendar.nextView.day")} onClick={() => setVisibleDate(addDays(visibleDate, view === "week" ? 7 : 1))} className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-600 hover:bg-white"><ChevronRight className="h-6 w-6" /></button>
+            <button type="button" aria-label={t(view === "week" ? "calendar.previousView.week" : "calendar.previousView.day")} title={t(view === "week" ? "calendar.previousView.week" : "calendar.previousView.day")} onClick={() => setVisibleDate(addDays(visibleDate, view === "week" ? -7 : -1))} className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-600 hover:bg-white"><ChevronLeft className="h-6 w-6" /></button>
+            <button type="button" aria-label={t(view === "week" ? "calendar.nextView.week" : "calendar.nextView.day")} title={t(view === "week" ? "calendar.nextView.week" : "calendar.nextView.day")} onClick={() => setVisibleDate(addDays(visibleDate, view === "week" ? 7 : 1))} className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-600 hover:bg-white"><ChevronRight className="h-6 w-6" /></button>
             <button type="button" onClick={() => setVisibleDate(new Date())} className="h-10 rounded-full max-md:hidden bg-white px-4 text-sm font-medium text-neutral-700 hover:bg-neutral-50">{t("calendar.today")}</button>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
-                <button type="button" aria-label={t("calendar.options")} className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-600 hover:bg-white md:hidden"><MoreVertical className="h-5 w-5" /></button>
+                <button type="button" aria-label={t("calendar.options")} title={t("calendar.options")} className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-600 hover:bg-white md:hidden"><MoreVertical className="h-5 w-5" /></button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content align="end" sideOffset={4} className="z-[130] min-w-40 rounded-xl border border-neutral-200 bg-white p-1 text-sm shadow-xl md:hidden">
@@ -543,7 +543,7 @@ export default function CalendarPage() {
             <div className="flex items-start gap-3">
               <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("calendar.addTitle")} aria-label={t("calendar.eventName")}
                 className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-2xl font-medium text-neutral-900 outline-none placeholder:text-neutral-500 hover:bg-white/60 focus:border-blue-600 focus:bg-white" />
-              <button type="button" aria-label={t("calendar.closeEditor")} disabled={pendingAction === "save"} onClick={() => setClosingEventEditor(true)} className="shrink-0 rounded-full p-1 text-neutral-600 hover:bg-neutral-200 disabled:opacity-50"><X className="h-5 w-5" /></button>
+              <button type="button" aria-label={t("calendar.closeEditor")} title={t("calendar.closeEditor")} disabled={pendingAction === "save"} onClick={() => setClosingEventEditor(true)} className="shrink-0 rounded-full p-1 text-neutral-600 hover:bg-neutral-200 disabled:opacity-50"><X className="h-5 w-5" /></button>
             </div>
             <div className="mt-4 space-y-2">
               <div className="grid grid-cols-[24px_minmax(0,1fr)] items-start gap-3">

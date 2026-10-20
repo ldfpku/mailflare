@@ -41,7 +41,7 @@ export function AccountsTable({ accounts, currentUserId, isPrimaryAdmin, loading
 			<span className="hidden md:block">{t("accounts.colLastSignIn")}</span>
 			<span className="flex justify-end">
 				<DropdownMenu.Root>
-					<DropdownMenu.Trigger asChild><Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={t("accounts.moreActions")}><MoreVertical className="h-4 w-4" /></Button></DropdownMenu.Trigger>
+					<DropdownMenu.Trigger asChild><Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={t("accounts.moreActions")} title={t("accounts.moreActions")}><MoreVertical className="h-4 w-4" /></Button></DropdownMenu.Trigger>
 					<DropdownMenu.Portal><DropdownMenu.Content align="end" sideOffset={6} className="z-50 min-w-48 rounded-lg border border-neutral-200 bg-white p-1 text-sm normal-case shadow-lg">
 						<DropdownMenu.Item disabled={!selected.size} onSelect={onDeleteSelected} className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-600 outline-none hover:bg-red-50 focus:bg-red-50 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"><Trash2 className="h-4 w-4" />{t("accounts.deleteSelected")}</DropdownMenu.Item>
 					</DropdownMenu.Content></DropdownMenu.Portal>

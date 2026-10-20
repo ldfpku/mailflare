@@ -86,7 +86,7 @@ export function DriveShareDialog({ item, onClose, onChanged }: { item: DriveItem
 							<li key={share.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-neutral-50">
 								<span className="min-w-0 flex-1"><span className="block truncate text-neutral-900">{share.name}</span><span className="block truncate text-xs text-neutral-500">{share.email}</span></span>
 								<span className="shrink-0 text-xs text-neutral-500">{share.role === "edit" ? t("drive.canEdit") : t("drive.canView")}</span>
-								<button type="button" onClick={() => void removePerson(share.id)} disabled={busy} aria-label={t("drive.remove")} className="rounded-full p-1 text-neutral-500 hover:bg-neutral-200"><X size={14} /></button>
+								<button type="button" onClick={() => void removePerson(share.id)} disabled={busy} aria-label={t("drive.remove")} title={t("drive.remove")} className="rounded-full p-1 text-neutral-500 hover:bg-neutral-200"><X size={14} /></button>
 							</li>
 						))}
 					</ul>

@@ -232,7 +232,7 @@ export default function MailboxSettingsPage() {
                 type="button"
                 size="icon"
                 variant="ghost"
-                aria-label={t("mailbox.removeAddress", { address: `${alias.localPart}@${alias.hostname}` })}
+                aria-label={t("mailbox.removeAddress", { address: `${alias.localPart}@${alias.hostname}` })} title={t("mailbox.removeAddress", { address: `${alias.localPart}@${alias.hostname}` })}
                 disabled={removeAlias.isPending}
                 onClick={() => removeAlias.mutate(alias.id)}
               >
@@ -321,7 +321,7 @@ export default function MailboxSettingsPage() {
                   type="button"
                   size="icon"
                   variant="ghost"
-                  aria-label={t("mailbox.removeAddress", { address: member.userName })}
+                  aria-label={t("mailbox.removeAddress", { address: member.userName })} title={t("mailbox.removeAddress", { address: member.userName })}
                   disabled={removeMember.isPending}
                   onClick={() => removeMember.mutate(member.userId)}
                 >

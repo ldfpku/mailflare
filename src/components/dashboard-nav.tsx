@@ -262,7 +262,7 @@ export function DashboardNav({ className }: { className?: string }) {
                 <button
                   type="button"
                   className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-500 hover:bg-blue-50 hover:text-blue-700"
-                  aria-label={t("navigation.createFolder")}
+                  aria-label={t("navigation.createFolder")} title={t("navigation.createFolder")}
                 >
                   <Plus className="h-4 w-4" />
                 </button>

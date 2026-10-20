@@ -13,7 +13,7 @@ export function SidebarHeader({ href, label }: SidebarHeaderProps) {
 	const { t } = useLanguage();
 	const branding = useBranding();
 	const { minimal, toggle } = useSidebar();
-	const toggleButton = <button type="button" onClick={toggle} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200" aria-label={minimal ? t("navigation.expandMenu") : t("navigation.collapseMenu")}>
+	const toggleButton = <button type="button" onClick={toggle} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200" aria-label={minimal ? t("navigation.expandMenu") : t("navigation.collapseMenu")} title={minimal ? t("navigation.expandMenu") : t("navigation.collapseMenu")}>
 		{minimal ? <BrandIcon className="h-8 w-8" /> : <TextAlignJustify size={18} />}
 	</button>;
 	return (
