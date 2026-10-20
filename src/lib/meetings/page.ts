@@ -29,7 +29,7 @@ const REALTIMEKIT_VERSION = "2.0.2";
 const MEETING_VIDEO_QUALITY = "hd";
 const VENDOR = `/vendor/realtimekit/${REALTIMEKIT_VERSION}`;
 /** /vendor is cached as immutable: bump this whenever the patched core changes (scripts/vendor-realtimekit.mjs). */
-const CORE_REVISION = "3";
+const CORE_REVISION = "4";
 const REALTIMEKIT_HOSTS = "https://*.realtime.cloudflare.com";
 const VIDEO_BACKGROUND = "/vendor/video-background/0.10.21/smj-video-background.js";
 /** Matches the stack the vendoring script writes into the UI Kit. */
