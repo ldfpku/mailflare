@@ -12,6 +12,7 @@ import {
   Webhook,
   KeyRound,
   Bot,
+  Eraser,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "./language-provider";
@@ -60,6 +61,7 @@ const sections: { id?: string; labelKey?: TranslationKey; links: AdminNavLink[] 
       { href: "/accounts", labelKey: "admin.nav.accounts", icon: Users },
       { href: "/activity", labelKey: "admin.nav.activity", icon: Activity, permission: "primary" },
       { href: "/backups", labelKey: "admin.nav.backups", icon: DatabaseBackup, permission: "primary" },
+      { href: "/chat-cleanup", labelKey: "admin.nav.chatCleanup", icon: Eraser, permission: "primary" },
     ],
   },
   {

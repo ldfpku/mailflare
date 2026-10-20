@@ -62,6 +62,7 @@ import { rtcRoutes } from "./meeting-routes";
 import { draftMailTodo, summarizeRoom } from "./ai";
 import { createTodo, deleteTodo, listTodos, updateTodo } from "./todos";
 import { issueWebSessionTokens } from "./web-app";
+import { listImPurgeChanges } from "./purge";
 
 /**
  * The HuLa-compatible API under `/api/im/*`. HuLa's client was written for
@@ -169,6 +170,7 @@ const userRoutes: ImRouteTable<ImContext> = {
 		await notifyImUsers(env, recipients, { type: "msgFileDeleted", data: event });
 		return imOk(event.message ?? true);
 	},
+	"GET im/chat/purges": async ({ env, url }) => imOk(await listImPurgeChanges(env, Number(url.searchParams.get("since") ?? 0))),
 	"GET im/chat/files/unsent": async ({ env, user }) => imOk(await listUnsentImFiles(env, user.id)),
 	"POST im/chat/files/unsent/delete": async ({ request, env, user }) => imOk(await deleteUnsentImFiles(env, user.id, (await readBody(request)).ids)),
 	"POST im/chat/msg/list": async ({ env, user, origin }) => imOk(await listSyncMessages(env, user.id, origin)),
