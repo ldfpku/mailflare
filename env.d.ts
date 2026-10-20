@@ -80,6 +80,8 @@ interface CloudflareEnv {
 	REALTIMEKIT_PARTICIPANT_PRESET?: string;
 	/** Public origin of this install (https://mail.example.com) when it sits behind a proxy. */
 	APP_URL?: string;
+	/** Domain added to a sign-in name typed without @ (e.g. example.com); defaults to the first domain on the install. */
+	LOGIN_DOMAIN?: string;
 	/** VAPID public key (uncompressed P-256 point, URL-safe base64) for Web Push. */
 	VAPID_PUBLIC_KEY?: string;
 	/** VAPID private scalar (URL-safe base64). Keep this secret. */

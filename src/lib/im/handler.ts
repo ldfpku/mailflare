@@ -66,6 +66,7 @@ import { draftMailTodo, summarizeRoom } from "./ai";
 import { createTodo, deleteTodo, listTodos, updateTodo } from "./todos";
 import { issueWebSessionTokens } from "./web-app";
 import { listImPurgeChanges } from "./purge";
+import { getLoginDomain, resolveLoginEmail } from "@/lib/auth/login-domain";
 
 /**
  * The HuLa-compatible API under `/api/im/*`. HuLa's client was written for
@@ -408,7 +409,7 @@ async function login({ request, env }: PublicContext): Promise<Response> {
 	if (!account || !password) return imFail(IM_CODE.BAD_REQUEST, "请输入账号和密码");
 	if (!(await allowDeviceLoginAttempt(env, request))) return imFail(IM_CODE.TOO_MANY_REQUESTS, "登录尝试过多，请稍后再试");
 
-	const [user] = await getDb(env).select().from(users).where(eq(users.email, account)).limit(1);
+	const [user] = await getDb(env).select().from(users).where(eq(users.email, await resolveLoginEmail(env, account))).limit(1);
 	if (!user || !verifyPassword(password, user.passwordHash)) return imFail(IM_CODE.BAD_REQUEST, "账号或密码错误");
 	if (user.disabled || user.deletedAt) return imFail(IM_CODE.FORBIDDEN, "账号已停用");
 	if (user.totpEnabled && user.totpSecret) {
@@ -438,9 +439,16 @@ async function logout({ env, pairId }: ImContext): Promise<Response> {
 	return imOk(true);
 }
 
-function initConfig(): Response {
+async function initConfig({ env }: PublicContext): Promise<Response> {
 	// HuLa reads upload settings from `qiNiu`; uploads go to object storage through presigned URLs instead.
-	return imOk({ logo: "", name: "SMJ", qiNiu: { ossDomain: "", fragmentSize: "", turnSharSize: "" }, roomGroupId: IM_ALL_STAFF_ROOM_ID });
+	// `loginDomain` is shown after the account box, since a bare name signs in on that domain.
+	return imOk({
+		logo: "",
+		name: "SMJ",
+		qiNiu: { ossDomain: "", fragmentSize: "", turnSharSize: "" },
+		roomGroupId: IM_ALL_STAFF_ROOM_ID,
+		loginDomain: await getLoginDomain(env),
+	});
 }
 
 async function avatar({ request, env }: PublicContext, params: Record<string, string>): Promise<Response> {
