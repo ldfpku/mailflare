@@ -113,6 +113,8 @@ const ZH: Record<string, string> = {
 	"screenshare.start": "共享屏幕",
 	"screenshare.stop": "停止共享",
 	"screenshare.shared": "正在共享屏幕",
+	"screenshare.max_preview": "放大预览",
+	"screenshare.min_preview": "缩小预览",
 	full_screen: "全屏",
 	"full_screen.exit": "退出全屏",
 	mute: "静音",
@@ -226,6 +228,16 @@ rtk-meeting { display: flex; flex-direction: column; height: 100%; width: 100%; 
 #bg-panel .bg-option span.on-image { position: absolute; left: 3px; bottom: 3px; padding: 1px 6px; border-radius: 2px; background: rgba(0,0,0,.45); font-size: 11px; }
 #bg-panel .bg-change { margin-top: 10px; padding: 0; border: 0; background: none; color: #7aa7e8; font-size: 12px; cursor: pointer; }
 #bg-toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 11; padding: 8px 14px; border-radius: 6px; background: rgba(26,43,74,.92); color: #fff; font-size: 13px; }
+/* While you share: a green bar and a green frame round the page (the usual “you are sharing” cue); the UI Kit already shows your own share.
+   A web page cannot draw outside its own window, so the frame round the screen itself is the desktop app's. */
+#share-bar { display: flex; align-items: center; gap: 10px; padding: 7px 16px; background: #12a150; color: #fff; font-size: 13px; }
+#share-bar .dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; flex: none; animation: share-pulse 1.4s ease-in-out infinite; }
+#share-bar span { flex: 1; min-width: 0; }
+#share-bar button { border-color: rgba(255,255,255,.5); background: rgba(255,255,255,.15); color: #fff; }
+#share-frame { position: fixed; inset: 0; z-index: 20; border: 4px solid #12a150; pointer-events: none; }
+#share-toast { position: fixed; top: 96px; left: 50%; transform: translateX(-50%); z-index: 21; max-width: calc(100vw - 32px); padding: 9px 14px; border-radius: 6px; background: rgba(26,43,74,.94); color: #fff; font-size: 13px; }
+#share-bar[hidden], #share-frame[hidden], #share-toast[hidden] { display: none; }
+@keyframes share-pulse { 50% { opacity: .35; } }
 body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 html, body { height: 100dvh; }
 /* Phones: the header wraps into a compact row of buttons, the background panel sits at the bottom. */
@@ -255,6 +267,9 @@ html, body { height: 100dvh; }
 	<a class="button" id="calendar" href="/api/meetings/${id}/meeting.ics" download="meeting.ics">加入日历</a>
 	<button type="button" id="copy">复制会议链接</button>
 </header>
+<div id="share-bar" hidden><i class="dot"></i><span id="share-text">你正在共享屏幕，参会人能看到其中的全部内容</span><button type="button" id="share-stop">停止共享</button></div>
+<div id="share-frame" hidden></div>
+<div id="share-toast" hidden></div>
 <div id="bg-panel" hidden></div>
 <div id="bg-toast" hidden></div>
 <main>
@@ -314,6 +329,8 @@ function loadScript(src) {
 
 // From /join or the link HuLa opens; the preset name is the fallback for older links.
 let joinedAsHost = false;
+// HuLa's desktop meeting window draws the frame round the shared screen itself (it watches the title).
+let inDesktopApp = false;
 
 async function participantToken() {
 	const fragment = new URLSearchParams(location.hash.slice(1));
@@ -325,6 +342,7 @@ async function participantToken() {
 			const meta = JSON.parse(fragment.get("m") || "null");
 			describe(meta);
 			joinedAsHost = meta?.host === true;
+			inDesktopApp = meta?.desktop === true;
 		} catch {}
 		return token;
 	}
@@ -365,6 +383,7 @@ async function start() {
 	statusBox.hidden = true;
 	meeting.self.on("roomLeft", () => { element.hidden = true; show("你已离开会议", true); });
 	setupScreenLock(meeting);
+	setupShareIndicator(meeting);
 	setupInvite(token);
 	setupBackground(meeting);
 }
@@ -461,6 +480,47 @@ function setupBackground(meeting) {
 			toast: document.getElementById("bg-toast"),
 		}))
 		.catch((error) => console.warn("video background unavailable", error));
+}
+
+/**
+ * While you share: the green bar and frame, and a title prefix that also tells HuLa's desktop
+ * window to frame the shared screen (SHARE_TITLE_PREFIX: "● 正在共享屏幕" or "● 正在共享窗口").
+ */
+function setupShareIndicator(meeting) {
+	const bar = document.getElementById("share-bar");
+	const text = document.getElementById("share-text");
+	const frame = document.getElementById("share-frame");
+	const toast = document.getElementById("share-toast");
+	let baseTitle = null;
+	let toastTimer = 0;
+	document.getElementById("share-stop").addEventListener("click", () => {
+		meeting.self.disableScreenShare().catch((error) => console.warn("disableScreenShare", error));
+	});
+	const update = () => {
+		const sharing = !!meeting.self.screenShareEnabled;
+		const track = sharing ? meeting.self.screenShareTracks?.video : null;
+		const surface = track?.getSettings?.().displaySurface;
+		const what = surface === "window" ? "窗口" : surface === "browser" ? "标签页" : "屏幕";
+		bar.hidden = frame.hidden = !sharing;
+		text.textContent = "你正在共享" + what + "，参会人能看到其中的全部内容";
+		if (sharing) {
+			if (baseTitle === null) {
+				baseTitle = document.title;
+				if (!inDesktopApp) {
+					toast.textContent = "网页版无法在屏幕四周显示边框，需要边框请用桌面版";
+					toast.hidden = false;
+					clearTimeout(toastTimer);
+					toastTimer = setTimeout(() => { toast.hidden = true; }, 8000);
+				}
+			}
+			document.title = "● 正在共享" + (what === "屏幕" ? "屏幕" : "窗口") + " · " + baseTitle;
+		} else if (baseTitle !== null) {
+			document.title = baseTitle;
+			baseTitle = null;
+			toast.hidden = true;
+		}
+	};
+	meeting.self.on("screenShareUpdate", update);
 }
 
 function setupScreenLock(meeting) {
