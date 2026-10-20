@@ -73,7 +73,21 @@ export async function createAgentChatStream(context: AgentToolContext, text: str
 		description: taskToolDescriptions[name], inputSchema: taskToolSchemas[name],
 		execute: async (input: unknown) => runTaskTool(context, name, input),
 	}]));
-	const result = streamText({ model: selection.model, system: agentSystemPrompt(settings?.instructions ?? "", timeZone, agentReplyLanguage(options.locale)), messages: prompt, tools: { ...tools, ...calendarTools, ...taskTools }, stopWhen: stepCountIs(8), maxOutputTokens: 2000, abortSignal: signal, onStepFinish: async ({ usage }) => { await recordAiUsage({ env: context.env, details: selection, usage, source: "chat" }); } });
+	// One "[agent] request" line per turn, in the same shape as the chat summaries' "[im-ai] request".
+	const trace = { started: Date.now(), steps: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, finishReason: "" as string, error: "" };
+	const result = streamText({ model: selection.model, system: agentSystemPrompt(settings?.instructions ?? "", timeZone, agentReplyLanguage(options.locale)), messages: prompt, tools: { ...tools, ...calendarTools, ...taskTools }, stopWhen: stepCountIs(8), maxOutputTokens: 2000, abortSignal: signal, onStepFinish: async ({ usage, finishReason }) => {
+		trace.steps += 1;
+		trace.inputTokens += usage.inputTokens ?? 0;
+		trace.outputTokens += usage.outputTokens ?? 0;
+		trace.finishReason = finishReason;
+		await recordAiUsage({ env: context.env, details: selection, usage, source: "chat" });
+	} });
+	const logTurn = () => {
+		const outcome = trace.error ? "failed" : signal?.aborted ? "aborted" : "ok";
+		const line = { source: "chat", outcome, ms: Date.now() - trace.started, model: selection.modelId, attempts: 1, steps: trace.steps, toolCalls: trace.toolCalls, finishReason: trace.finishReason, inputTokens: trace.inputTokens, outputTokens: trace.outputTokens, ...(trace.error ? { error: trace.error } : {}) };
+		if (outcome === "ok") console.log("[agent] request", JSON.stringify(line));
+		else console.warn("[agent] request", JSON.stringify(line));
+	};
 	const encoder = new TextEncoder();
 	const id = conversation.id;
 	const stream = new ReadableStream<Uint8Array>({
@@ -97,6 +111,7 @@ export async function createAgentChatStream(context: AgentToolContext, text: str
 						}
 						stepText = "";
 					} else if (part.type === "tool-call") {
+						trace.toolCalls += 1;
 						emit({ type: "tool", id: part.toolCallId, name: part.toolName, state: "running" });
 					} else if (part.type === "tool-result") {
 						const recordId = newId("chat");
@@ -107,6 +122,7 @@ export async function createAgentChatStream(context: AgentToolContext, text: str
 						await db.insert(agentChatMessages).values({ id: newId("chat"), conversationId: id, role: "tool", toolName: part.toolName, content: message });
 						emit({ type: "tool", id: part.toolCallId, name: part.toolName, state: "failed", result: message });
 					} else if (part.type === "error") {
+						trace.error = agentProviderErrorMessage(part.error).slice(0, 300);
 						emit({ type: "error", message: agentProviderErrorMessage(part.error) });
 					}
 				}
@@ -115,8 +131,10 @@ export async function createAgentChatStream(context: AgentToolContext, text: str
 				emit({ type: "done" });
 			} catch (error) {
 				if (response.trim()) await db.insert(agentChatMessages).values({ id: newId("chat"), conversationId: id, role: "assistant", content: response });
+				trace.error = agentProviderErrorMessage(error).slice(0, 300);
 				emit({ type: "error", message: agentProviderErrorMessage(error) });
 			} finally {
+				logTurn();
 				controller.close();
 			}
 		},
