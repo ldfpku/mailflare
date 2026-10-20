@@ -98,7 +98,7 @@ function ShortcutsHelpDialogContent({
             ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label={t("shortcutsHelp.close")}
+            aria-label={t("shortcutsHelp.close")} title={t("shortcutsHelp.close")}
             className="text-neutral-400 hover:text-neutral-700 p-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
           >
             <X className="w-5 h-5" />

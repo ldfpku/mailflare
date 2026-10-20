@@ -177,7 +177,7 @@ export default function DomainItemCard({
             size="sm"
             className="absolute right-4 top-4 h-8 w-8 p-0"
             disabled={remove.isPending}
-            aria-label={t("domains.actionsFor", { host: item.hostname })}
+            aria-label={t("domains.actionsFor", { host: item.hostname })} title={t("domains.actionsFor", { host: item.hostname })}
           >
             <MoreVertical className="h-4 w-4" />
           </Button>

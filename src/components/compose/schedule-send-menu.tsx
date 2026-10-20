@@ -38,7 +38,7 @@ export function ScheduleSendMenu({ disabled, value, onChange, mailboxId, from, o
 	if (isPhone) {
 		return (
 			<>
-				<button type="button" disabled={disabled} aria-label={t("schedule.optionsLabel")} onClick={() => setSheetOpen(true)} className="inline-flex h-8 items-center justify-center rounded-r-lg border-l border-blue-500 bg-blue-600 px-2 text-white max-md:h-10 max-md:px-2.5 transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
+				<button type="button" disabled={disabled} aria-label={t("schedule.optionsLabel")} title={t("schedule.optionsLabel")} onClick={() => setSheetOpen(true)} className="inline-flex h-8 items-center justify-center rounded-r-lg border-l border-blue-500 bg-blue-600 px-2 text-white max-md:h-10 max-md:px-2.5 transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
 					<ChevronDown className="h-4 w-4" />
 				</button>
 				<ScheduleSendSheet open={sheetOpen} onOpenChange={setSheetOpen} value={value} onChange={onChange} onApplyTemplate={onApplyTemplate} onNewTemplate={() => setNewTemplateOpen(true)} />
@@ -54,6 +54,7 @@ export function ScheduleSendMenu({ disabled, value, onChange, mailboxId, from, o
 				type="button"
 				disabled={disabled}
 				aria-label={t("schedule.optionsLabel")}
+				title={t("schedule.optionsLabel")}
 				className="inline-flex h-8 items-center justify-center rounded-r-lg border-l border-blue-500 bg-blue-600 px-2 text-white max-md:h-10 max-md:px-2.5 transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
 			>
 				<ChevronDown className="h-4 w-4" />

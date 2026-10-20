@@ -73,7 +73,7 @@ export function ContactAvatarForm({
 					onClick={() => inputRef.current?.click()}
 					disabled={busy}
 					className="group relative h-14 w-14 overflow-hidden rounded-full outline-none ring-blue-500 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait"
-					aria-label={hasAvatar ? t("avatar.change", { name }) : t("avatar.upload", { name })}
+					aria-label={hasAvatar ? t("avatar.change", { name }) : t("avatar.upload", { name })} title={hasAvatar ? t("avatar.change", { name }) : t("avatar.upload", { name })}
 				>
 					<ContactAvatar
 						mailboxId={mailboxId}

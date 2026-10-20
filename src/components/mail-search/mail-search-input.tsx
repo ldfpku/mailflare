@@ -26,7 +26,7 @@ export function MailSearchInput({ mobileEnd }: { mobileEnd?: boolean }) {
 					onMouseDown={(event) => event.preventDefault()}
 					onClick={() => setQuery("")}
 					className="rounded-full p-1 text-neutral-500 hover:bg-blue-100 hover:text-neutral-800"
-					aria-label={t("search.clear")}
+					aria-label={t("search.clear")} title={t("search.clear")}
 				>
 					<X className="h-4 w-4" />
 				</button>

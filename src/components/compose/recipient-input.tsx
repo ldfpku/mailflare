@@ -76,7 +76,7 @@ export function RecipientInput({
 							{!disabled && (
 								<button
 									type="button"
-									aria-label={t("recipient.remove", { address: getEmailAddress(entry) })}
+									aria-label={t("recipient.remove", { address: getEmailAddress(entry) })} title={t("recipient.remove", { address: getEmailAddress(entry) })}
 									className="rounded-full p-0.5 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-700"
 									onClick={(event) => {
 										event.stopPropagation();

@@ -57,6 +57,7 @@ export default function PublicDrivePage({ params }: { params: Promise<{ token: s
 
 function PublicRow({ entry, token, onOpen }: { entry: PublicDriveItem; token: string; onOpen: (id: string) => void }) {
 	const { Icon, className } = driveIconFor(entry);
+	const { t } = useLanguage();
 	return (
 		<div className="flex items-center gap-4 rounded-lg px-3 text-sm hover:bg-neutral-50">
 			<button type="button" onClick={() => onOpen(entry.id)} className="flex min-w-0 flex-1 items-center gap-4 py-3 text-left">
@@ -64,7 +65,7 @@ function PublicRow({ entry, token, onOpen }: { entry: PublicDriveItem; token: st
 				<span className="truncate text-neutral-900">{entry.name}</span>
 			</button>
 			{entry.kind === "file" && <span className="hidden shrink-0 text-neutral-500 sm:block">{formatDriveSize(entry.size)}</span>}
-			{entry.kind === "file" && <a href={publicContentUrl(token, entry.id, true)} aria-label={entry.name} className="shrink-0 rounded-full p-2 text-neutral-600 hover:bg-neutral-200"><Download size={16} /></a>}
+			{entry.kind === "file" && <a href={publicContentUrl(token, entry.id, true)} aria-label={`${t("drive.download")} ${entry.name}`} title={t("drive.download")} className="shrink-0 rounded-full p-2 text-neutral-600 hover:bg-neutral-200"><Download size={16} /></a>}
 		</div>
 	);
 }
