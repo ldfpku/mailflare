@@ -97,7 +97,7 @@ export default defineConfig({
 					period: 60,
 				},
 			}),
-			// Per key (chat:<user>, mcp:<key>, im-ai:<user>). Lowered from 120 after the 2026-10-19 billing
+			// Per key (chat:<user>, im-ai:<user>). Lowered from 120 after the 2026-10-19 billing
 			// audit (§5 row 1); the daily caps are in src/lib/agent/rate-limit.ts.
 			AGENT_RATE_LIMIT: bindings.rateLimit({
 				namespace: "1002",

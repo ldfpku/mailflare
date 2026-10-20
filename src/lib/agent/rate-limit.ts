@@ -1,5 +1,7 @@
 /**
- * Limits on the assistant surfaces (`/api/agent/chat`, `/mcp`, chat summaries in `src/lib/im/ai.ts`).
+ * Limits on the surfaces that call Workers AI (`/api/agent/chat`, chat summaries and mail to-dos in
+ * `src/lib/im/ai.ts`). `/mcp` is not one of them: its tools read and write mail without a model, so
+ * MCP traffic (initialize, tools/list, every tool call) does not draw on these limits.
  *
  * Two layers, from the 2026-10-19 billing audit (§5 row 1): the per-minute Rate Limiting binding that
  * already existed (now 10/min per key), plus daily caps counted in D1 so a script, a leaked key or a
@@ -12,7 +14,7 @@
  * `cf` config keeps no plaintext vars across deploys.
  */
 
-export type AgentLimitReason = "rate" | "user-daily" | "global-daily";
+export type AgentLimitReason = "rate" | "user-daily" | "global-daily" | "unavailable";
 export type AgentLimitResult =
 	| { allowed: true }
 	| { allowed: false; reason: AgentLimitReason; retryAfterSeconds: number; limit?: number };
@@ -44,21 +46,33 @@ export function secondsUntilUtcMidnight(now = new Date()): number {
 	return Math.max(1, Math.ceil((next - now.getTime()) / 1000));
 }
 
-/** Adds one call to the (scope, day) counter atomically and returns the new total. */
-export async function countAgentCall(env: Pick<CloudflareEnv, "DB">, scope: string, day: string): Promise<number> {
+/**
+ * Adds one call to the (scope, day) counter unless it already reached `limit`, atomically. Returns
+ * false, leaving the counter as it was, when the call is over the limit.
+ */
+export async function countAgentCall(env: Pick<CloudflareEnv, "DB">, scope: string, day: string, limit: number): Promise<boolean> {
 	const row = await env.DB
-		.prepare("INSERT INTO ai_daily_counters (scope, day, count) VALUES (?, ?, 1) ON CONFLICT (scope, day) DO UPDATE SET count = count + 1 RETURNING count")
-		.bind(scope, day)
+		.prepare("INSERT INTO ai_daily_counters (scope, day, count) VALUES (?, ?, 1) ON CONFLICT (scope, day) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count")
+		.bind(scope, day, limit)
 		.first<{ count: number }>();
-	return Number(row?.count ?? 0);
+	return row !== null;
+}
+
+async function uncountAgentCall(env: Pick<CloudflareEnv, "DB">, scope: string, day: string) {
+	await env.DB.prepare("UPDATE ai_daily_counters SET count = MAX(count - 1, 0) WHERE scope = ? AND day = ?").bind(scope, day).run();
+}
+
+/** True for the error D1 and SQLite give before migration 0077 has created the counters. */
+export function isMissingCounterTable(error: unknown): boolean {
+	return /no such table:?\s*ai_daily_counters/i.test(error instanceof Error ? `${error.message} ${String(error.cause ?? "")}` : String(error));
 }
 
 /**
- * Checks the per-minute limit for `key` (`chat:<user>`, `mcp:<key>`, `im-ai:<user>`), then the daily
- * caps for `dailyScope` (normally `user:<id>`, so every surface draws on the same per-user budget) and
- * for the whole install. The counters are incremented before the verdict, so a refused call still
- * shows up in them; nothing is spent on the model either way. Any failure refuses the call: the
- * counter is what keeps a loop from spending the budget, so it must not fail open.
+ * Checks the per-minute limit for `key` (`chat:<user>`, `im-ai:<user>`), then the daily caps for
+ * `dailyScope` (normally `user:<id>`, so every surface draws on the same per-user budget) and for the
+ * whole install. Only an allowed call is counted: a refused one leaves both counters as they were, so
+ * the totals are the calls that went on to the model. Any failure refuses the call: the counter is
+ * what keeps a loop from spending the budget, so it must not fail open.
  */
 export async function checkAgentLimits(env: LimitEnv, key: string, dailyScope: string = key): Promise<AgentLimitResult> {
 	if (env.AGENT_RATE_LIMIT) {
@@ -73,32 +87,32 @@ export async function checkAgentLimits(env: LimitEnv, key: string, dailyScope: s
 	const day = utcDay(now);
 	const retryAfterSeconds = secondsUntilUtcMidnight(now);
 	try {
-		if (limits.perUser > 0 && await countAgentCall(env, dailyScope, day) > limits.perUser) {
+		if (limits.perUser > 0 && !(await countAgentCall(env, dailyScope, day, limits.perUser))) {
 			return { allowed: false, reason: "user-daily", retryAfterSeconds, limit: limits.perUser };
 		}
-		if (limits.global > 0 && await countAgentCall(env, GLOBAL_SCOPE, day) > limits.global) {
+		if (limits.global > 0 && !(await countAgentCall(env, GLOBAL_SCOPE, day, limits.global))) {
+			if (limits.perUser > 0) await uncountAgentCall(env, dailyScope, day);
 			return { allowed: false, reason: "global-daily", retryAfterSeconds, limit: limits.global };
 		}
 	} catch (error) {
-		console.error("Could not count assistant usage; refusing the request", error);
-		return { allowed: false, reason: "user-daily", retryAfterSeconds: 60 };
+		if (isMissingCounterTable(error)) console.error("ai_daily_counters is missing; apply migration 0077. Refusing the request");
+		else console.error("Could not count assistant usage; refusing the request", error);
+		return { allowed: false, reason: "unavailable", retryAfterSeconds: 60 };
 	}
 	return { allowed: true };
 }
 
-export async function allowAgentRequest(env: LimitEnv, key: string, dailyScope: string = key): Promise<boolean> {
-	return (await checkAgentLimits(env, key, dailyScope)).allowed;
-}
-
+/** What to tell the person, in Chinese like the rest of the product; the panel also maps `reason` through i18n. */
 export function agentLimitMessage(result: Extract<AgentLimitResult, { allowed: false }>): string {
 	switch (result.reason) {
-		case "rate": return "Rate limit exceeded";
-		case "user-daily": return `Daily assistant limit reached${result.limit ? ` (${result.limit} requests)` : ""}. Try again tomorrow.`;
-		case "global-daily": return "The assistant has used today's budget for everyone. Try again tomorrow.";
+		case "rate": return "请求太频繁，请一分钟后再试";
+		case "user-daily": return `今天的 AI 次数已用完${result.limit ? `（每人每天 ${result.limit} 次）` : ""}，请明天再试`;
+		case "global-daily": return "今天全公司的 AI 次数已用完，请明天再试";
+		case "unavailable": return "AI 功能正在升级，请稍后再试";
 	}
 }
 
 /** The 429 the API routes return; `Retry-After` is the seconds until the minute or the UTC day rolls over. */
 export function agentLimitResponse(result: Extract<AgentLimitResult, { allowed: false }>): Response {
-	return Response.json({ error: agentLimitMessage(result), reason: result.reason }, { status: 429, headers: { "Retry-After": String(result.retryAfterSeconds) } });
+	return Response.json({ error: agentLimitMessage(result), reason: result.reason }, { status: result.reason === "unavailable" ? 503 : 429, headers: { "Retry-After": String(result.retryAfterSeconds) } });
 }

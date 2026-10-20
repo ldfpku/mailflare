@@ -28,7 +28,7 @@ await build({
 	alias: { "cloudflare:workers": "./server/runtime/cloudflare-workers.ts" },
 	logLevel: "silent",
 });
-const { SqliteDatabase, applyMigrations, checkAgentLimits, allowAgentRequest, agentDailyLimits, agentLimitResponse, countAgentCall, secondsUntilUtcMidnight } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
+const { SqliteDatabase, applyMigrations, checkAgentLimits, agentDailyLimits, agentLimitMessage, agentLimitResponse, countAgentCall, isMissingCounterTable, secondsUntilUtcMidnight } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 
 /** A Rate Limiting binding stand-in with a fixed verdict that records the keys it saw. */
 function limiter(success) {
@@ -43,9 +43,9 @@ async function fixture(t, vars = {}, { migrate = true } = {}) {
 	return { DB: database, ...vars };
 }
 
-test("the per-user daily cap counts chat, MCP and summaries together and resets per UTC day", async (t) => {
+test("the per-user daily cap counts chat and summaries together, only for allowed calls, and resets per UTC day", async (t) => {
 	const env = await fixture(t, { AGENT_DAILY_LIMIT: "3" });
-	for (const key of ["chat:u1", "mcp:key1", "im-ai:u1"]) assert.deepEqual(await checkAgentLimits(env, key, "user:u1"), { allowed: true });
+	for (const key of ["chat:u1", "im-ai:u1", "im-ai:u1"]) assert.deepEqual(await checkAgentLimits(env, key, "user:u1"), { allowed: true });
 	const refused = await checkAgentLimits(env, "chat:u1", "user:u1");
 	assert.equal(refused.allowed, false);
 	assert.equal(refused.reason, "user-daily");
@@ -53,13 +53,14 @@ test("the per-user daily cap counts chat, MCP and summaries together and resets 
 	assert.ok(refused.retryAfterSeconds >= 1 && refused.retryAfterSeconds <= 86_400);
 	// Another person still has their own budget.
 	assert.deepEqual(await checkAgentLimits(env, "chat:u2", "user:u2"), { allowed: true });
-	assert.equal(await allowAgentRequest(env, "chat:u1", "user:u1"), false);
-	// A call refused by the per-user cap is not charged to the global budget (the global counter is checked second).
+	assert.equal((await checkAgentLimits(env, "im-ai:u1", "user:u1")).allowed, false);
+	// Refused calls never reached the model, so neither counter moved for them.
 	const rows = await env.DB.prepare("SELECT scope, day, count FROM ai_daily_counters ORDER BY scope").all();
-	assert.deepEqual(rows.results.map((row) => [row.scope, row.count]), [["global", 4], ["user:u1", 5], ["user:u2", 1]]);
+	assert.deepEqual(rows.results.map((row) => [row.scope, row.count]), [["global", 4], ["user:u1", 3], ["user:u2", 1]]);
 	assert.match(rows.results[0].day, /^\d{4}-\d{2}-\d{2}$/);
-	// A new day starts a new row, so yesterday's refusals do not carry over.
-	assert.equal(await countAgentCall(env, "user:u1", "2000-01-01"), 1);
+	// A new day starts a new row.
+	assert.equal(await countAgentCall(env, "user:u1", "2000-01-01", 3), true);
+	assert.match(agentLimitMessage(refused), /今天的 AI 次数已用完（每人每天 3 次）/);
 });
 
 test("the global daily cap applies across everyone, after the per-user cap", async (t) => {
@@ -72,6 +73,9 @@ test("the global daily cap applies across everyone, after the per-user cap", asy
 	assert.equal(response.status, 429);
 	assert.equal(response.headers.get("Retry-After"), String(refused.retryAfterSeconds));
 	assert.equal((await response.json()).reason, "global-daily");
+	// The person refused by the global cap is not charged on their own counter either.
+	const rows = await env.DB.prepare("SELECT scope, count FROM ai_daily_counters ORDER BY scope").all();
+	assert.deepEqual(rows.results.map((row) => [row.scope, row.count]), [["global", 2], ["user:a", 1], ["user:b", 1], ["user:c", 0]]);
 });
 
 test("the per-minute binding is checked first and a refusal there does not touch the counters", async (t) => {
@@ -98,7 +102,12 @@ test("defaults, disabling with 0, and ignoring malformed settings", async (t) =>
 
 test("a counter that cannot be read or written refuses the call instead of opening the cap", async (t) => {
 	const env = await fixture(t, {}, { migrate: false });
+	t.mock.method(console, "error", () => {});
 	const refused = await checkAgentLimits(env, "chat:u1", "user:u1");
 	assert.equal(refused.allowed, false);
-	assert.equal(refused.reason, "user-daily");
+	assert.equal(refused.reason, "unavailable", "before migration 0077 the person is told AI is being upgraded, not that they used it up");
+	assert.equal(agentLimitMessage(refused), "AI 功能正在升级，请稍后再试");
+	assert.equal(agentLimitResponse(refused).status, 503);
+	assert.equal(isMissingCounterTable(new Error("D1_ERROR: no such table: ai_daily_counters: SQLITE_ERROR")), true);
+	assert.equal(isMissingCounterTable(new Error("D1_ERROR: database is locked")), false);
 });

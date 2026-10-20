@@ -3,7 +3,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { getDb } from "@/db";
 import { getAgentEnabled, getAgentProviderConfig } from "@/lib/agent/provider";
 import { DEFAULT_CLOUDFLARE_MODEL } from "@/lib/agent/provider-constants";
-import { allowAgentRequest } from "@/lib/agent/rate-limit";
+import { agentLimitMessage, checkAgentLimits } from "@/lib/agent/rate-limit";
 import { recordAiUsage } from "@/lib/ai/usage";
 import { getEmailAddress, getEmailDisplayName } from "@/lib/email/address";
 import { getMailboxAccessLevel } from "@/lib/mailboxes/access";
@@ -46,7 +46,8 @@ function imAiModelId(env: Env, configured: { provider: string; model: string }):
 async function imAiModel(env: Env, userId: string) {
 	if (!env.AI) throw new ImChatError(400, "AI 功能未开启，请联系管理员");
 	if (!(await getAgentEnabled(env))) throw new ImChatError(403, "管理员已关闭 AI 功能");
-	if (!(await allowAgentRequest(env, `im-ai:${userId}`, `user:${userId}`))) throw new ImChatError(400, "请求太频繁或今日 AI 次数已用完，请稍后再试");
+	const limit = await checkAgentLimits(env, `im-ai:${userId}`, `user:${userId}`);
+	if (!limit.allowed) throw new ImChatError(400, agentLimitMessage(limit));
 	const config = await getAgentProviderConfig(env);
 	const modelIds = imAiModelChain(imAiModelId(env, config));
 	const workersAi = createWorkersAI({ binding: env.AI });
@@ -55,17 +56,62 @@ async function imAiModel(env: Env, userId: string) {
 
 type ImAiModels = Awaited<ReturnType<typeof imAiModel>>;
 
+/** One call to one model, as logged and counted in `attempts`. */
+interface ImAiAttempt {
+	model: string;
+	ok: boolean;
+	ms: number;
+	finishReason?: string;
+	inputTokens?: number;
+	outputTokens?: number;
+	error?: string;
+}
+
+/** Everything one summary or to-do request asked of the models; logged once when it ends. */
+interface ImAiTrace {
+	source: string;
+	started: number;
+	attempts: ImAiAttempt[];
+}
+
+const newTrace = (source: string): ImAiTrace => ({ source, started: Date.now(), attempts: [] });
+
+/** The models that gave the answers, e.g. "@cf/…-pro" or, after a fallback, "@cf/…-flash". */
+const traceModel = (trace: ImAiTrace) => [...new Set(trace.attempts.filter((attempt) => attempt.ok).map((attempt) => attempt.model))].join(",");
+
+/**
+ * Logs one `[im-ai]` line per request: total time, the models that answered and every attempt with
+ * its model, finish reason, time and tokens, so a fallback shows up in the Worker logs.
+ */
+function logTrace(trace: ImAiTrace, outcome: "ok" | "failed") {
+	const fellBack = trace.attempts.some((attempt) => !attempt.ok);
+	const line = { source: trace.source, outcome, ms: Date.now() - trace.started, model: traceModel(trace), attempts: trace.attempts.length, fellBack, calls: trace.attempts };
+	if (outcome === "failed" || fellBack) console.warn("[im-ai] request", JSON.stringify(line));
+	else console.log("[im-ai] request", JSON.stringify(line));
+}
+
+async function traced<T>(trace: ImAiTrace, run: () => Promise<T>): Promise<T> {
+	try {
+		const value = await run();
+		logTrace(trace, "ok");
+		return value;
+	} catch (error) {
+		logTrace(trace, "failed");
+		throw error;
+	}
+}
+
 /**
  * Asks each model in turn until one gives a usable answer. Reasoning is
  * switched off: the DeepSeek models think by default, and the thinking counts
  * against `maxOutputTokens`, so a long chat used to come back with an empty
- * answer. An empty, unusable or failed answer is logged and the next model is
- * tried; when none answers, the caller gets a message instead of a blank.
+ * answer. An empty, unusable or failed answer is recorded on the trace and the
+ * next model is tried; when none answers, the caller gets a message instead of a blank.
  */
 async function generate(
 	env: Env,
 	models: ImAiModels,
-	source: string,
+	trace: ImAiTrace,
 	system: string,
 	prompt: string,
 	maxOutputTokens: number,
@@ -75,20 +121,22 @@ async function generate(
 		const started = Date.now();
 		try {
 			const result = await generateText({ model: selection.model, system, prompt, maxOutputTokens, temperature: 0.2, reasoning: "none", maxRetries: 0 });
-			await recordAiUsage({ env, details: selection, usage: result.usage, source });
+			await recordAiUsage({ env, details: selection, usage: result.usage, source: trace.source });
 			const text = cleanModelText(result.text);
-			if (text && usable(text)) return text;
-			console.warn("[im-ai] unusable answer", {
-				source,
+			const ok = Boolean(text) && usable(text);
+			trace.attempts.push({
 				model: selection.modelId,
-				finishReason: result.finishReason,
-				outputTokens: result.usage.outputTokens,
-				reasoningChars: result.reasoningText?.length ?? 0,
-				textChars: result.text.length,
+				ok,
 				ms: Date.now() - started,
+				finishReason: result.finishReason,
+				inputTokens: result.usage.inputTokens,
+				outputTokens: result.usage.outputTokens,
+				...(ok ? {} : { error: text ? "unusable answer" : `empty answer (${result.reasoningText?.length ?? 0} reasoning chars)` }),
 			});
+			if (ok) return text;
 		} catch (error) {
-			console.error("[im-ai] Workers AI call failed", { source, model: selection.modelId, ms: Date.now() - started }, error);
+			trace.attempts.push({ model: selection.modelId, ok: false, ms: Date.now() - started, error: String(error instanceof Error ? error.message : error).slice(0, 300) });
+			console.error("[im-ai] Workers AI call failed", selection.modelId, error);
 		}
 	}
 	throw new ImChatError(400, "AI 这次没有生成结果，请稍后重试");
@@ -106,6 +154,10 @@ export interface ImSummaryResult {
 	parts: number;
 	/** Messages left out because the chat was too long to read in full. */
 	dropped: number;
+	/** The models that answered (comma-separated after a fallback), for checking; the app does not show it. */
+	model?: string;
+	/** Model calls made, fallbacks included. */
+	attempts?: number;
 }
 
 /** Summarizes the latest `count` messages of a room the caller is in (default 100, at most 500). */
@@ -143,16 +195,18 @@ export async function summarizeRoom(env: Env, user: ImUser, input: { roomId?: un
 	const isGroup = room.type === IM_ROOM_TYPE.GROUP;
 	const { chunks, dropped } = chunkTranscript(lines);
 	const models = await imAiModel(env, user.id);
-	if (chunks.length === 1) {
-		const summary = await generate(env, models, "im_summary", summarySystemPrompt(isGroup), `聊天记录：\n${chunks[0]}`, 1500);
-		return { summary, ...base, messageCount: base.messageCount - dropped, parts: 1, dropped };
-	}
-	const partials: string[] = [];
-	for (const [index, chunk] of chunks.entries()) {
-		partials.push(`第 ${index + 1} 段：\n${await generate(env, models, "im_summary", partSystemPrompt(), `聊天记录（第 ${index + 1}/${chunks.length} 段）：\n${chunk}`, 1000)}`);
-	}
-	const summary = await generate(env, models, "im_summary", mergeSystemPrompt(isGroup), partials.join("\n\n"), 1500);
-	return { summary, ...base, messageCount: base.messageCount - dropped, parts: chunks.length, dropped };
+	const trace = newTrace("im_summary");
+	const { summary, parts } = await traced(trace, async () => {
+		if (chunks.length === 1) {
+			return { summary: await generate(env, models, trace, summarySystemPrompt(isGroup), `聊天记录：\n${chunks[0]}`, 1500), parts: 1 };
+		}
+		const partials: string[] = [];
+		for (const [index, chunk] of chunks.entries()) {
+			partials.push(`第 ${index + 1} 段：\n${await generate(env, models, trace, partSystemPrompt(), `聊天记录（第 ${index + 1}/${chunks.length} 段）：\n${chunk}`, 1000)}`);
+		}
+		return { summary: await generate(env, models, trace, mergeSystemPrompt(isGroup), partials.join("\n\n"), 1500), parts: chunks.length };
+	});
+	return { summary, ...base, messageCount: base.messageCount - dropped, parts, dropped, model: traceModel(trace), attempts: trace.attempts.length };
 }
 
 // Mail to-do draft --------------------------------------------------------------
@@ -185,15 +239,16 @@ export async function draftMailTodo(env: Env, user: Pick<ImUser, "id" | "role">,
 	const subject = mail.subject?.trim() || "(无主题)";
 	const sender = getEmailDisplayName(mail.from_addr) || getEmailAddress(mail.from_addr) || mail.from_addr;
 	const models = await imAiModel(env, user.id);
-	const answer = await generate(
+	const trace = newTrace("im_mail_todo");
+	const answer = await traced(trace, () => generate(
 		env,
 		models,
-		"im_mail_todo",
+		trace,
 		todoSystemPrompt(Date.now()),
 		todoUserPrompt({ subject, from: sender, date: mail.created_at * 1000, body: mailPlainText(mail.text_body, mail.html_body) }),
 		1200,
 		(text) => parseTodoDraft(text, subject) !== null,
-	);
+	));
 	const draft = parseTodoDraft(answer, subject) ?? { title: `处理邮件：${subject}`.slice(0, 100), dueAt: null, points: [] };
-	return { ...draft, notes: pointsToNotes(draft.points), mailId: mail.id, mailSubject: subject };
+	return { ...draft, notes: pointsToNotes(draft.points), mailId: mail.id, mailSubject: subject, model: traceModel(trace), attempts: trace.attempts.length };
 }

@@ -29,4 +29,4 @@ export type AgentSettingsResponse = { settings: AgentSettings; models: string[];
 export type AgentConversationsResponse = { conversations: AgentConversation[] };
 export type AgentJobsResponse = { jobs: AgentJob[] };
 export type AgentHistoryResponse = { messages: AgentMessage[] };
-export type AgentErrorResponse = { error?: string };
+export type AgentErrorResponse = { error?: string; reason?: "rate" | "user-daily" | "global-daily" | "unavailable" };
