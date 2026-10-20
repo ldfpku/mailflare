@@ -36,7 +36,8 @@ export async function GET(request: Request) {
 		}
 	}
 
-	const rows = await db
+	// Both counts read the same filter; send them together.
+	const [rows, [scheduledRow]] = await Promise.all([db
 		.select({
 			mailboxId: messages.mailboxId,
 			folderId: messages.folderId,
@@ -57,12 +58,11 @@ export async function GET(request: Request) {
 			messages.read,
 			messages.starred,
 			messages.snoozedUntil,
-		);
-
-	const [scheduledRow] = await db
+		),
+	db
 		.select({ total: count() })
 		.from(messages)
-		.where(and(...conditions, scheduledMessageCondition(db)));
+		.where(and(...conditions, scheduledMessageCondition(db)))]);
 	const counts = buildMessageCounts(rows);
 	counts.folders.scheduled.total = scheduledRow?.total ?? 0;
 

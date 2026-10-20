@@ -10,11 +10,12 @@ import { getHomeBranding } from "./home-server-utils";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
-	const { appName } = await getHomeBranding();
+	const { appName, hasCustomIcon } = await getHomeBranding();
 	return {
 		title: appName,
 		description: "斯米伽（SMJ）内部邮箱",
-		icons: { icon: "/api/branding/icon", apple: "/icon-180.png" },
+		// The packaged icon is a static asset; only a custom icon needs the Worker.
+		icons: { icon: hasCustomIcon ? "/api/branding/icon" : "/icon-96.png", apple: "/icon-180.png" },
 		appleWebApp: {
 			capable: true,
 			title: appName,
@@ -46,7 +47,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
 			<head>
 				<script dangerouslySetInnerHTML={{ __html: sidebarBootstrapScript }} />
 				<script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
-				<link rel="icon" href="/api/branding/icon"></link>
 			</head>
 			<body className="antialiased">
 				<LanguageProvider initialLocale={locale} initialMessages={messages}><Providers initialBranding={branding}>{children}</Providers></LanguageProvider>

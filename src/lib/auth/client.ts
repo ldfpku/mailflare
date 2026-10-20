@@ -2,6 +2,7 @@
 
 import { getUserTimeZone } from "@/lib/time/utils";
 import { clearUserTimeZonePreference } from "@/lib/time/client";
+import { cachedGetKey, clearCachedGets, readCachedGet } from "./get-cache";
 import type {
 	AuthFetchOptions,
 	AuthSessionChangedDetail,
@@ -13,6 +14,7 @@ export const AUTH_SESSION_CHANGED_EVENT = "mailflare:auth-session-changed";
 
 function dispatchAuthSessionChanged(authenticated: boolean): void {
 	if (typeof window === "undefined") return;
+	clearCachedGets();
 	window.dispatchEvent(
 		new CustomEvent<AuthSessionChangedDetail>(AUTH_SESSION_CHANGED_EVENT, {
 			detail: { authenticated },
@@ -52,10 +54,18 @@ export function getAuthHeaders(headers?: HeadersInit): Headers {
 
 export async function authFetch(input: RequestInfo | URL, init: AuthFetchOptions = {}): Promise<Response> {
 	const { redirectOnUnauthorized = true, headers, ...requestInit } = init;
-	const response = await fetch(input, {
-		...requestInit,
-		headers: getAuthHeaders(headers),
-	});
+	const cacheKey = cachedGetKey(input, requestInit.method);
+	const isWrite = (requestInit.method ?? "GET").toUpperCase() !== "GET";
+	if (isWrite) clearCachedGets();
+	const response = cacheKey
+		// The shared request must outlive the component that started it, so it does not take its signal.
+		? await readCachedGet(cacheKey, () => fetch(input, { ...requestInit, signal: undefined, headers: getAuthHeaders(headers) }))
+		: await fetch(input, {
+			...requestInit,
+			headers: getAuthHeaders(headers),
+		});
+	// Again once the write is done, in case a read started while it was in flight.
+	if (isWrite) clearCachedGets();
 
 	if (response.status === 401 && redirectOnUnauthorized && typeof window !== "undefined") {
 		clearClientSessionToken();
@@ -63,6 +73,11 @@ export async function authFetch(input: RequestInfo | URL, init: AuthFetchOptions
 	}
 
 	return response;
+}
+
+/** Starts the GETs a page is about to make, so they are answered from the cache when it asks. */
+export function prefetchAuthGets(urls: string[]): void {
+	for (const url of urls) void authFetch(url, { redirectOnUnauthorized: false }).catch(() => undefined);
 }
 
 export async function persistAuthSession(response: Response): Promise<AuthSessionResponse> {

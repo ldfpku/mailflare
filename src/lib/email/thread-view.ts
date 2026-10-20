@@ -27,11 +27,9 @@ export async function getMessageThreadForUser(env: CloudflareEnv, user: SessionU
 		.where(eq(messages.id, messageId))
 		.limit(1);
 	if (!message?.mailboxId) return null;
-	const access = await getMailboxAccessLevel(db, user, message.mailboxId);
-	if (!access?.canRead) return null;
-
-	const rows = message.threadId
-		? await db
+	// The access check and the thread read go out together; nothing is returned unless access allows it.
+	const [access, rows] = await Promise.all([getMailboxAccessLevel(db, user, message.mailboxId), message.threadId
+		? db
 				.select()
 				.from(messages)
 				.where(
@@ -43,11 +41,13 @@ export async function getMessageThreadForUser(env: CloudflareEnv, user: SessionU
 				)
 				.orderBy(asc(messages.createdAt))
 				.limit(200)
-		: await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
+		: db.select().from(messages).where(eq(messages.id, messageId)).limit(1)]);
+	if (!access?.canRead) return null;
 
 	const ids = rows.map((row) => row.id);
-	const attachmentRows = ids.length
-		? await db
+	// Attachments and contact details depend only on the rows; one round trip for all three.
+	const [attachmentRows, contactMap, contactAvatarMap] = await Promise.all([ids.length
+		? db
 				.select({
 					id: messageAttachments.id,
 					messageId: messageAttachments.messageId,
@@ -59,24 +59,23 @@ export async function getMessageThreadForUser(env: CloudflareEnv, user: SessionU
 				})
 				.from(messageAttachments)
 				.where(and(inArray(messageAttachments.messageId, ids), isNull(messageAttachments.trashedAt)))
-		: [];
+		: [],
+	getContactDisplayNameMap(
+		env,
+		message.userId,
+		rows.flatMap((row) => [row.fromAddr, getFirstEmailAddressEntry(row.toAddr)]),
+	),
+	getContactAvatarMap(
+		env,
+		message.userId,
+		rows.map((row) => row.fromAddr),
+	)]);
 	const attachmentsByMessage = new Map<string, typeof attachmentRows>();
 	for (const attachment of attachmentRows) {
 		const list = attachmentsByMessage.get(attachment.messageId) ?? [];
 		list.push(attachment);
 		attachmentsByMessage.set(attachment.messageId, list);
 	}
-
-	const contactMap = await getContactDisplayNameMap(
-		env,
-		message.userId,
-		rows.flatMap((row) => [row.fromAddr, getFirstEmailAddressEntry(row.toAddr)]),
-	);
-	const contactAvatarMap = await getContactAvatarMap(
-		env,
-		message.userId,
-		rows.map((row) => row.fromAddr),
-	);
 
 	return {
 		threadId: message.threadId,

@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
     // even if your project has type errors.
     ignoreBuildErrors: true,
 	  },
+	experimental: {
+		// Pages the user just visited reopen from the client router cache for 30 s instead of asking the
+		// server again; their data is loaded by the client and stays fresh on its own.
+		staleTimes: { dynamic: 30 },
+	},
 	// Native and server-only packages used by the self-hosted runtime; never bundle them.
 	serverExternalPackages: ["better-sqlite3", "nodemailer", "smtp-server", "ws"],
 	async headers() {

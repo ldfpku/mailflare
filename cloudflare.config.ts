@@ -19,6 +19,11 @@ export default defineConfig({
 		observability: {
 			enabled: true,
 		},
+		// D1 lives in APAC while requests land at the colo nearest the user; a settings page or
+		// mail list makes several D1 round trips each, so run the Worker next to the database.
+		placement: {
+			mode: "smart",
+		},
 		assets: {
 			notFoundHandling: "none",
 		},

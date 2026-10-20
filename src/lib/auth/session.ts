@@ -40,11 +40,16 @@ export async function getUserFromSession(
 	env: CloudflareEnv,
 	token: string | undefined,
 ): Promise<typeof users.$inferSelect | null> {
-	const session = await getSessionFromToken(env, token);
-	if (!session) return null;
-	const db = getDb(env);
-	const [user] = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
-	return user ?? null;
+	if (!token) return null;
+	// One round trip: every authenticated request pays this, and D1 can be far from the Worker.
+	const tokenHash = await hashSessionToken(token);
+	const [row] = await getDb(env)
+		.select({ user: users })
+		.from(sessions)
+		.innerJoin(users, eq(users.id, sessions.userId))
+		.where(and(eq(sessions.tokenHash, tokenHash), gt(sessions.expiresAt, new Date())))
+		.limit(1);
+	return row?.user ?? null;
 }
 
 export async function getSessionFromToken(
