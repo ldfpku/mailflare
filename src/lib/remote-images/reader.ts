@@ -6,6 +6,8 @@ export function remoteImageUrl(value: string): string {
 	try {
 		const url = new URL(value);
 		if (url.protocol !== "https:" && url.protocol !== "http:") return value;
+		// The proxy refuses this application's own URLs; they load directly.
+		if (typeof location !== "undefined" && url.origin === location.origin) return url.href;
 		return `/api/remote-images?url=${encodeURIComponent(url.href)}`;
 	} catch {
 		return value;
