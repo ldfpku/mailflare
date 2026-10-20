@@ -262,6 +262,9 @@ test("the meeting page allows camera and microphone, and web joins need a sessio
 	for (const file of readdirSync(join(vendor, "ui", "dist", "esm"))) {
 		assert.doesNotMatch(readFileSync(join(vendor, "ui", "dist", "esm", file), "utf8"), /fonts\.(?:googleapis|gstatic)\.com/, file);
 	}
+	// /vendor is immutable-cached: the page must point at a committed video background directory.
+	const background = html.match(/"videoBackground":"([^"]+)"/)?.[1];
+	assert.ok(background && existsSync(join(root, "public", background)), `video background module ${background} is committed`);
 	assert.match(page.headers.get("Permissions-Policy"), /display-capture=\(self\)/, "screen sharing stays allowed");
 	assert.match(html, /仅主持人可共享屏幕/);
 	assert.match(html, /"hostPreset":"group_call_host"/, "the page compares presets with the configured host preset");
