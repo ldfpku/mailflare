@@ -412,7 +412,11 @@ function setupPresence(meeting, token) {
 		timer = setInterval(() => report(true), 15000);
 	};
 	meeting.self.on("roomJoined", start);
-	meeting.self.on("roomLeft", stop);
+	// RealtimeKit also emits roomLeft { state: "disconnected" } on a network blip and rejoins by itself;
+	// you are still in the meeting then, so keep renewing instead of letting calls ring through.
+	meeting.self.on("roomLeft", (event) => {
+		if (event?.state !== "disconnected") stop();
+	});
 	if (meeting.self.roomJoined) start();
 	window.addEventListener("pagehide", stop);
 }
