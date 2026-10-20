@@ -19,7 +19,7 @@ await build({
 			export * from "./src/lib/agent/task-tools-utils.ts";
 			export { agentSystemPrompt } from "./src/lib/agent/model.ts";
 			export { buildAgentMeetingIcs } from "./src/components/agent/meeting-ics.ts";
-			export { groupAgentConversations, filterAgentConversations, agentActionProposal } from "./src/components/agent/utils.ts";
+			export { groupAgentConversations, filterAgentConversations, agentActionProposal, normalizeAgentHistory, removeAgentStepText } from "./src/components/agent/utils.ts";
 			export { agentQuickTasks, agentQuickTaskTitle } from "./src/components/agent/quick-tasks.ts";
 		`,
 		resolveDir: root,
@@ -46,7 +46,7 @@ function fakeAi(reply) {
 		run: async (model, input) => {
 			calls.push({ model, input });
 			const answer = reply(input.messages);
-			return { choices: [{ message: { role: "assistant", content: answer.text ?? null, ...(answer.tool ? { tool_calls: [{ id: `call-${calls.length}`, type: "function", function: { name: answer.tool, arguments: JSON.stringify(answer.args) } }] } : {}) }, finish_reason: answer.tool ? "tool_calls" : "stop" }] };
+			return { choices: [{ message: { role: "assistant", content: answer.text ?? null, ...(answer.reasoning ? { reasoning_content: answer.reasoning } : {}), ...(answer.tool ? { tool_calls: [{ id: `call-${calls.length}`, type: "function", function: { name: answer.tool, arguments: JSON.stringify(answer.args) } }] } : {}) }, finish_reason: answer.tool ? "tool_calls" : "stop" }] };
 		},
 		toMarkdown: async (file) => ({ id: "md-1", name: file.name, mimeType: file.blob.type, format: "markdown", tokens: 10, data: `# ${file.name}\n\n报价单：总价 12 万元，有效期 30 天。` }),
 	};
@@ -216,6 +216,27 @@ test("chat with a fake Workers AI: Chinese system prompt, quick-task title, prop
 	assert.equal((await mod.getAgentChatHistory(context, conversationId)).length, 0);
 	assert.equal((await mod.listAgentConversations(context))[0].title, "报价跟进");
 	await assert.rejects(mod.clearAgentConversation(env, "user-2", conversationId), /对话不存在/);
+});
+
+test("the model's thinking and its text before a tool call never reach the panel or the stored chat", async (t) => {
+	const ai = fakeAi((messages) => messages.some((message) => message.role === "tool")
+		? { reasoning: "The user wants a summary, so I will answer in Chinese.", text: "这封邮件请你周五前确认设备报价。" }
+		: { reasoning: "Let me look at the email first.", text: "Let me read the email.", tool: "get_email", args: { emailId: "email-1" } });
+	const { context } = await setup(t, { AI: ai });
+	const { conversationId, stream } = await mod.createAgentChatStream(context, "总结这封邮件", undefined, undefined, "Asia/Shanghai", "email-1", { locale: "zh-CN" });
+	const body = await new Response(stream).text();
+	const events = body.trim().split("\n").map((line) => JSON.parse(line));
+	assert.equal(events.at(-1).type, "done");
+	assert.ok(!events.some((event) => event.type === "reasoning"));
+	assert.doesNotMatch(body, /The user wants|Let me look/);
+	const history = await mod.getAgentChatHistory(context, conversationId);
+	assert.ok(!history.some((row) => row.toolName === "__reasoning__"));
+	const answer = history.filter((row) => row.role === "assistant").map((row) => row.content).join("");
+	assert.equal(answer, "这封邮件请你周五前确认设备报价。");
+
+	const older = [{ id: "u", role: "user", content: "总结" }, { id: "r", role: "tool", toolName: "__reasoning__", content: "Let me think" }, { id: "x", role: "tool", toolName: "get_email", content: "{}" }];
+	assert.deepEqual(mod.normalizeAgentHistory(older).map((item) => [item.id, item.recordId]), [["u", undefined], ["x", "x"]]);
+	assert.deepEqual(mod.removeAgentStepText([{ id: "a", role: "assistant", content: "好的Let me read." }], "a", "Let me read.")[0].content, "好的");
 });
 
 test("panel helpers: history sections, search, quick tasks and proposal parsing", () => {

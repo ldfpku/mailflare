@@ -1,13 +1,12 @@
 export type AgentEvent =
 	| { type: "conversation"; conversationId: string }
 	| { type: "text"; text: string }
-	| { type: "reasoning"; text: string }
 	| { type: "reclassify"; text: string }
 	| { type: "tool"; id: string; name: string; state: "running" | "complete" | "failed"; result?: unknown; recordId?: string }
 	| { type: "error"; message: string }
 	| { type: "done" };
 
-export type AgentMessage = { id: string; role: "user" | "assistant" | "system" | "tool" | "reasoning"; content: string; toolName?: string | null; toolState?: "running" | "used" | "failed"; recordId?: string; createdAt?: string; durationMs?: number; pending?: boolean };
+export type AgentMessage = { id: string; role: "user" | "assistant" | "system" | "tool"; content: string; toolName?: string | null; toolState?: "running" | "used" | "failed"; recordId?: string; createdAt?: string; durationMs?: number; pending?: boolean };
 export type AgentEmailReference = { id: string; subject?: string | null; status?: string; from?: string; snippet?: string; url?: string };
 export type AgentEmailLinkProps = { email: AgentEmailReference; className: string };
 export type AgentTodoProposalItem = { title: string; notes: string; dueAt: string | null; sourceEmailId: string | null; sourceSubject: string | null };
