@@ -124,7 +124,7 @@ export function BulkMessageToolbar({
 			</Tooltip>
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger asChild>
-					<Button variant="ghost" size="sm" className="md:hidden" disabled={pending} aria-label={t("common.moreActions")}>
+					<Button variant="ghost" size="sm" className="md:hidden" disabled={pending} aria-label={t("common.moreActions")} title={t("common.moreActions")}>
 						<MoreVertical className="h-4 w-4" />
 					</Button>
 				</DropdownMenu.Trigger>

@@ -246,7 +246,7 @@ export function MailboxSelector({ initialUser }: MailboxSelectorProps = {}) {
 				type="button"
 				onClick={() => setOpen((value) => !value)}
 				className="rounded-full p-1 transition-colors hover:bg-neutral-200"
-				aria-label={t("account.openMenu")}
+				aria-label={t("account.openMenu")} title={t("account.openMenu")}
 				aria-expanded={open}
 			>
 				<AccountAvatar

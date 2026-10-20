@@ -190,7 +190,7 @@ export function InboxRules() {
                 }}
                 onKeyDown={(event) => event.stopPropagation()}
                 className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                aria-label={t("rules.delete")}
+                aria-label={t("rules.delete")} title={t("rules.delete")}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>

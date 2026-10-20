@@ -269,7 +269,7 @@ export function MessageActions({
 					<Button
 						variant="ghost"
 						size="roundedSM"
-						aria-label={trashLabel}
+						aria-label={trashLabel} title={trashLabel}
 						disabled={disabled}
 						onClick={onTrashClick}
 					>
@@ -278,7 +278,7 @@ export function MessageActions({
 					<Button
 						variant="ghost"
 						size="roundedSM"
-						aria-label={t("common.reportSpam")}
+						aria-label={t("common.reportSpam")} title={t("common.reportSpam")}
 						disabled={disabled || status === "spam" || direction !== "inbound"}
 						onClick={() => runAction("spam")}
 					>

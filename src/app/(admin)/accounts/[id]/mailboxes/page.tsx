@@ -114,7 +114,7 @@ export default function AccountMailboxesPage() {
                 variant="ghost"
                 size="icon"
                 onClick={() => void removeMailbox(mailbox.id)}
-                aria-label={t("account.mailboxes.removeInbox")}
+                aria-label={t("account.mailboxes.removeInbox")} title={t("account.mailboxes.removeInbox")}
               >
                 <Trash2 className="h-4 w-4 text-red-600" />
               </Button>

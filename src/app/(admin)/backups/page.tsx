@@ -144,7 +144,7 @@ export default function BackupsPage() {
           </Button>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <Button type="button" variant="outline" className="h-10 w-10 px-0" aria-label={t("backups.actions")}>
+              <Button type="button" variant="outline" className="h-10 w-10 px-0" aria-label={t("backups.actions")} title={t("backups.actions")}>
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenu.Trigger>

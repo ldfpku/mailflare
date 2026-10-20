@@ -52,7 +52,7 @@ export function AccountAliases({ domains, domainId, username, useAllDomains, onU
 								{availableDomains.map((domain) => <option key={domain.id} value={domain.id}>{domain.hostname}</option>)}
 							</Select>
 						</div>
-						<Button type="button" variant="ghost" size="sm" className="h-10 w-10 shrink-0 p-0" aria-label={t("aliases.remove", { n: index + 1 })} onClick={() => onAliasesChange(aliases.filter((item) => item.id !== alias.id))}>
+						<Button type="button" variant="ghost" size="sm" className="h-10 w-10 shrink-0 p-0" aria-label={t("aliases.remove", { n: index + 1 })} title={t("aliases.remove", { n: index + 1 })} onClick={() => onAliasesChange(aliases.filter((item) => item.id !== alias.id))}>
 							<Trash2 className="h-4 w-4" />
 						</Button>
 					</div>

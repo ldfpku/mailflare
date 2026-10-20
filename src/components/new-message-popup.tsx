@@ -36,6 +36,7 @@ export function NewMessagePopup({
 					type="button"
 					onClick={onDismiss}
 					className="rounded-full p-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+					title={t("notification.dismiss")}
 				>
 					<X className="h-4 w-4" />
 					<span className="sr-only">{t("notification.dismiss")}</span>
