@@ -4,7 +4,17 @@ import { getAvailability } from "@/lib/meetings/availability";
 import { parseAvailabilityInput } from "@/lib/meetings/availability-utils";
 import { MeetingError, parseMeetingCreateInput } from "@/lib/meetings/meeting-utils";
 import { RealtimeKitNotConfiguredError } from "@/lib/meetings/realtimekit";
-import { cancelMeeting, createMeeting, getMeeting, getMeetingIcs, joinMeeting, listMeetings, type MeetingUser } from "@/lib/meetings/service";
+import {
+	cancelMeeting,
+	createMeeting,
+	getMeeting,
+	getMeetingIcs,
+	getMeetingStatuses,
+	joinMeeting,
+	listMeetings,
+	meetingAudience,
+	type MeetingUser,
+} from "@/lib/meetings/service";
 import type { ImContext } from "./handler";
 import type { ImRouteHandler, ImRouteTable } from "./handler-utils";
 import { notifyImUsers } from "./notify";
@@ -28,7 +38,7 @@ function guarded(handler: ImRouteHandler<ImContext>): ImRouteHandler<ImContext> 
 			if (error instanceof RealtimeKitNotConfiguredError) return imFail(IM_CODE.NOT_IMPLEMENTED, error.message);
 			if (error instanceof RequestBodyTooLargeError) return imFail(IM_CODE.BAD_REQUEST, "请求过大");
 			if (error instanceof MeetingError) {
-				const code = error.status === 403 ? IM_CODE.FORBIDDEN : error.status === 404 ? IM_CODE.NOT_FOUND : IM_CODE.BAD_REQUEST;
+				const code = error.status === 403 ? IM_CODE.FORBIDDEN : error.status === 404 || error.status === 410 ? IM_CODE.NOT_FOUND : IM_CODE.BAD_REQUEST;
 				return imFail(code, error.message);
 			}
 			throw error;
@@ -61,9 +71,19 @@ export const rtcRoutes: ImRouteTable<ImContext> = {
 		const joined = await joinMeeting(context.env, typeof id === "string" ? id : "", meetingUser(context), context.origin);
 		return imOk({ authToken: joined.authToken, host: joined.host, ...joined.meeting });
 	}),
+	/** `ids` is a comma-separated list (at most 50): the chat cards on screen, labelled 待开始 / 进行中 / 已结束 / 已取消. */
+	"GET im/meeting/status": guarded(async ({ env, url }) => {
+		const ids = (url.searchParams.get("ids") ?? "").split(",").map((id) => id.trim());
+		return imOk({ serverNow: Date.now(), meetings: await getMeetingStatuses(env, ids) });
+	}),
 	"POST im/meeting/cancel": guarded(async (context) => {
-		const id = (await readBody(context.request)).id;
-		return imOk(await cancelMeeting(context.env, typeof id === "string" ? id : "", meetingUser(context), context.origin));
+		const body = await readBody(context.request);
+		const id = typeof body.id === "string" ? body.id : "";
+		const result = await cancelMeeting(context.env, id, meetingUser(context), context.origin);
+		// Every chat holding the card turns it to “已取消” at once, the host's other devices included.
+		const [status] = await getMeetingStatuses(context.env, [id]);
+		if (status) await notifyImUsers(context.env, await meetingAudience(context.env, id), { type: "meetingStatus", data: status });
+		return imOk(result);
 	}),
 	/** The scheduling assistant: invitees' busy times and the earliest slots everyone has free. */
 	"POST im/meeting/availability": guarded(async (context) => {

@@ -19,7 +19,7 @@ export function meetingUrl(origin: string, id: string): string {
 
 export class MeetingError extends Error {
 	constructor(
-		readonly status: 400 | 403 | 404 | 503,
+		readonly status: 400 | 403 | 404 | 410 | 503,
 		message: string,
 	) {
 		super(message);
@@ -128,4 +128,54 @@ export function meetingChatText(content: InvitationContent & { scheduled: boolea
 /** The chat line someone in a meeting sends to a person they add; HuLa turns the link into a card. */
 export function meetingInviteText(content: InvitationContent): string {
 	return `邀请你加入视频会议「${content.title}」\n加入会议：${content.joinUrl}`;
+}
+
+/**
+ * A meeting stays joinable this long past its scheduled end, like the grace other meeting services give a
+ * meeting that overruns; after that it has ended unless someone is still in it.
+ */
+export const MEETING_JOIN_GRACE_MS = 30 * 60_000;
+/** While people are in a meeting past its grace, clients look again this often to see when it empties. */
+export const MEETING_OCCUPIED_RECHECK_MS = 60_000;
+
+/** `upcoming` and `live` can be joined; `ended` and `cancelled` cannot. */
+export type MeetingStatus = "upcoming" | "live" | "ended" | "cancelled";
+
+export interface MeetingTiming {
+	status: MeetingStatus;
+	startsAt: number;
+	endsAt: number;
+	/** The last moment the meeting can be joined by the clock; null once cancelled. */
+	joinableUntil: number | null;
+	cancelledAt: number | null;
+	/** When the status may change next, for clients to look again; null once it cannot change. */
+	nextCheckAt: number | null;
+}
+
+/**
+ * The status chat cards and the meeting page show, worked out on the server so every client agrees.
+ * An instant meeting starts when it was created. `cancelledAt` is the row's `ended_at`, which only
+ * cancelling sets; `occupied` is whether anyone is in the meeting right now (`im_call_busy`).
+ */
+export function meetingTiming(
+	meeting: { startsAt: number | null; createdAt: number; durationMinutes: number; cancelledAt: number | null },
+	now: number,
+	occupied = false,
+): MeetingTiming {
+	const startsAt = meeting.startsAt ?? meeting.createdAt;
+	const endsAt = startsAt + meeting.durationMinutes * 60_000;
+	const joinableUntil = endsAt + MEETING_JOIN_GRACE_MS;
+	const timing = { startsAt, endsAt, cancelledAt: meeting.cancelledAt };
+	if (meeting.cancelledAt) return { ...timing, status: "cancelled", joinableUntil: null, nextCheckAt: null };
+	if (now < startsAt) return { ...timing, status: "upcoming", joinableUntil, nextCheckAt: startsAt };
+	if (now < joinableUntil) return { ...timing, status: "live", joinableUntil, nextCheckAt: joinableUntil };
+	if (occupied) return { ...timing, status: "live", joinableUntil, nextCheckAt: now + MEETING_OCCUPIED_RECHECK_MS };
+	return { ...timing, status: "ended", joinableUntil, nextCheckAt: null };
+}
+
+/** Why a meeting cannot be joined, or null when it can. */
+export function meetingClosedReason(status: MeetingStatus): string | null {
+	if (status === "cancelled") return "会议已取消";
+	if (status === "ended") return "会议已结束";
+	return null;
 }

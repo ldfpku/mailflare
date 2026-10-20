@@ -57,3 +57,19 @@ export async function clearUsersBusy(env: CloudflareEnv, userIds: string[], ref:
 		console.warn("Call busy update failed", error);
 	}
 }
+
+/** The meetings among `meetingIds` that someone is in right now; empty when the table cannot be read. */
+export async function occupiedMeetings(env: CloudflareEnv, meetingIds: string[], now = Date.now()): Promise<Set<string>> {
+	if (!meetingIds.length) return new Set();
+	try {
+		const refs = meetingIds.map(meetingBusyRef);
+		const result = await env.DB
+			.prepare(`SELECT DISTINCT ref FROM im_call_busy WHERE busy_until > ? AND ref IN (${refs.map(() => "?").join(", ")})`)
+			.bind(now, ...refs)
+			.all<{ ref: string }>();
+		return new Set(result.results.map((row) => row.ref.slice("meeting:".length)));
+	} catch (error) {
+		console.warn("Meeting occupancy check failed", error);
+		return new Set();
+	}
+}

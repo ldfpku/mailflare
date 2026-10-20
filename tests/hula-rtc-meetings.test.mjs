@@ -18,7 +18,7 @@ await build({
 			export { resolveRtcRelay } from "./src/lib/im/rtc.ts";
 			export { buildRtcRelay, parseRtcSocketRequest, withoutBlockedTurnPorts } from "./src/lib/im/rtc-utils.ts";
 			export { buildMeetingIcs, foldIcsLine } from "./src/lib/meetings/ics-utils.ts";
-			export { parseMeetingCreateInput, newMeetingId, MEETING_ID_PATTERN } from "./src/lib/meetings/meeting-utils.ts";
+			export { parseMeetingCreateInput, newMeetingId, MEETING_ID_PATTERN, meetingTiming, MEETING_JOIN_GRACE_MS } from "./src/lib/meetings/meeting-utils.ts";
 			export { handleMeetingRequest } from "./src/lib/meetings/http.ts";
 		`,
 		resolveDir: root,
@@ -37,6 +37,7 @@ await build({
 const {
 	SqliteDatabase, applyMigrations, hashPassword, handleImRequest, resolveRtcRelay, buildRtcRelay, parseRtcSocketRequest,
 	withoutBlockedTurnPorts, buildMeetingIcs, foldIcsLine, parseMeetingCreateInput, newMeetingId, MEETING_ID_PATTERN, handleMeetingRequest,
+	meetingTiming, MEETING_JOIN_GRACE_MS,
 } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 
 async function fixture(t, extraEnv = {}) {
@@ -362,4 +363,63 @@ test("a call to someone already in a call or a meeting answers busy and rings no
 	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toSender, "in a meeting counts as busy");
 	assert.equal((await presence(false)).status, 204);
 	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toPeer, "leaving the meeting frees Sam");
+});
+
+test("a meeting is upcoming, live until 30 minutes past its end, then ended unless someone is still in it", () => {
+	const start = Date.parse("2026-10-20T10:43:00Z");
+	const meeting = { startsAt: start, createdAt: start - 3_600_000, durationMinutes: 60, cancelledAt: null };
+	const end = start + 3_600_000;
+	assert.deepEqual(meetingTiming(meeting, start - 1), { status: "upcoming", startsAt: start, endsAt: end, joinableUntil: end + MEETING_JOIN_GRACE_MS, cancelledAt: null, nextCheckAt: start });
+	assert.equal(meetingTiming(meeting, start).status, "live");
+	assert.equal(meetingTiming(meeting, end + MEETING_JOIN_GRACE_MS - 1).status, "live", "joinable in the grace after the end");
+	assert.deepEqual(
+		[meetingTiming(meeting, end + MEETING_JOIN_GRACE_MS).status, meetingTiming(meeting, end + MEETING_JOIN_GRACE_MS).nextCheckAt],
+		["ended", null],
+	);
+	const overrun = meetingTiming(meeting, end + MEETING_JOIN_GRACE_MS + 5, true);
+	assert.deepEqual([overrun.status, overrun.nextCheckAt], ["live", end + MEETING_JOIN_GRACE_MS + 5 + 60_000], "people still in it keep it live");
+	const instant = meetingTiming({ startsAt: null, createdAt: start, durationMinutes: 60, cancelledAt: null }, start + 1);
+	assert.deepEqual([instant.status, instant.startsAt], ["live", start], "an instant meeting starts when it was made");
+	const cancelled = meetingTiming({ ...meeting, cancelledAt: start - 5 }, start - 10);
+	assert.deepEqual([cancelled.status, cancelled.joinableUntil, cancelled.nextCheckAt], ["cancelled", null, null]);
+});
+
+test("cards and the page see each meeting's status; closed meetings refuse joins and cancelling pushes the change", async (t) => {
+	mockCloudflare(t);
+	const { call, login, pushes, env, database } = await fixture(t, RTK_ENV);
+	const sam = await login("sam@one.test");
+	const kim = await login("kim@one.test");
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+	const soon = new Date(Date.now() + 3_600_000).toISOString();
+	const scheduled = (await call("POST", "im/meeting", { token: sam, body: { roomId, title: "周会", startAt: soon, inviteUids: ["u2"], sendMail: false } })).data;
+	assert.equal(scheduled.status, "upcoming");
+	const old = "oldmeetingaaaaaa";
+	database.db.prepare("INSERT INTO im_meetings (id, rtk_meeting_id, title, host_id, starts_at, duration_minutes, created_at) VALUES (?, 'rtk', '旧会', 'u1', ?, 60, ?)")
+		.run(old, Date.now() - 3 * 3_600_000, Date.now() - 4 * 3_600_000);
+
+	const statuses = await call("GET", "im/meeting/status", { token: kim, query: { ids: `${scheduled.id},${old},zzzzzzzzzzzzzzzz,bad` } });
+	assert.equal(statuses.code, 200);
+	assert.ok(Math.abs(statuses.data.serverNow - Date.now()) < 5_000);
+	assert.deepEqual(Object.fromEntries(statuses.data.meetings.map((meeting) => [meeting.id, meeting.status])), { [scheduled.id]: "upcoming", [old]: "ended" }, "unknown ids are left out");
+
+	const ended = await call("POST", "im/meeting/join", { token: kim, body: { id: old } });
+	assert.deepEqual([ended.code, ended.msg], [404, "会议已结束"]);
+	assert.equal((await call("POST", "im/meeting/cancel", { token: sam, body: { id: old } })).msg, "会议已结束，无需取消");
+	database.db.prepare("INSERT INTO im_call_busy (user_id, ref, busy_until) VALUES ('u3', ?, ?)").run(`meeting:${old}`, Date.now() + 30_000);
+	assert.equal((await call("POST", "im/meeting/join", { token: kim, body: { id: old } })).code, 200, "someone still in an overrunning meeting keeps it open");
+
+	pushes.length = 0;
+	assert.equal((await call("POST", "im/meeting/cancel", { token: sam, body: { id: scheduled.id } })).code, 200);
+	const pushed = pushes.filter((push) => push.type === "meetingStatus");
+	assert.deepEqual(pushed.map((push) => push.userId).sort(), ["u1", "u2", "u3"], "the host, the invitee and the chat it was posted in");
+	assert.deepEqual([pushed[0].data.id, pushed[0].data.status], [scheduled.id, "cancelled"]);
+	const cancelledJoin = await call("POST", "im/meeting/join", { token: kim, body: { id: scheduled.id } });
+	assert.deepEqual([cancelledJoin.code, cancelledJoin.msg], [404, "会议已取消"]);
+
+	const page = async (id) => handleMeetingRequest(new Request(`https://mail.one.test/api/meetings/${id}/status`), env);
+	const body = await (await page(scheduled.id)).json();
+	assert.deepEqual([body.meeting.status, body.meeting.title], ["cancelled", "周会"]);
+	assert.equal((await page("zzzzzzzzzzzzzzzz")).status, 404);
+	const html = await (await handleMeetingRequest(new Request(`https://mail.one.test/meet/${scheduled.id}`), env)).text();
+	assert.match(html, /closedMeeting\(\)\) return;/, "the page checks the status before entering");
 });

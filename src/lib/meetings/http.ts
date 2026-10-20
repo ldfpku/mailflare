@@ -6,7 +6,7 @@ import { getSessionTokenFromRequest } from "@/lib/realtime/utils";
 import { MEETING_ID_PATTERN, MeetingError } from "./meeting-utils";
 import { MEETING_PAGE_HEADERS, renderMeetingPage } from "./page";
 import { getRealtimeKitConfig, RealtimeKitNotConfiguredError } from "./realtimekit";
-import { getMeetingIcs, getMeetingUser, getMeetingUserByToken, inviteToMeeting, joinMeeting, listMeetingPeople, type MeetingUser } from "./service";
+import { getMeeting, getMeetingIcs, getMeetingUser, getMeetingUserByToken, inviteToMeeting, joinMeeting, listMeetingPeople, type MeetingUser } from "./service";
 
 /**
  * The browser side of meetings, served from `worker.ts` without Next so the
@@ -16,6 +16,8 @@ import { getMeetingIcs, getMeetingUser, getMeetingUserByToken, inviteToMeeting, 
  * - `GET /meet/<id>`: the meeting page, the link in invitations and chats.
  * - `POST /api/meetings/<id>/join`: a participant token for the signed-in web user.
  * - `GET /api/meetings/<id>/meeting.ics`: the calendar file; the id is the only key, as for the link itself.
+ * - `GET /api/meetings/<id>/status`: whether it can still be joined, which the page checks before entering, so
+ *   a cancelled or finished meeting says so instead of opening an empty room. Keyed by the id alone, like the ics.
  * - `GET /api/meetings/<id>/people`, `POST /api/meetings/<id>/invite`: “添加参会人” on the meeting page. The
  *   desktop meeting window has no web session, so these also accept the page's participant token as a bearer.
  * - `POST /api/meetings/<id>/presence`: the page renews this while you are in the meeting (`{ active: false }` on
@@ -37,7 +39,7 @@ export async function handleMeetingRequest(request: Request, env: CloudflareEnv)
 		return new Response(renderMeetingPage(page[1], getRealtimeKitConfig(env)?.hostPreset), { headers: MEETING_PAGE_HEADERS });
 	}
 
-	const api = /^\/api\/meetings\/([^/]+)\/(join|meeting\.ics|people|invite|presence)$/.exec(url.pathname);
+	const api = /^\/api\/meetings\/([^/]+)\/(join|meeting\.ics|people|invite|presence|status)$/.exec(url.pathname);
 	if (!api || !MEETING_ID_PATTERN.test(api[1])) return json({ error: "会议不存在" }, 404);
 	const [, id, action] = api;
 
@@ -50,6 +52,25 @@ export async function handleMeetingRequest(request: Request, env: CloudflareEnv)
 					"Content-Type": "text/calendar; charset=UTF-8",
 					"Content-Disposition": `attachment; filename="${ics.filename}"`,
 					"Cache-Control": "no-store",
+				},
+			});
+		}
+
+		if (action === "status") {
+			if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
+			const meeting = await getMeeting(env, id, origin);
+			return json({
+				serverNow: Date.now(),
+				meeting: {
+					id: meeting.id,
+					title: meeting.title,
+					hostName: meeting.hostName,
+					startsAt: meeting.startsAt,
+					durationMinutes: meeting.durationMinutes,
+					status: meeting.status,
+					endsAt: meeting.endsAt,
+					joinableUntil: meeting.joinableUntil,
+					cancelledAt: meeting.cancelledAt,
 				},
 			});
 		}
