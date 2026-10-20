@@ -101,13 +101,74 @@ async function traced<T>(trace: ImAiTrace, run: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Asks each model in turn until one gives a usable answer. Reasoning is
- * switched off: the DeepSeek models think by default, and the thinking counts
- * against `maxOutputTokens`, so a long chat used to come back with an empty
- * answer. An empty, unusable or failed answer is recorded on the trace and the
- * next model is tried; when none answers, the caller gets a message instead of a blank.
+ * When the first model has not answered after this long, the backup is asked
+ * as well and whichever gives a usable answer first is used. On the live site
+ * the same input took 5-65 s with Flash, and once a call hung for minutes.
  */
-async function generate(
+const IM_AI_HEDGE_MS = 15_000;
+/** A model call that has not answered by then is given up. */
+const IM_AI_ATTEMPT_TIMEOUT_MS = 60_000;
+
+const CANCELLED = "cancelled: another model answered first";
+
+/** One model call; records itself on the trace and resolves to the usable text, or null. */
+async function attempt(
+	env: Env,
+	selection: ImAiModels[number],
+	trace: ImAiTrace,
+	request: { system: string; prompt: string; maxOutputTokens: number; usable: (text: string) => boolean },
+	signal: AbortSignal,
+): Promise<string | null> {
+	const started = Date.now();
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		const call = generateText({
+			model: selection.model,
+			system: request.system,
+			prompt: request.prompt,
+			maxOutputTokens: request.maxOutputTokens,
+			temperature: 0.2,
+			reasoning: "none",
+			maxRetries: 0,
+			abortSignal: signal,
+		});
+		const timeout = new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new Error(`timed out after ${IM_AI_ATTEMPT_TIMEOUT_MS / 1000} s`)), IM_AI_ATTEMPT_TIMEOUT_MS);
+		});
+		const result = await Promise.race([call, timeout]);
+		await recordAiUsage({ env, details: selection, usage: result.usage, source: trace.source });
+		if (signal.aborted) return null;
+		const text = cleanModelText(result.text);
+		const ok = Boolean(text) && request.usable(text);
+		trace.attempts.push({
+			model: selection.modelId,
+			ok,
+			ms: Date.now() - started,
+			finishReason: result.finishReason,
+			inputTokens: result.usage.inputTokens,
+			outputTokens: result.usage.outputTokens,
+			...(ok ? {} : { error: text ? "unusable answer" : `empty answer (${result.reasoningText?.length ?? 0} reasoning chars)` }),
+		});
+		return ok ? text : null;
+	} catch (error) {
+		if (signal.aborted) return null;
+		trace.attempts.push({ model: selection.modelId, ok: false, ms: Date.now() - started, error: String(error instanceof Error ? error.message : error).slice(0, 300) });
+		console.error("[im-ai] Workers AI call failed", selection.modelId, error);
+		return null;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/**
+ * Asks the first model and, if it fails, answers with nothing usable or is
+ * still busy after `IM_AI_HEDGE_MS`, the backup too; the first usable answer
+ * wins and the other call is abandoned. Reasoning is switched off: the
+ * DeepSeek models think by default, and the thinking counts against
+ * `maxOutputTokens`, so a long chat used to come back with an empty answer.
+ * When no model answers, the caller gets a message instead of a blank.
+ */
+function generate(
 	env: Env,
 	models: ImAiModels,
 	trace: ImAiTrace,
@@ -116,29 +177,39 @@ async function generate(
 	maxOutputTokens: number,
 	usable: (text: string) => boolean = Boolean,
 ): Promise<string> {
-	for (const selection of models) {
-		const started = Date.now();
-		try {
-			const result = await generateText({ model: selection.model, system, prompt, maxOutputTokens, temperature: 0.2, reasoning: "none", maxRetries: 0 });
-			await recordAiUsage({ env, details: selection, usage: result.usage, source: trace.source });
-			const text = cleanModelText(result.text);
-			const ok = Boolean(text) && usable(text);
-			trace.attempts.push({
-				model: selection.modelId,
-				ok,
-				ms: Date.now() - started,
-				finishReason: result.finishReason,
-				inputTokens: result.usage.inputTokens,
-				outputTokens: result.usage.outputTokens,
-				...(ok ? {} : { error: text ? "unusable answer" : `empty answer (${result.reasoningText?.length ?? 0} reasoning chars)` }),
+	const request = { system, prompt, maxOutputTokens, usable };
+	const controller = new AbortController();
+	const running = new Map<string, number>();
+	return new Promise((resolve, reject) => {
+		let next = 0;
+		let settled = false;
+		let hedge: ReturnType<typeof setTimeout> | undefined;
+		const launch = () => {
+			clearTimeout(hedge);
+			if (settled || next >= models.length) return;
+			const selection = models[next++];
+			running.set(selection.modelId, Date.now());
+			if (next < models.length) hedge = setTimeout(launch, IM_AI_HEDGE_MS);
+			void attempt(env, selection, trace, request, controller.signal).then((text) => {
+				running.delete(selection.modelId);
+				if (settled) return;
+				if (text !== null) {
+					settled = true;
+					clearTimeout(hedge);
+					for (const [model, started] of running) trace.attempts.push({ model, ok: false, ms: Date.now() - started, error: CANCELLED });
+					controller.abort();
+					resolve(text);
+					return;
+				}
+				launch();
+				if (!running.size && next >= models.length) {
+					settled = true;
+					reject(new ImChatError(400, "AI 这次没有生成结果，请稍后重试"));
+				}
 			});
-			if (ok) return text;
-		} catch (error) {
-			trace.attempts.push({ model: selection.modelId, ok: false, ms: Date.now() - started, error: String(error instanceof Error ? error.message : error).slice(0, 300) });
-			console.error("[im-ai] Workers AI call failed", selection.modelId, error);
-		}
-	}
-	throw new ImChatError(400, "AI 这次没有生成结果，请稍后重试");
+		};
+		launch();
+	});
 }
 
 // Chat summary ----------------------------------------------------------------
@@ -199,10 +270,10 @@ export async function summarizeRoom(env: Env, user: ImUser, input: { roomId?: un
 		if (chunks.length === 1) {
 			return { summary: await generate(env, models, trace, summarySystemPrompt(isGroup), `聊天记录：\n${chunks[0]}`, 1500), parts: 1 };
 		}
-		const partials: string[] = [];
-		for (const [index, chunk] of chunks.entries()) {
-			partials.push(`第 ${index + 1} 段：\n${await generate(env, models, trace, partSystemPrompt(), `聊天记录（第 ${index + 1}/${chunks.length} 段）：\n${chunk}`, 1000)}`);
-		}
+		// The parts are read at the same time; only the merge waits for all of them.
+		const partials = await Promise.all(
+			chunks.map(async (chunk, index) => `第 ${index + 1} 段：\n${await generate(env, models, trace, partSystemPrompt(), `聊天记录（第 ${index + 1}/${chunks.length} 段）：\n${chunk}`, 1000)}`),
+		);
 		return { summary: await generate(env, models, trace, mergeSystemPrompt(isGroup), partials.join("\n\n"), 1500), parts: chunks.length };
 	});
 	return { summary, ...base, messageCount: base.messageCount - dropped, parts, dropped, model: traceModel(trace), attempts: trace.attempts.length };

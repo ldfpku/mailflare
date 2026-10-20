@@ -193,6 +193,41 @@ test("reasoning is switched off, and an answer that is all thinking falls back t
 	assert.ok(line.calls.every((call) => typeof call.ms === "number"));
 });
 
+test("a first model that is still busy after 15 s gets the backup asked too, and the first answer wins", async (t) => {
+	const calls = [];
+	const binding = {
+		run: (model, inputs) => {
+			calls.push({ model, inputs });
+			// Flash hangs, as it once did on the live site for four minutes.
+			if (model.includes("flash")) return new Promise(() => {});
+			return Promise.resolve({ response: "备用模型的摘要", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+		},
+	};
+	const { call, login } = await fixture(t, { binding });
+	const sam = await login("sam@one.test");
+	await call("POST", "im/chat/msg", { token: sam, body: { id: "s1", roomId: "1", msgType: 1, body: { content: "周五前交报告" } } });
+	const warnings = [];
+	t.mock.method(console, "warn", (...args) => warnings.push(args));
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const pending = call("POST", "im/ai/summary", { token: sam, body: { roomId: "1" } });
+	while (calls.length < 1) await new Promise((resolve) => setImmediate(resolve));
+	t.mock.timers.tick(14_999);
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(calls.length, 1, "nobody else is asked before 15 s");
+	t.mock.timers.tick(1);
+	const result = await pending;
+	t.mock.timers.reset();
+	assert.equal(result.code, 200, result.msg);
+	assert.equal(result.data.summary, "备用模型的摘要");
+	assert.equal(result.data.model, "@cf/deepseek-ai/deepseek-v4-pro-0813");
+	assert.deepEqual(calls.map((entry) => entry.model), ["@cf/deepseek-ai/deepseek-v4-flash-0731", "@cf/deepseek-ai/deepseek-v4-pro-0813"]);
+	const line = JSON.parse(warnings.find((args) => args[0] === "[im-ai] request")[1]);
+	assert.deepEqual(line.calls.map((entry) => [entry.model.split("/").pop(), entry.ok, entry.error ?? null]), [
+		["deepseek-v4-pro-0813", true, null],
+		["deepseek-v4-flash-0731", false, "cancelled: another model answered first"],
+	]);
+});
+
 test("when no model answers, the person is told so instead of getting a blank", async (t) => {
 	const ai = fakeAi(() => "  ");
 	const { call, login } = await fixture(t, ai);
