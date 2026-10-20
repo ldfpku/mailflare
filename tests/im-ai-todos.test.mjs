@@ -121,7 +121,7 @@ test("a chat summary goes to the person who asked, reads names and file names, a
 	const result = await call("POST", "im/ai/summary", { token: sam, body: { roomId: opened.roomId, count: 50 } });
 	assert.equal(result.code, 200, result.msg);
 	assert.equal(result.data.summary, "概要：测试摘要。");
-	assert.equal(result.data.model, "@cf/deepseek-ai/deepseek-v4-pro-0813");
+	assert.equal(result.data.model, "@cf/deepseek-ai/deepseek-v4-flash-0731", "Flash is asked first");
 	assert.equal(result.data.attempts, 1);
 	assert.equal(result.data.messageCount, 3);
 	assert.equal(result.data.parts, 1);
@@ -177,18 +177,18 @@ test("reasoning is switched off, and an answer that is all thinking falls back t
 	assert.equal(result.code, 200, result.msg);
 	assert.equal(result.data.summary, "备用模型的摘要");
 	assert.equal(calls.length, 2);
-	assert.equal(calls[0].model, "@cf/deepseek-ai/deepseek-v4-pro-0813");
-	assert.equal(calls[1].model, mod.IM_AI_FALLBACK_MODEL);
+	assert.equal(calls[0].model, "@cf/deepseek-ai/deepseek-v4-flash-0731");
+	assert.equal(calls[1].model, "@cf/deepseek-ai/deepseek-v4-pro-0813");
 	assert.ok(calls.every((entry) => entry.inputs.reasoning_effort === null), "thinking would use up the output tokens");
-	assert.equal(result.data.model, mod.IM_AI_FALLBACK_MODEL, "the response says which model answered");
+	assert.equal(result.data.model, mod.IM_AI_BACKUP_MODEL, "the response says which model answered");
 	assert.equal(result.data.attempts, 2);
 	assert.equal(warnings.length, 1, "one log line for the request, flagged because it fell back");
 	assert.equal(warnings[0][0], "[im-ai] request");
 	const line = JSON.parse(warnings[0][1]);
 	assert.deepEqual([line.source, line.outcome, line.attempts, line.fellBack], ["im_summary", "ok", 2, true]);
 	assert.deepEqual(line.calls.map((call) => [call.model, call.ok, call.finishReason, call.outputTokens]), [
-		["@cf/deepseek-ai/deepseek-v4-pro-0813", false, "length", 1500],
-		[mod.IM_AI_FALLBACK_MODEL, true, "stop", 1500],
+		["@cf/deepseek-ai/deepseek-v4-flash-0731", false, "length", 1500],
+		["@cf/deepseek-ai/deepseek-v4-pro-0813", true, "stop", 1500],
 	]);
 	assert.ok(line.calls.every((call) => typeof call.ms === "number"));
 });
@@ -203,7 +203,8 @@ test("when no model answers, the person is told so instead of getting a blank", 
 	assert.equal(result.success, false);
 	assert.match(result.msg, /没有生成结果/);
 	assert.equal(ai.calls.length, 2);
-	assert.deepEqual(mod.imAiModelChain(mod.IM_AI_FALLBACK_MODEL), [mod.IM_AI_FALLBACK_MODEL, "@cf/deepseek-ai/deepseek-v4-pro-0813"]);
+	assert.deepEqual(mod.imAiModelChain(mod.IM_AI_DEFAULT_MODEL), [mod.IM_AI_DEFAULT_MODEL, "@cf/deepseek-ai/deepseek-v4-pro-0813"]);
+	assert.deepEqual(mod.imAiModelChain("@cf/deepseek-ai/deepseek-v4-pro-0813"), ["@cf/deepseek-ai/deepseek-v4-pro-0813", mod.IM_AI_DEFAULT_MODEL], "IM_AI_MODEL can put Pro first again");
 });
 
 test("a to-do draft that is not JSON is asked of the fallback model before giving up", async (t) => {
@@ -220,7 +221,7 @@ test("a to-do draft that is not JSON is asked of the fallback model before givin
 	assert.equal(draft.code, 200, draft.msg);
 	assert.equal(draft.data.title, "准备材料");
 	assert.equal(draft.data.attempts, 2);
-	assert.equal(draft.data.model, mod.IM_AI_FALLBACK_MODEL);
+	assert.equal(draft.data.model, mod.IM_AI_BACKUP_MODEL);
 	assert.equal(ai.calls.length, 2);
 });
 

@@ -2,13 +2,13 @@ import { generateText } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { getDb } from "@/db";
 import { getAgentEnabled, getAgentProviderConfig } from "@/lib/agent/provider";
-import { DEFAULT_CLOUDFLARE_MODEL } from "@/lib/agent/provider-constants";
 import { agentLimitMessage, checkAgentLimits } from "@/lib/agent/rate-limit";
 import { recordAiUsage } from "@/lib/ai/usage";
 import { getEmailAddress, getEmailDisplayName } from "@/lib/email/address";
 import { getMailboxAccessLevel } from "@/lib/mailboxes/access";
 import {
 	IM_SUMMARY_DEFAULT_MESSAGES,
+	IM_AI_DEFAULT_MODEL,
 	imAiModelChain,
 	IM_SUMMARY_MAX_MESSAGES,
 	buildTranscript,
@@ -30,17 +30,16 @@ import type { ImUser } from "./tokens";
 
 /**
  * Chat summaries and mail to-do drafts on Workers AI, through the same `AI`
- * binding the mail assistant uses. Only Cloudflare models are ever called: the
- * assistant's model is reused when the admin picked a Workers AI one, and
- * `IM_AI_MODEL` can name another `@cf/` model. A summary is returned to the
+ * binding the mail assistant uses. Only Cloudflare models are ever called:
+ * DeepSeek V4 Flash first and Pro as the backup, unless `IM_AI_MODEL` names
+ * another `@cf/` model to ask first. A summary is returned to the
  * person who asked and is never stored or posted into the chat.
  */
 type Env = CloudflareEnv;
 
-function imAiModelId(env: Env, configured: { provider: string; model: string }): string {
+function imAiModelId(env: Env): string {
 	const override = env.IM_AI_MODEL?.trim();
-	if (override?.startsWith("@cf/")) return override;
-	return configured.provider === "cloudflare" && configured.model.startsWith("@cf/") ? configured.model : DEFAULT_CLOUDFLARE_MODEL;
+	return override?.startsWith("@cf/") ? override : IM_AI_DEFAULT_MODEL;
 }
 
 async function imAiModel(env: Env, userId: string) {
@@ -49,7 +48,7 @@ async function imAiModel(env: Env, userId: string) {
 	const limit = await checkAgentLimits(env, `im-ai:${userId}`, `user:${userId}`);
 	if (!limit.allowed) throw new ImChatError(400, agentLimitMessage(limit));
 	const config = await getAgentProviderConfig(env);
-	const modelIds = imAiModelChain(imAiModelId(env, config));
+	const modelIds = imAiModelChain(imAiModelId(env));
 	const workersAi = createWorkersAI({ binding: env.AI });
 	return modelIds.map((modelId) => ({ model: workersAi(modelId), modelId, provider: "cloudflare", rates: config.rates[modelId] }));
 }
