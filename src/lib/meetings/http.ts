@@ -1,6 +1,6 @@
 import { hasValidSessionMutationOrigin } from "@/lib/auth/origin";
 import { getUserFromSession } from "@/lib/auth/session";
-import { CALL_ALIVE_TTL_MS, clearUsersBusy, markUsersBusy, meetingBusyRef } from "@/lib/im/call-busy";
+import { MEETING_ALIVE_TTL_MS, clearUsersBusy, markUsersBusy, meetingBusyRef } from "@/lib/im/call-busy";
 import { notifyImUsers } from "@/lib/im/notify";
 import { getSessionTokenFromRequest } from "@/lib/realtime/utils";
 import { MEETING_ID_PATTERN, MeetingError } from "./meeting-utils";
@@ -60,7 +60,7 @@ export async function handleMeetingRequest(request: Request, env: CloudflareEnv)
 			if (!user) return json({ error: "请先加入会议" }, 401);
 			const body = (await request.json().catch(() => ({}))) as { active?: unknown };
 			if (body.active === false) await clearUsersBusy(env, [user.id], meetingBusyRef(id));
-			else await markUsersBusy(env, [user.id], meetingBusyRef(id), CALL_ALIVE_TTL_MS);
+			else await markUsersBusy(env, [user.id], meetingBusyRef(id), MEETING_ALIVE_TTL_MS);
 			return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
 		}
 

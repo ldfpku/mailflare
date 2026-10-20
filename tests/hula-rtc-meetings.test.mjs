@@ -358,8 +358,13 @@ test("a call to someone already in a call or a meeting answers busy and rings no
 			body: JSON.stringify({ active }),
 		}), env);
 	assert.equal((await presence(true, "not-a-token")).status, 401);
+	const reported = Date.now();
 	assert.equal((await presence(true)).status, 204);
+	const meetingUntil = database.db.prepare("SELECT busy_until FROM im_call_busy WHERE ref = ?").get(`meeting:${created.id}`).busy_until;
+	assert.ok(meetingUntil - reported >= 115_000, "a background meeting window renews late, so a meeting counts for two minutes");
 	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toSender, "in a meeting counts as busy");
+	const pageScript = await (await handleMeetingRequest(new Request(`https://mail.one.test/meet/${created.id}`), env)).text();
+	assert.match(pageScript, /state !== "disconnected"\) stop\(\)/, "a network blip (RealtimeKit rejoins by itself) does not end presence");
 	assert.equal((await presence(false)).status, 204);
 	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toPeer, "leaving the meeting frees Sam");
 });

@@ -12,6 +12,11 @@
 export const CALL_RING_TTL_MS = 45_000;
 /** Call windows and meeting pages renew every 15 s, so two missed renewals still count as present. */
 export const CALL_ALIVE_TTL_MS = 45_000;
+/**
+ * Meeting pages renew every 15 s too, but a background meeting window may only get its timer once a minute
+ * (browser timer throttling), and leaving clears the row explicitly, so a meeting counts for longer.
+ */
+export const MEETING_ALIVE_TTL_MS = 120_000;
 
 export const callBusyRef = (roomId: string) => `call:${roomId}`;
 export const meetingBusyRef = (meetingId: string) => `meeting:${meetingId}`;
