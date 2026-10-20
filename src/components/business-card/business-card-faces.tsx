@@ -1,6 +1,7 @@
 import { BUSINESS_CARD_COLORS, BUSINESS_CARD_COMPANY, businessCardAccent } from "@/lib/business-card/company";
 import { cardEnglishLine, cardTitleLine, formatCardPhone } from "@/lib/business-card/card-utils";
 import type { BusinessCardData } from "@/lib/business-card/card-types";
+import { CARD_ICON_LABELS, CARD_ICON_SHAPES, type CardIcon } from "@/lib/business-card/card-icons";
 import { cn } from "@/lib/utils";
 import { fitTextLength } from "./business-card-faces-utils";
 
@@ -30,21 +31,22 @@ export function BusinessCardFront({ className }: { className?: string }) {
 	);
 }
 
-/** Back: white, a 2 mm scene-colour edge on the right, name, title, the English line, M / E / W, address and company. */
+/** Back: white, a 2 mm scene-colour edge on the right, name, title, the English line, mobile / email / website
+ * each behind its icon, address and company. */
 export function BusinessCardBack({ card, className }: { card: CardFaceData; className?: string }) {
 	const titleLine = cardTitleLine(card);
 	const englishLine = cardEnglishLine(card);
-	const contacts = [
-		card.mobile ? `M ${formatCardPhone(card.mobile)}` : null,
-		`E ${card.email}`,
-		`W ${BUSINESS_CARD_COMPANY.website}`,
-	].filter((line): line is string => !!line);
+	const contacts = ([
+		card.mobile ? { icon: "mobile", text: formatCardPhone(card.mobile) } : null,
+		{ icon: "email", text: card.email },
+		{ icon: "website", text: BUSINESS_CARD_COMPANY.website },
+	] satisfies ({ icon: CardIcon; text: string } | null)[]).filter((line) => !!line);
 	return (
 		<svg
 			viewBox="0 0 90 54"
 			className={cn("block h-auto w-full overflow-hidden rounded-[4px]", className)}
 			role="img"
-			aria-label={[card.name, titleLine, englishLine, ...contacts, BUSINESS_CARD_COMPANY.address, BUSINESS_CARD_COMPANY.name].filter(Boolean).join("，")}
+			aria-label={[card.name, titleLine, englishLine, ...contacts.map((line) => `${CARD_ICON_LABELS[line.icon]} ${line.text}`), BUSINESS_CARD_COMPANY.address, BUSINESS_CARD_COMPANY.name].filter(Boolean).join("，")}
 		>
 			<rect width="90" height="54" fill={white} />
 			<rect x="88" width="2" height="54" fill={businessCardAccent(card.placement)} />
@@ -53,7 +55,10 @@ export function BusinessCardBack({ card, className }: { card: CardFaceData; clas
 			{englishLine && <text x="5" y="21" fontSize="2.47" fill={steelGray} style={SANS} textLength={fitTextLength(englishLine, 2.47, 78)} lengthAdjust="spacingAndGlyphs">{englishLine}</text>}
 			<line x1="5" x2="85" y1="25" y2="25" stroke={rule} strokeWidth="0.25" />
 			{contacts.map((line, index) => (
-				<text key={line} x="5" y={29.7 + index * 3.7} fontSize="2.47" fill={navy} style={MONO} textLength={fitTextLength(line, 2.47, 78, "mono")} lengthAdjust="spacingAndGlyphs">{line}</text>
+				<g key={line.icon}>
+					<svg x="5" y={27.75 + index * 3.7} width="2.3" height="2.3" viewBox="0 0 24 24" fill="none" stroke={navy} strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true" dangerouslySetInnerHTML={{ __html: CARD_ICON_SHAPES[line.icon] }} />
+					<text x="8.6" y={29.7 + index * 3.7} fontSize="2.47" fill={navy} style={MONO} textLength={fitTextLength(line.text, 2.47, 74.4, "mono")} lengthAdjust="spacingAndGlyphs">{line.text}</text>
+				</g>
 			))}
 			<text x="5" y="42.7" fontSize="2.12" fill={graphite} style={SANS} textLength={fitTextLength(BUSINESS_CARD_COMPANY.address, 2.12, 66)} lengthAdjust="spacingAndGlyphs">{BUSINESS_CARD_COMPANY.address}</text>
 			<text x="5" y="46.3" fontSize="2.12" fill={graphite} style={SANS}>{BUSINESS_CARD_COMPANY.name}</text>

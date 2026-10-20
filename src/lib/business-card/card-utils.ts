@@ -1,5 +1,6 @@
 import { BUSINESS_CARD_COLORS, BUSINESS_CARD_COMPANY, businessCardAccent } from "./company";
 import type { BusinessCardData, BusinessCardFields, BusinessCardPlacement } from "./card-types";
+import { CARD_ICON_FILES, CARD_ICON_LABELS, type CardIcon } from "./card-icons";
 
 export const BUSINESS_CARD_LIMITS = { title: 40, department: 40, nameEn: 60, titleEn: 60, mobile: 30, phone: 30 } as const;
 
@@ -153,15 +154,19 @@ function escapeHtml(value: string): string {
  * contact line, website and "Built for impact." Inline styles and table layout so mail clients keep it; the symbol
  * is a 2x PNG on our own origin. The fonts are the template's system fonts because mail clients cannot load ours.
  */
-export function buildBusinessCardSignatureHtml(card: BusinessCardData, origin: string, pageUrl?: string): string {
+export function buildBusinessCardSignatureHtml(card: BusinessCardData, origin: string, pageUrl?: string, { letters = false } = {}): string {
 	const { navy, blue, orange, graphite } = BUSINESS_CARD_COLORS;
 	const heading = [card.name, card.title].filter(Boolean).map(escapeHtml).join(" · ");
+	// Icons instead of M / T / E / W letters; flat files under /brand/ so the reader loads them directly.
+	// `letters` rebuilds the first version (M / T / E prefixes) only so mailboxes still carrying it can be recognised and upgraded.
+	const LETTERS: Record<CardIcon, string> = { mobile: "M ", phone: "T ", email: "E ", website: "" };
+	const icon = (name: CardIcon) => letters ? LETTERS[name] : `<img src="${escapeHtml(origin)}${CARD_ICON_FILES[name]}" width="12" height="12" alt="${CARD_ICON_LABELS[name]}" style="display:inline-block;border:0;width:12px;height:12px;vertical-align:-2px;margin-right:4px">`;
 	const contact = [
-		card.mobile ? `M ${escapeHtml(formatCardPhone(card.mobile))}` : "",
-		card.phone ? `T ${escapeHtml(card.phone)}` : "",
-		`E <a href="mailto:${escapeHtml(card.email)}" style="color:${blue};text-decoration:none">${escapeHtml(card.email)}</a>`,
+		card.mobile ? `${icon("mobile")}${escapeHtml(formatCardPhone(card.mobile))}` : "",
+		card.phone ? `${icon("phone")}${escapeHtml(card.phone)}` : "",
+		`${icon("email")}<a href="mailto:${escapeHtml(card.email)}" style="color:${blue};text-decoration:none">${escapeHtml(card.email)}</a>`,
 	].filter(Boolean).join(" · ");
-	const website = `<a href="${BUSINESS_CARD_COMPANY.websiteUrl}" style="color:${blue};text-decoration:none">${BUSINESS_CARD_COMPANY.website}</a>`;
+	const website = `${icon("website")}<a href="${BUSINESS_CARD_COMPANY.websiteUrl}" style="color:${blue};text-decoration:none">${BUSINESS_CARD_COMPANY.website}</a>`;
 	const cardLink = card.published && pageUrl ? ` · <a href="${escapeHtml(pageUrl)}" style="color:${blue};text-decoration:none">电子名片</a>` : "";
 	const department = card.department ? `<div style="font-size:12px;line-height:18px;color:${graphite}">${escapeHtml(card.department)} · ${BUSINESS_CARD_COMPANY.name}</div>` : `<div style="font-size:12px;line-height:18px;color:${graphite}">${BUSINESS_CARD_COMPANY.name}</div>`;
 	return [

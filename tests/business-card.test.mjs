@@ -91,7 +91,9 @@ test("the signature follows BIS C3 and only points at our origin and the company
 	assert.match(html, /border-left:2px solid #FA8C1F/);
 	assert.match(html, /src="https:\/\/mail\.one\.test\/brand\/smj-symbol-email@2x\.png" width="36" height="41"/);
 	assert.match(html, /高增强 · &lt;b&gt;经理&lt;\/b&gt;/);
-	assert.match(html, /M 133-4788-0755/);
+	assert.match(html, /<img src="https:\/\/mail\.one\.test\/brand\/smj-card-icon-mobile-2x\.png" width="12" height="12" alt="手机"[^>]*>133-4788-0755/);
+	for (const icon of ["mobile", "email", "website"]) assert.match(html, new RegExp(`/brand/smj-card-icon-${icon}-2x\\.png`));
+	assert.doesNotMatch(html, /\b[MTEW] (?:\d|<a)/);
 	assert.match(html, /Built for impact<span style="color:#FA8C1F">\.<\/span>/);
 	const hosts = new Set([...html.matchAll(/(?:href|src)="(https?:[^"]+)"/g)].map((match) => new URL(match[1]).host));
 	assert.deepEqual([...hosts].sort(), ["mail.one.test", "www.smjtools.com"]);
@@ -141,14 +143,38 @@ test("the card signature goes on own personal mailboxes and follows card edits",
 	assert.match(signatureOf("m1"), /销售总监/);
 	assert.equal(signatureOf("m2"), "旧签名");
 
+	// Clearing fields counts as an edit too: title and department leave the signature.
+	await card.saveBusinessCard(env, "u1", { ...fields, title: "", department: "" }, ORIGIN);
+	assert.doesNotMatch(signatureOf("m1"), /销售总监|市场营销部/);
+	assert.equal(signatureOf("m1"), (await card.getBusinessCardSettings(env, "u1", ORIGIN)).signatureHtml);
+	await card.saveBusinessCard(env, "u1", { ...fields, title: "销售总监" }, ORIGIN);
+
 	const { token } = await card.loadBusinessCard(env, "u1");
 	const reset = await card.resetBusinessCardToken(env, "u1", ORIGIN);
 	assert.notEqual(reset.token, token);
 	assert.match(signatureOf("m1"), new RegExp(`/card/${reset.token}`));
 	assert.equal(await card.findPublicBusinessCard(env, token), null);
 
+	// A mailbox still on the letter-prefixed first version is recognised, upgraded when the card is opened, and turned off with it.
+	const current = await card.loadBusinessCard(env, "u1");
+	const letters = card.buildBusinessCardSignatureHtml(current.card, ORIGIN, `${ORIGIN}/card/${current.token}`, { letters: true });
+	assert.match(letters, /M 133-4788-0755/);
+	database.db.prepare("UPDATE mailboxes SET signature = ? WHERE id = 'm1'").run(letters);
+	settings = await card.getBusinessCardSettings(env, "u1", ORIGIN);
+	assert.equal(signatureOf("m1"), settings.signatureHtml);
+	assert.equal(settings.mailboxes[0].usesCardSignature, true);
+	database.db.prepare("UPDATE mailboxes SET signature = ? WHERE id = 'm1'").run(letters);
+
 	await card.setBusinessCardSignature(env, "u1", false, [], ORIGIN);
 	assert.equal(signatureOf("m1"), null);
 	assert.equal(signatureOf("m2"), "旧签名");
 	assert.equal(signatureOf("m3"), null);
+});
+
+test("every contact icon the signature links to is a committed flat file under /brand/", async () => {
+	const { readFileSync } = await import("node:fs");
+	const html = card.buildBusinessCardSignatureHtml({ name: "A", email: "a@smjtools.com", ...fields, phone: "0311-8888 8888" }, ORIGIN);
+	const icons = [...html.matchAll(/src="https:\/\/mail\.one\.test(\/brand\/[^"/]+\.png)"/g)].map((match) => match[1]);
+	assert.equal(icons.length, 5);
+	for (const path of icons) assert.deepEqual([...readFileSync(`public${path}`).subarray(1, 4)], [0x50, 0x4e, 0x47], path);
 });
