@@ -378,7 +378,14 @@ export async function joinMeeting(env: Env, id: string, user: MeetingUser, origi
  * The host cancels a meeting: it leaves everyone's list, can no longer be joined,
  * and invitees of a meeting still ahead get a METHOD:CANCEL mail that removes it from their calendar.
  */
-export async function cancelMeeting(env: Env, id: string, user: MeetingUser, origin: string): Promise<{ id: string; mailError: string | null }> {
+/** `onCancelled` runs once the cancel is stored and before the mail goes out, so chat cards need not wait for SMTP. */
+export async function cancelMeeting(
+	env: Env,
+	id: string,
+	user: MeetingUser,
+	origin: string,
+	onCancelled?: () => Promise<void>,
+): Promise<{ id: string; mailError: string | null }> {
 	const row = await findMeeting(env, id);
 	if (row.host_id !== user.id) throw new MeetingError(403, "只有发起人可以取消会议");
 	if (row.ended_at) return { id: row.id, mailError: null };
@@ -387,6 +394,8 @@ export async function cancelMeeting(env: Env, id: string, user: MeetingUser, ori
 	if ((await currentTiming(env, row, now)).status === "ended") throw new MeetingError(410, "会议已结束，无需取消");
 	await env.DB.prepare("UPDATE im_meetings SET ended_at = ?, sequence = sequence + 1 WHERE id = ?").bind(now, row.id).run();
 	const cancelled = { ...row, ended_at: now, sequence: row.sequence + 1 };
+	// A failed push must not stop the cancellation mail; the cards also refresh from im/meeting/status.
+	await onCancelled?.().catch((error) => console.warn(`Meeting ${row.id}: status push failed: ${error instanceof Error ? error.message : String(error)}`));
 
 	const invitees = toView(row, user.name, origin).inviteeIds;
 	if (!invitees.length || !row.starts_at || row.starts_at + row.duration_minutes * 60_000 < now) return { id: row.id, mailError: null };

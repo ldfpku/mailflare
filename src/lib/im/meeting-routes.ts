@@ -79,10 +79,11 @@ export const rtcRoutes: ImRouteTable<ImContext> = {
 	"POST im/meeting/cancel": guarded(async (context) => {
 		const body = await readBody(context.request);
 		const id = typeof body.id === "string" ? body.id : "";
-		const result = await cancelMeeting(context.env, id, meetingUser(context), context.origin);
-		// Every chat holding the card turns it to “已取消” at once, the host's other devices included.
-		const [status] = await getMeetingStatuses(context.env, [id]);
-		if (status) await notifyImUsers(context.env, await meetingAudience(context.env, id), { type: "meetingStatus", data: status });
+		// Every chat holding the card turns it to “已取消” at once, the host's other devices included, before the mail is sent.
+		const result = await cancelMeeting(context.env, id, meetingUser(context), context.origin, async () => {
+			const [status] = await getMeetingStatuses(context.env, [id]);
+			if (status) await notifyImUsers(context.env, await meetingAudience(context.env, id), { type: "meetingStatus", data: status });
+		});
 		return imOk(result);
 	}),
 	/** The scheduling assistant: invitees' busy times and the earliest slots everyone has free. */
