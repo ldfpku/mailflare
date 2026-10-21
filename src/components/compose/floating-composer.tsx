@@ -16,7 +16,7 @@ export function FloatingComposer({ showButton = false }: { showButton?: boolean 
 	const { mobileOpen } = useSidebar();
 	return (
 		<>
-			{showButton && !open && !mobileOpen && (
+			{showButton && !open && !mobileOpen && pathname !== "/compose" && (
 				<button
 					type="button"
 					onClick={openComposer}

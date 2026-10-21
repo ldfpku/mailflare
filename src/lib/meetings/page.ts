@@ -175,7 +175,7 @@ export function renderMeetingPage(id: string, hostPreset = "group_call_host"): s
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#034fbc">
 <title>视频会议 · 斯米伽 SMJ</title>
 <style>
@@ -256,6 +256,7 @@ html, body { height: 100dvh; }
 	header button, header a.button { order: 3; min-height: 36px; padding: 6px 10px; display: inline-flex; align-items: center; }
 	#bg-panel { top: auto; right: 12px; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); width: auto; max-width: none; }
 	#bg-toast { top: auto; bottom: calc(80px + env(safe-area-inset-bottom)); max-width: calc(100vw - 24px); }
+	#invite-search { font-size: 16px; }
 }
 </style>
 </head>

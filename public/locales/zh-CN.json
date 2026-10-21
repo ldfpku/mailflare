@@ -203,7 +203,7 @@
 	"compose.from": "发件人",
 	"compose.selectMailboxFirst": "请先选择邮箱",
 	"compose.to": "收件人",
-	"compose.toPlaceholder": "收件人，或 \"Maya Chen\" <maya@example.com>",
+	"compose.toPlaceholder": "输入姓名或邮箱地址",
 	"compose.cc": "抄送",
 	"compose.bcc": "密送",
 	"compose.ccPlaceholder": "抄送",
