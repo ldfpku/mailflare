@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getServerTranslator } from "@/lib/i18n/server";
 import { DesktopDownloadSettings } from "@/components/settings/desktop-download-settings";
 
@@ -12,6 +13,9 @@ export default async function DesktopAppSettingsPage() {
 			<div className="space-y-4 rounded-3xl bg-white p-6">
 				<DesktopDownloadSettings />
 			</div>
+			<p className="px-2 text-sm text-neutral-600">
+				<Link href="/settings/mobile" className="font-medium text-[#034fbc] hover:underline">{t("settingsPage.desktop.mobileHint")}</Link>
+			</p>
 		</section>
 	</div>;
 }

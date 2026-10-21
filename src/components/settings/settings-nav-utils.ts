@@ -36,6 +36,10 @@ export const settingsNavSections: SettingsNavSection[] = [
 				href: "/settings/desktop",
 				labelKey: "settings.nav.desktop",
 			},
+			{
+				href: "/settings/mobile",
+				labelKey: "settings.nav.mobile",
+			},
 		],
 	},
 	{
