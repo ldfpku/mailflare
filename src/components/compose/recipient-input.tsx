@@ -114,7 +114,7 @@ export function RecipientInput({
 			className="relative flex min-h-9 items-center gap-2 border-b border-neutral-100 px-4 py-1"
 			onClick={() => inputRef.current?.focus()}
 		>
-			<Label htmlFor={id} className="w-8 shrink-0 text-sm text-neutral-500">
+			<Label htmlFor={id} className="w-12 shrink-0 whitespace-nowrap text-sm text-neutral-500">
 				{label}
 			</Label>
 			<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">

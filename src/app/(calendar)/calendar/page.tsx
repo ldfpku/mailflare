@@ -44,7 +44,8 @@ export default function CalendarPage() {
   const [eventsVersion, setEventsVersion] = useState(0);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [visibleDate, setVisibleDate] = useState(() => new Date());
-  const [view, setView] = useState<CalendarView>("week");
+  // A week is wider than a phone; start phones on the day view. AuthGuard renders this only on the client.
+  const [view, setView] = useState<CalendarView>(() => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches ? "day" : "week");
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [pickerMonth, setPickerMonth] = useState(() => new Date());
   const monthPickerRef = useRef<HTMLDivElement | null>(null);
