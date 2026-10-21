@@ -23,6 +23,7 @@ import {
 	groupDetail,
 	historyMessages,
 	inviteMembers,
+	isGroupOwner,
 	listDirectory,
 	listGroups,
 	listMembers,
@@ -37,11 +38,13 @@ import {
 	searchImDirectory,
 	sendMessageWithToken,
 	setAdmins,
+	transferGroupOwner,
 	updateMemberFlags,
 	updateRoomInfo,
 	type ImDelivery,
 } from "./chat";
 import { IM_ALL_STAFF_ROOM_ID, IM_ROOM_TYPE, ImChatError, parseImMessageId } from "./chat-utils";
+import { deleteAnnouncement, editAnnouncement, getAnnouncement, listAnnouncements, publishAnnouncement } from "./announcements";
 import {
 	abortImMultipartUpload,
 	completeImMultipartUpload,
@@ -229,16 +232,26 @@ const userRoutes: ImRouteTable<ImContext> = {
 		await deliver(env, await removeMembers(env, user.id, await readBody(request), origin));
 		return imOk(true);
 	},
+	// An owner leaves only by dissolving (`dissolve: true`) or after handing the group over (`group/owner`).
 	"DELETE im/room/group/member/exit": async ({ request, env, user, origin }) => {
-		await deliver(env, await exitGroup(env, user.id, (await readBody(request)).roomId, origin));
+		const body = await readBody(request);
+		if (body.dissolve === true && (await isGroupOwner(env, body.roomId, user.id))) {
+			// The group's address goes before the group does, as turning it off by hand would.
+			await disableRoomMailbox(env, user.id, body.roomId).catch((error) => console.error("Group mailbox disable on dissolve failed", error));
+		}
+		await deliver(env, await exitGroup(env, user.id, body, origin));
 		return imOk(true);
 	},
-	"PUT im/room/group/admin": async ({ request, env, user }) => {
-		await setAdmins(env, user.id, await readBody(request), true);
+	"PUT im/room/group/admin": async ({ request, env, user, origin }) => {
+		await deliver(env, await setAdmins(env, user.id, await readBody(request), true, origin));
 		return imOk(true);
 	},
-	"DELETE im/room/group/admin": async ({ request, env, user }) => {
-		await setAdmins(env, user.id, await readBody(request), false);
+	"DELETE im/room/group/admin": async ({ request, env, user, origin }) => {
+		await deliver(env, await setAdmins(env, user.id, await readBody(request), false, origin));
+		return imOk(true);
+	},
+	"PUT im/room/group/owner": async ({ request, env, user, origin }) => {
+		await deliver(env, await transferGroupOwner(env, user.id, await readBody(request), origin));
 		return imOk(true);
 	},
 	"POST im/room/updateRoomInfo": async ({ request, env, user, origin }) => {
@@ -252,7 +265,6 @@ const userRoutes: ImRouteTable<ImContext> = {
 		await updateMemberFlags(env, user.id, body.id, { myName, remark });
 		return imOk(true);
 	},
-	// Announcements are not stored yet; an empty page keeps the group panel quiet.
 	"GET im/room/mailbox": async ({ env, user, url }) => imOk(await getRoomMailbox(env, user.id, url.searchParams.get("roomId"))),
 	"POST im/room/mailbox": async ({ request, env, user, origin }) => imOk(await enableRoomMailbox(env, user.id, await readBody(request), origin)),
 	"POST im/room/mailbox/disable": async ({ request, env, user }) => imOk(await disableRoomMailbox(env, user.id, (await readBody(request)).roomId)),
@@ -299,7 +311,21 @@ const userRoutes: ImRouteTable<ImContext> = {
 		await deleteTodo(env, user.id, (await readBody(request)).id);
 		return imOk(true);
 	},
-	"GET im/room/announcement/list": ({ url }) => imOk({ records: [], total: "0", size: url.searchParams.get("size") ?? "0" }),
+	// Group announcements (see announcements.ts); deleting takes the id in the query, as HuLa sends it.
+	"GET im/room/announcement/list": async ({ env, user, url }) =>
+		imOk(await listAnnouncements(env, user.id, url.searchParams.get("roomId"), url.searchParams.get("current"), url.searchParams.get("size"))),
+	"GET im/room/announcement": async ({ env, user, url }) =>
+		imOk(await getAnnouncement(env, user.id, url.searchParams.get("roomId"), url.searchParams.get("announcementId"))),
+	"POST im/room/announcement/push": async ({ request, env, user, origin }) => {
+		const { announcement, delivery } = await publishAnnouncement(env, user.id, await readBody(request), origin);
+		await deliver(env, delivery);
+		return imOk(announcement);
+	},
+	"POST im/room/announcement/edit": async ({ request, env, user }) => imOk(await editAnnouncement(env, user.id, await readBody(request))),
+	"POST im/room/announcement/delete": async ({ env, user, url }) => {
+		await deleteAnnouncement(env, user.id, url.searchParams.get("id"));
+		return imOk(true);
+	},
 };
 
 /**

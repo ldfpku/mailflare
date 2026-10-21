@@ -1015,6 +1015,23 @@ export const imMessages = sqliteTable(
 );
 
 /** Kept by the socket hub; derived, so it is not backed up. */
+/** Group announcements (群公告, `src/lib/im/announcements.ts`); at most one per room is pinned (`top`). */
+export const imRoomAnnouncements = sqliteTable(
+	"im_room_announcements",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		roomId: text("room_id")
+			.notNull()
+			.references(() => imRooms.id, { onDelete: "cascade" }),
+		uid: text("uid").notNull(),
+		content: text("content").notNull(),
+		top: integer("top", { mode: "boolean" }).notNull().default(false),
+		createdAt: integer("created_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [index("im_room_announcements_room_idx").on(table.roomId, table.top, table.id)],
+);
+
 export const imPresence = sqliteTable("im_presence", {
 	userId: text("user_id")
 		.primaryKey()
