@@ -498,6 +498,13 @@
       "when": 1792200014000,
       "tag": "0078_add_im_call_busy",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "6",
+      "when": 1792200015000,
+      "tag": "0079_add_im_room_announcements",
+      "breakpoints": true
     }
   ]
 }

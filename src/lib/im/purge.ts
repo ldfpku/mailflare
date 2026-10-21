@@ -163,6 +163,7 @@ export async function runImPurge(
 	const roomFiles =
 		(await runChunked(env, (marks) => `DELETE FROM im_room_files WHERE room_id IN (${marks})`, plan.roomIds)) +
 		(await runChunked(env, (marks) => `DELETE FROM im_room_files WHERE msg_id IN (${marks})`, plan.messageIds));
+	await runChunked(env, (marks) => `DELETE FROM im_room_announcements WHERE room_id IN (${marks})`, plan.roomIds);
 	// D1 counts trigger and cascade writes in `changes`, so the plan gives the numbers for these tables.
 	await runChunked(env, (marks) => `DELETE FROM im_messages WHERE id IN (${marks})`, plan.messageIds);
 	await runChunked(env, (marks) => `DELETE FROM im_rooms WHERE id IN (${marks}) AND id <> '${IM_ALL_STAFF_ROOM_ID}'`, plan.roomIds);

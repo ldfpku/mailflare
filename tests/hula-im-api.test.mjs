@@ -485,10 +485,138 @@ test("groups: create, invite, rename, admins, remove and leave", async (t) => {
 	const members = (await call("GET", "im/room/group/listMember", { token: sam, query: { roomId } })).data;
 	assert.deepEqual(members.map((member) => [member.uid, member.roleId]), [["u1", 1], ["u2", 2], ["u3", 3]]);
 
+	assert.equal((await call("DELETE", "im/room/group/member/exit", { token: sam, body: { roomId } })).code, 400, "an owner hands the group over before leaving");
+	assert.equal((await call("PUT", "im/room/group/owner", { token: kim, body: { roomId, uid: "u2" } })).code, 403);
+	assert.equal((await call("PUT", "im/room/group/owner", { token: sam, body: { roomId, uid: "u4" } })).code, 400, "only to a member");
+	pushes.length = 0;
+	assert.equal((await call("PUT", "im/room/group/owner", { token: sam, body: { roomId, uid: "u2" } })).code, 200);
+	const roleChange = pushes.find((push) => push.type === "groupSetAdmin");
+	assert.deepEqual(roleChange.data, { roomId, uids: ["u1"], status: false, roles: { u2: 1, u1: 3 } });
+	assert.equal(pushes.find((push) => push.type === "receiveMessage").data.message.body, "Sam将群主转让给了Kim");
+	assert.equal((await call("GET", "im/chat/contact/detail", { token: kim, query: { id: roomId } })).data.operate, 1, "the owner's session offers dissolving");
+	assert.equal((await call("GET", "im/chat/contact/detail", { token: sam, query: { id: roomId } })).data.operate, 2);
+
+	pushes.length = 0;
 	assert.equal((await call("DELETE", "im/room/group/member/exit", { token: sam, body: { roomId } })).code, 200);
+	const exitChange = pushes.find((push) => push.type === "memberChange");
+	assert.equal(exitChange.data.changeType, 3);
+	assert.deepEqual(exitChange.data.userList.map((user) => user.uid), ["u1"]);
+	assert.equal(exitChange.data.totalNum, 2);
+	assert.ok(pushes.some((push) => push.type === "memberChange" && push.userId === "u1"), "the one who left is told too");
 	const after = (await call("GET", "im/room/group/listMember", { token: kim, query: { roomId } })).data;
-	assert.deepEqual(after.map((member) => [member.uid, member.roleId]), [["u2", 1], ["u3", 3]], "ownership passes to the admin");
+	assert.deepEqual(after.map((member) => [member.uid, member.roleId]), [["u2", 1], ["u3", 3]]);
 	assert.equal((await call("GET", "im/room/group/listMember", { token: sam, query: { roomId } })).code, 403);
+});
+
+test("group management pushes: rename, picture, members and admins reach every member at once", async (t) => {
+	const { call, login, addUser, pushes } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	addUser("u4", "max@one.test", "Max");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+
+	pushes.length = 0;
+	const generated = `https://mail.one.test/api/im/room-avatar/${roomId}`;
+	assert.equal((await call("POST", "im/room/updateRoomInfo", { token: sam, body: { id: roomId, name: " 项目组 ", avatar: generated } })).code, 200);
+	const info = pushes.filter((push) => push.type === "roomInfoChange");
+	assert.deepEqual(info.map((push) => push.userId).sort(), ["u1", "u2", "u3"]);
+	assert.deepEqual(info[0].data, { roomId, name: "项目组", avatar: generated }, "sending back the generated picture keeps it generated");
+	assert.equal(pushes.find((push) => push.type === "receiveMessage").data.message.body, "Sam将群名称修改为“项目组”");
+	pushes.length = 0;
+	assert.equal((await call("POST", "im/room/updateRoomInfo", { token: sam, body: { id: roomId, name: "项目组" } })).code, 200);
+	assert.equal(pushes.length, 0, "an unchanged name says nothing");
+	assert.equal((await call("POST", "im/room/updateRoomInfo", { token: sam, body: { id: roomId, avatar: "javascript:alert(1)" } })).code, 400);
+	assert.equal((await call("POST", "im/room/updateRoomInfo", { token: sam, body: { id: roomId, name: "x".repeat(31) } })).code, 400);
+
+	pushes.length = 0;
+	assert.equal((await call("PUT", "im/room/group/admin", { token: sam, body: { roomId, uidList: ["u2"] } })).code, 200);
+	assert.deepEqual(pushes.find((push) => push.type === "groupSetAdmin").data, { roomId, uids: ["u2"], status: true });
+	assert.equal(pushes.find((push) => push.type === "receiveMessage").data.message.body, "Sam将Kim设为管理员");
+	assert.equal((await call("POST", "im/room/updateRoomInfo", { token: kim, body: { id: roomId, name: "Kim 的组" } })).code, 200, "admins rename too");
+	pushes.length = 0;
+	assert.equal((await call("PUT", "im/room/group/admin", { token: sam, body: { roomId, uidList: ["u2"] } })).code, 200);
+	assert.equal(pushes.length, 0, "no change, no news");
+
+	pushes.length = 0;
+	assert.equal((await call("POST", "im/room/group/member", { token: kim, body: { roomId, uidList: ["u4"] } })).code, 200);
+	const join = pushes.find((push) => push.type === "memberChange");
+	assert.deepEqual({ changeType: join.data.changeType, uids: join.data.userList.map((user) => [user.uid, user.roleId]), total: join.data.totalNum }, { changeType: 1, uids: [["u4", 3]], total: 4 });
+	assert.ok(pushes.some((push) => push.type === "memberChange" && push.userId === "u4"), "the newcomer's client opens the group");
+
+	pushes.length = 0;
+	assert.equal((await call("DELETE", "im/room/group/member", { token: kim, body: { roomId, uidList: ["u4"] } })).code, 200);
+	assert.ok(pushes.some((push) => push.type === "memberChange" && push.userId === "u4" && push.data.changeType === 2), "the removed member's client drops the group");
+
+	assert.equal((await call("DELETE", "im/room/group/member/exit", { token: kim, body: { roomId, dissolve: true } })).code, 403, "only the owner dissolves");
+	pushes.length = 0;
+	assert.equal((await call("DELETE", "im/room/group/member/exit", { token: sam, body: { roomId, dissolve: true } })).code, 200);
+	assert.deepEqual(pushes.filter((push) => push.type === "roomDissolution").map((push) => [push.userId, push.data]).sort(), [["u1", roomId], ["u2", roomId], ["u3", roomId]]);
+	assert.equal((await call("GET", "im/chat/contact/detail", { token: kim, query: { id: roomId } })).code, 403, "the group is gone");
+});
+
+test("group announcements: managers publish, edit, pin and delete; members read and are told", async (t) => {
+	const { call, login, addUser, pushes, database } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+
+	assert.deepEqual((await call("GET", "im/room/announcement/list", { token: kim, query: { roomId, current: 1, size: 10 } })).data.records, []);
+	assert.equal((await call("POST", "im/room/announcement/push", { token: kim, body: { roomId, content: "hi", top: false } })).code, 403);
+	assert.equal((await call("POST", "im/room/announcement/push", { token: sam, body: { roomId, content: "  ", top: false } })).code, 400);
+	pushes.length = 0;
+	const first = (await call("POST", "im/room/announcement/push", { token: sam, body: { roomId, content: "周五例会改到三点", top: true } })).data;
+	assert.deepEqual({ content: first.content, top: first.top, uid: first.uid, userName: first.userName }, { content: "周五例会改到三点", top: true, uid: "u1", userName: "Sam" });
+	const card = pushes.find((push) => push.type === "receiveMessage" && push.userId === "u2").data.message;
+	assert.deepEqual({ type: card.type, content: card.body.content, id: card.body.id }, { type: 10, content: "周五例会改到三点", id: first.id });
+	assert.deepEqual(pushes.filter((push) => push.type === "roomGroupNoticeMsg").map((push) => push.userId).sort(), ["u1", "u2", "u3"]);
+	assert.equal((await call("GET", "im/chat/contact/detail", { token: kim, query: { id: roomId } })).data.text, "Sam:[群公告] 周五例会改到三点");
+
+	const second = (await call("POST", "im/room/announcement/push", { token: sam, body: { roomId, content: "第二条", top: true } })).data;
+	let list = (await call("GET", "im/room/announcement/list", { token: kim, query: { roomId, current: 1, size: 10 } })).data;
+	assert.deepEqual(list.records.map((record) => [record.id, record.top]), [[second.id, true], [first.id, false]], "one pinned at a time, pinned first");
+	assert.equal(list.total, "2");
+
+	await call("PUT", "im/room/group/admin", { token: sam, body: { roomId, uidList: ["u2"] } });
+	pushes.length = 0;
+	const edited = (await call("POST", "im/room/announcement/edit", { token: kim, body: { id: first.id, roomId, content: "例会取消", top: true } })).data;
+	assert.deepEqual({ content: edited.content, top: edited.top }, { content: "例会取消", top: true });
+	assert.ok(pushes.some((push) => push.type === "roomEditGroupNoticeMsg"));
+	list = (await call("GET", "im/room/announcement/list", { token: sam, query: { roomId, current: 1, size: 10 } })).data;
+	assert.deepEqual(list.records.map((record) => [record.id, record.top]), [[first.id, true], [second.id, false]]);
+	assert.equal((await call("GET", "im/room/announcement", { token: sam, query: { roomId, announcementId: first.id } })).data.content, "例会取消");
+
+	assert.equal((await call("POST", "im/room/announcement/delete", { token: kim, query: { id: second.id } })).code, 200);
+	assert.equal((await call("GET", "im/room/announcement/list", { token: sam, query: { roomId } })).data.total, "1");
+	addUser("u9", "out@one.test", "Out");
+	const outsider = (await login("out@one.test")).data.token;
+	assert.equal((await call("GET", "im/room/announcement/list", { token: outsider, query: { roomId } })).code, 403);
+	assert.equal((await call("POST", "im/room/announcement/delete", { token: outsider, query: { id: first.id } })).code, 403);
+
+	assert.equal((await call("POST", "im/room/announcement/push", { token: kim, body: { roomId: "1", content: "全员通知", top: false } })).code, 403);
+	database.db.prepare("UPDATE users SET role = 'admin' WHERE id = 'u1'").run();
+	assert.equal((await call("POST", "im/room/announcement/push", { token: sam, body: { roomId: "1", content: "全员通知", top: false } })).code, 200, "mailflare admins announce to everyone");
+});
+
+test("@全体成员 is for a group's owner and admins", async (t) => {
+	const { call, login, addUser } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+	const send = (token, id) => call("POST", "im/chat/msg", { token, body: { id, roomId, msgType: 1, body: { content: "@全体成员 开会", atUidList: ["0"] } } });
+	const refused = await send(kim, "k1");
+	assert.equal(refused.code, 403);
+	assert.equal(refused.msg, "只有群主和管理员可以@全体成员");
+	const sent = await send(sam, "s1");
+	assert.equal(sent.code, 200);
+	assert.deepEqual(sent.data.message.body.atUidList, ["0"]);
+	const history = (await call("GET", "im/chat/msg/page", { token: kim, query: { roomId, pageSize: 20 } })).data.list;
+	assert.equal(history.filter((message) => message.message.body?.atUidList).length, 1, "the refused send stored nothing");
 });
 
 test("session settings are per member", async (t) => {

@@ -3,15 +3,18 @@ import {
 	DIRECTORY_SEARCH_LIMIT,
 	IM_ALL_STAFF_ROOM_ID,
 	IM_ALL_STAFF_ROOM_NAME,
+	IM_AT_ALL_UID,
 	IM_GROUP_MEMBER_LIMIT,
 	IM_GROUP_NAME_LIMIT,
 	IM_MEDIA_TYPES,
+	IM_MEMBER_CHANGE,
 	IM_MSG_TYPE,
 	IM_OFFLINE,
 	IM_ONLINE,
 	IM_RECALL_WINDOW_MS,
 	IM_ROLE,
 	IM_ROOM_TYPE,
+	IM_SESSION_OPERATE,
 	IM_SYNC_MESSAGES_PER_ROOM,
 	ImChatError,
 	defaultGroupName,
@@ -34,6 +37,7 @@ import { imAccessTokenHash, resolveImAccessToken } from "./tokens";
 import { imFileIdFromUrl } from "./files-utils";
 import { buildHistoryWhere, type ImHistoryParams } from "./history-utils";
 import { imSearchTextOverride } from "./search-utils";
+import { notifyImUsers } from "./notify";
 import { fileRoomMessage, unfileRoomMessage } from "./room-files";
 import { IM_DEFAULT_USER_STATE_ID, imAvatarUrl, imRoomAvatarUrl } from "./users-utils";
 
@@ -230,7 +234,8 @@ function toSession(row: SessionRow, viewerUid: string, origin: string) {
 		hide: Boolean(row.hide),
 		muteNotification: row.mute_notification,
 		shield: Boolean(row.shield),
-		operate: 0,
+		// Owners dissolve their group; everyone else leaves it.
+		operate: !isGroup ? IM_SESSION_OPERATE.DELETE_FRIEND : row.role === IM_ROLE.OWNER ? IM_SESSION_OPERATE.DISSOLVE_GROUP : IM_SESSION_OPERATE.EXIT_GROUP,
 		remark: row.remark,
 		myName: row.my_name,
 		memberNum: isGroup ? Number(row.member_count) : undefined,
@@ -663,11 +668,16 @@ async function storeSentMessage(
 	const filesUploaded = fileIds.length
 		? ` AND (SELECT COUNT(*) FROM im_files f WHERE f.id IN (${fileIds.map(() => "?").join(", ")}) AND f.uploaded_at IS NOT NULL) = ?`
 		: "";
+	// "@全体成员" is for a group's owner and admins; anyone else's send stores nothing and is refused below.
+	const atAll = parsed.type === IM_MSG_TYPE.TEXT && Boolean((parsed.body as { atUidList?: string[] }).atUidList?.includes(IM_AT_ALL_UID));
+	const atAllAllowed = atAll
+		? ` AND m.role IN (${IM_ROLE.OWNER}, ${IM_ROLE.ADMIN}) AND (SELECT type FROM im_rooms WHERE id = m.room_id) = ${IM_ROOM_TYPE.GROUP}`
+		: "";
 	add(
 		withMe(
 			` INSERT OR IGNORE INTO im_messages (room_id, from_uid, client_msg_id, type, body, reply_msg_id, created_at)
 			SELECT m.room_id, m.user_id, ?, ?, ?, (SELECT r.id FROM im_messages r WHERE r.id = ? AND r.room_id = m.room_id), ?
-			FROM im_room_members m WHERE m.room_id = ? AND m.user_id = (SELECT id FROM me)${filesUploaded}`,
+			FROM im_room_members m WHERE m.room_id = ? AND m.user_id = (SELECT id FROM me)${filesUploaded}${atAllAllowed}`,
 			key,
 			parsed.type,
 			bodyJson,
@@ -745,7 +755,9 @@ async function storeSentMessage(
 		if (!auth || auth.disabled || auth.deleted_at !== null) return { auth: "invalid" };
 		if (auth.expires_at * 1000 <= now) return { auth: "expired" };
 	}
-	if (!rows<MemberRow>(memberAt)[0]) throw new ImChatError(403, "你不在该会话中");
+	const membership = rows<MemberRow>(memberAt)[0];
+	if (!membership) throw new ImChatError(403, "你不在该会话中");
+	if (atAll && !(membership.room_type === IM_ROOM_TYPE.GROUP && isManager(membership))) throw new ImChatError(403, "只有群主和管理员可以@全体成员");
 	if (filesAt >= 0 && Number(rows<{ count: number }>(filesAt)[0]?.count) < fileIds.length) throw new ImChatError(400, "文件未上传完成");
 	const row = rows<ImMessageRow>(rowAt)[0];
 	if (!row) throw new ImChatError(400, "消息发送失败");
@@ -927,6 +939,30 @@ function refuseDirectoryChange(roomId: string) {
 	if (roomId === IM_ALL_STAFF_ROOM_ID) throw new ImChatError(400, "全员群成员随邮箱账号自动同步");
 }
 
+/** HuLa's `memberChange` push: who joined or left, and the group's new head counts. */
+async function pushMemberChange(env: Env, roomId: string, changeType: number, changed: string[], alsoTell: string[], origin: string): Promise<void> {
+	const rows = await selectIn<PersonRow>(
+		env,
+		(placeholders) => `SELECT ${PERSON_COLUMNS}, COALESCE(m.role, ${IM_ROLE.MEMBER}) AS role, COALESCE(m.my_name, '') AS my_name, m.created_at
+			FROM users u LEFT JOIN im_presence p ON p.user_id = u.id LEFT JOIN im_room_members m ON m.room_id = ? AND m.user_id = u.id
+			WHERE u.id IN (${placeholders})`,
+		changed,
+		roomId,
+	);
+	const counts = await db(env)
+		.prepare(
+			`SELECT COUNT(*) AS total, SUM(CASE WHEN p.online = 1 THEN 1 ELSE 0 END) AS online
+			FROM im_room_members m LEFT JOIN im_presence p ON p.user_id = m.user_id WHERE m.room_id = ?`,
+		)
+		.bind(roomId)
+		.first<{ total: number; online: number | null }>();
+	const userList = rows.map((row) => ({ ...toPerson(row, origin), roomId, roleId: row.role ?? IM_ROLE.MEMBER, myName: row.my_name ?? "" }));
+	await notifyImUsers(env, [...(await roomMemberIds(env, roomId)), ...alsoTell], {
+		type: "memberChange",
+		data: { roomId, changeType, userList, totalNum: Number(counts?.total ?? 0), onlineNum: Number(counts?.online ?? 0) },
+	});
+}
+
 export async function inviteMembers(env: Env, userId: string, input: { roomId?: unknown; uidList?: unknown }, origin: string) {
 	const member = await requireGroupMember(env, input.roomId, userId);
 	refuseDirectoryChange(member.room_id);
@@ -940,6 +976,7 @@ export async function inviteMembers(env: Env, userId: string, input: { roomId?: 
 			db(env).prepare("INSERT OR IGNORE INTO im_room_members (room_id, user_id, role, created_at) VALUES (?, ?, ?, ?)").bind(member.room_id, user.id, IM_ROLE.MEMBER, now),
 		),
 	);
+	await pushMemberChange(env, member.room_id, IM_MEMBER_CHANGE.JOIN, invitees.map((user) => user.id), [], origin);
 	return postSystemMessage(env, member.room_id, userId, `${await userName(env, userId)}邀请${namesOf(invitees)}加入了群聊`, origin);
 }
 
@@ -957,61 +994,151 @@ export async function removeMembers(env: Env, userId: string, input: { roomId?: 
 	// Owners are never removed, and admins can only remove plain members.
 	const removable = rows.filter((row) => row.role !== IM_ROLE.OWNER && (member.role === IM_ROLE.OWNER || row.role === IM_ROLE.MEMBER));
 	if (!removable.length) throw new ImChatError(400, "没有可移除的成员");
+	const removedIds = removable.map((row) => row.user_id);
+	const removed = await activeUsers(env, removedIds, userId);
 	await db(env).batch(
-		removable.map((row) => db(env).prepare("DELETE FROM im_room_members WHERE room_id = ? AND user_id = ?").bind(member.room_id, row.user_id)),
+		removedIds.map((uid) => db(env).prepare("DELETE FROM im_room_members WHERE room_id = ? AND user_id = ?").bind(member.room_id, uid)),
 	);
-	const removed = await activeUsers(env, removable.map((row) => row.user_id), userId);
+	// The removed are told too, so their clients drop the group.
+	await pushMemberChange(env, member.room_id, IM_MEMBER_CHANGE.REMOVE, removedIds, removedIds, origin);
 	return postSystemMessage(env, member.room_id, userId, `${await userName(env, userId)}将${namesOf(removed)}移出了群聊`, origin);
 }
 
-/** Leaving hands ownership to the longest-standing admin, else member; the last one out deletes the group. */
-export async function exitGroup(env: Env, userId: string, roomId: unknown, origin: string): Promise<ImDelivery | null> {
-	const member = await requireGroupMember(env, roomId, userId);
+/**
+ * Leaving a group. Its owner cannot simply leave: they hand the group to someone else first, or dissolve it
+ * (`dissolve`), which removes it for everyone. The last one out deletes the group.
+ */
+export async function exitGroup(env: Env, userId: string, input: { roomId?: unknown; dissolve?: unknown }, origin: string): Promise<ImDelivery | null> {
+	const member = await requireGroupMember(env, input.roomId, userId);
 	refuseDirectoryChange(member.room_id);
-	const name = await userName(env, userId);
-	await db(env).prepare("DELETE FROM im_room_members WHERE room_id = ? AND user_id = ?").bind(member.room_id, userId).run();
-	const successor = await db(env)
-		.prepare("SELECT user_id, role FROM im_room_members WHERE room_id = ? ORDER BY role, created_at LIMIT 1")
-		.bind(member.room_id)
-		.first<{ user_id: string; role: number }>();
-	if (!successor) {
+	const others = (await roomMemberIds(env, member.room_id)).filter((uid) => uid !== userId);
+	if (member.role === IM_ROLE.OWNER && others.length) {
+		if (input.dissolve !== true) throw new ImChatError(400, "群主需先转让群主才能退出群聊，或选择解散群聊");
+		await dissolveGroup(env, member.room_id, [userId, ...others]);
+		return null;
+	}
+	if (input.dissolve === true) throw new ImChatError(403, "只有群主可以解散群聊");
+	if (!others.length) {
 		await db(env).prepare("DELETE FROM im_rooms WHERE id = ?").bind(member.room_id).run();
 		return null;
 	}
-	if (member.role === IM_ROLE.OWNER) {
-		await db(env).batch([
-			db(env).prepare("UPDATE im_room_members SET role = ? WHERE room_id = ? AND user_id = ?").bind(IM_ROLE.OWNER, member.room_id, successor.user_id),
-			db(env).prepare("UPDATE im_rooms SET owner_id = ? WHERE id = ?").bind(successor.user_id, member.room_id),
-		]);
-	}
-	return postSystemMessage(env, member.room_id, successor.user_id, `${name}退出了群聊`, origin);
+	const name = await userName(env, userId);
+	await db(env).prepare("DELETE FROM im_room_members WHERE room_id = ? AND user_id = ?").bind(member.room_id, userId).run();
+	await pushMemberChange(env, member.room_id, IM_MEMBER_CHANGE.EXIT, [userId], [userId], origin);
+	return postSystemMessage(env, member.room_id, others[0], `${name}退出了群聊`, origin);
 }
 
-export async function setAdmins(env: Env, userId: string, input: { roomId?: unknown; uidList?: unknown }, admin: boolean): Promise<void> {
+/** Deletes a group with its messages and files list, and tells every member's clients to drop it. */
+async function dissolveGroup(env: Env, roomId: string, memberIds: string[]): Promise<void> {
+	await db(env).prepare("DELETE FROM im_rooms WHERE id = ?").bind(roomId).run();
+	await notifyImUsers(env, memberIds, { type: "roomDissolution", data: roomId });
+}
+
+/** Whether the caller may dissolve the group: its owner, for the handler to tidy up before `exitGroup` deletes it. */
+export async function isGroupOwner(env: Env, roomId: unknown, userId: string): Promise<boolean> {
+	if (typeof roomId !== "string" || !roomId) return false;
+	const member = await findMember(env, roomId, userId);
+	return member?.room_type === IM_ROOM_TYPE.GROUP && member.role === IM_ROLE.OWNER;
+}
+
+/** Role changes reach every member as HuLa's `groupSetAdmin`; `roles` carries exact roles where admin/not admin does not say enough. */
+async function pushRoleChange(env: Env, roomId: string, uids: string[], status: boolean, roles?: Record<string, number>): Promise<void> {
+	await notifyImUsers(env, await roomMemberIds(env, roomId), { type: "groupSetAdmin", data: { roomId, uids, status, ...(roles ? { roles } : {}) } });
+}
+
+export async function setAdmins(env: Env, userId: string, input: { roomId?: unknown; uidList?: unknown }, admin: boolean, origin: string): Promise<ImDelivery | null> {
 	const member = await requireGroupMember(env, input.roomId, userId);
+	refuseDirectoryChange(member.room_id);
 	if (member.role !== IM_ROLE.OWNER) throw new ImChatError(403, "只有群主可以设置管理员");
 	const targets = Array.isArray(input.uidList) ? input.uidList.filter((uid): uid is string => typeof uid === "string" && uid !== userId) : [];
 	if (!targets.length) throw new ImChatError(400, "请选择成员");
+	const from = admin ? IM_ROLE.MEMBER : IM_ROLE.ADMIN;
+	const changing = (
+		await selectIn<{ user_id: string }>(
+			env,
+			(placeholders) => `SELECT user_id FROM im_room_members WHERE room_id = ? AND role = ? AND user_id IN (${placeholders})`,
+			targets,
+			member.room_id,
+			from,
+		)
+	).map((row) => row.user_id);
+	if (!changing.length) return null;
 	await db(env).batch(
-		targets.map((uid) =>
-			db(env)
-				.prepare("UPDATE im_room_members SET role = ? WHERE room_id = ? AND user_id = ? AND role <> ?")
-				.bind(admin ? IM_ROLE.ADMIN : IM_ROLE.MEMBER, member.room_id, uid, IM_ROLE.OWNER),
+		changing.map((uid) =>
+			db(env).prepare("UPDATE im_room_members SET role = ? WHERE room_id = ? AND user_id = ? AND role = ?").bind(admin ? IM_ROLE.ADMIN : IM_ROLE.MEMBER, member.room_id, uid, from),
 		),
 	);
+	await pushRoleChange(env, member.room_id, changing, admin);
+	const names = namesOf(await activeUsers(env, changing, userId));
+	const actor = await userName(env, userId);
+	return postSystemMessage(env, member.room_id, userId, admin ? `${actor}将${names}设为管理员` : `${actor}取消了${names}的管理员身份`, origin);
 }
 
+/** The owner hands the group to another member and becomes a plain member. */
+export async function transferGroupOwner(env: Env, userId: string, input: { roomId?: unknown; uid?: unknown }, origin: string): Promise<ImDelivery> {
+	const member = await requireGroupMember(env, input.roomId, userId);
+	refuseDirectoryChange(member.room_id);
+	if (member.role !== IM_ROLE.OWNER) throw new ImChatError(403, "只有群主可以转让群主");
+	const target = typeof input.uid === "string" && input.uid !== userId ? await findMember(env, member.room_id, input.uid) : null;
+	const [successor] = target ? await activeUsers(env, [target.user_id], userId) : [];
+	if (!target || !successor) throw new ImChatError(400, "请选择一位群成员");
+	await db(env).batch([
+		db(env).prepare("UPDATE im_room_members SET role = ? WHERE room_id = ? AND user_id = ?").bind(IM_ROLE.OWNER, member.room_id, successor.id),
+		db(env).prepare("UPDATE im_room_members SET role = ? WHERE room_id = ? AND user_id = ?").bind(IM_ROLE.MEMBER, member.room_id, userId),
+		db(env).prepare("UPDATE im_rooms SET owner_id = ? WHERE id = ?").bind(successor.id, member.room_id),
+	]);
+	// `uids`/`status` alone already turns the old owner into a member on clients that do not read `roles`.
+	await pushRoleChange(env, member.room_id, [userId], false, { [successor.id]: IM_ROLE.OWNER, [userId]: IM_ROLE.MEMBER });
+	return postSystemMessage(env, member.room_id, userId, `${await userName(env, userId)}将群主转让给了${imUserName(successor)}`, origin);
+}
+
+/**
+ * Renames a group or changes its picture; owners and admins only. Every member's clients update at once
+ * (`roomInfoChange`), and a rename or new picture is announced in the group.
+ */
 export async function updateRoomInfo(env: Env, userId: string, input: { id?: unknown; name?: unknown; avatar?: unknown }, origin: string) {
 	const member = await requireGroupMember(env, input.id, userId);
+	refuseDirectoryChange(member.room_id);
 	if (!isManager(member)) throw new ImChatError(403, "只有群主和管理员可以修改群资料");
+	const room = await db(env).prepare("SELECT id, name, avatar FROM im_rooms WHERE id = ?").bind(member.room_id).first<{ id: string; name: string; avatar: string }>();
+	if (!room) throw new ImChatError(404, "群聊不存在");
 	const name = typeof input.name === "string" ? input.name.trim() : undefined;
 	if (name !== undefined && (!name || name.length > IM_GROUP_NAME_LIMIT)) throw new ImChatError(400, `群名称需为1到${IM_GROUP_NAME_LIMIT}个字`);
-	const avatar = typeof input.avatar === "string" ? input.avatar.trim() : undefined;
-	if (avatar !== undefined && avatar && !/^https:\/\/\S{1,500}$/.test(avatar)) throw new ImChatError(400, "群头像地址无效");
-	if (name !== undefined) await db(env).prepare("UPDATE im_rooms SET name = ? WHERE id = ?").bind(name, member.room_id).run();
-	if (avatar !== undefined) await db(env).prepare("UPDATE im_rooms SET avatar = ? WHERE id = ?").bind(avatar, member.room_id).run();
-	if (name === undefined) return null;
-	return postSystemMessage(env, member.room_id, userId, `${await userName(env, userId)}将群名称修改为“${name}”`, origin);
+	const avatar = parseRoomAvatar(input.avatar, room, origin);
+	const renamed = name !== undefined && name !== room.name;
+	const repictured = avatar !== undefined && avatar !== room.avatar;
+	if (!renamed && !repictured) return null;
+	await db(env)
+		.prepare("UPDATE im_rooms SET name = ?, avatar = ? WHERE id = ?")
+		.bind(renamed ? name : room.name, repictured ? avatar : room.avatar, member.room_id)
+		.run();
+	const updated = { id: room.id, name: renamed ? (name as string) : room.name, avatar: repictured ? (avatar as string) : room.avatar };
+	await notifyImUsers(env, await roomMemberIds(env, member.room_id), {
+		type: "roomInfoChange",
+		data: { roomId: room.id, name: updated.name, avatar: imRoomAvatarUrl(updated, origin) },
+	});
+	const actor = await userName(env, userId);
+	return postSystemMessage(env, member.room_id, userId, renamed ? `${actor}将群名称修改为“${updated.name}”` : `${actor}修改了群头像`, origin);
+}
+
+/**
+ * A new group picture: one of our chat files, or any https image; "" or the generated picture's own URL (which
+ * clients send back unchanged with a rename) mean the generated one. Undefined leaves the picture alone.
+ */
+function parseRoomAvatar(value: unknown, room: { id: string; avatar: string }, origin: string): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const avatar = value.trim();
+	if (avatar === room.avatar) return undefined;
+	if (!avatar || avatar === imRoomAvatarUrl({ id: room.id, avatar: "" }, origin)) return "";
+	if (imFileIdFromUrl(avatar, origin) || /^https:\/\/\S{1,500}$/.test(avatar)) return avatar;
+	throw new ImChatError(400, "群头像地址无效");
+}
+
+/** Posts a group announcement's card (HuLa's NOTICE message) as its author; everyone in the group gets it. */
+export async function postNoticeMessage(env: Env, roomId: string, userId: string, body: Record<string, unknown>, origin: string): Promise<ImDelivery> {
+	const row = await insertMessage(env, { roomId, fromUid: userId, clientMsgId: null, type: IM_MSG_TYPE.NOTICE, body, replyMsgId: null });
+	const [message] = await renderMessages(env, userId, [row], origin);
+	return { message, recipients: await roomMemberIds(env, roomId) };
 }
 
 /** HuLa's `GroupDetailReq`. */
