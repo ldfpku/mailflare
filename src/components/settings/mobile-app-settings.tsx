@@ -84,7 +84,7 @@ export function MobileAppSettings() {
 	const guides = [...GUIDES].sort((a, b) => Number(b.os === os) - Number(a.os === os));
 
 	return <div className="space-y-4">
-		<div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-white p-6">
+		<div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-white p-4 sm:p-6">
 			<div className="min-w-0 space-y-2">
 				<p className="text-sm text-neutral-500">{t("settingsPage.mobile.address")}</p>
 				<p className="break-all text-lg font-semibold text-[#034fbc]">{env?.url ?? " "}</p>
@@ -105,7 +105,7 @@ export function MobileAppSettings() {
 			</figure>}
 		</div>
 		<div className="grid gap-4 md:grid-cols-2">
-			{guides.map((guide) => <section key={guide.os} className="rounded-3xl bg-white p-6">
+			{guides.map((guide) => <section key={guide.os} className="rounded-3xl bg-white p-4 sm:p-6">
 				<h2 className="flex flex-wrap items-center gap-2 font-semibold text-neutral-900">
 					{t(guide.title)}
 					{guide.os === os && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-normal text-blue-700">{t("settingsPage.mobile.thisPhone")}</span>}
@@ -119,7 +119,7 @@ export function MobileAppSettings() {
 				</ol>
 			</section>)}
 		</div>
-		<div className="rounded-3xl bg-white p-6">
+		<div className="rounded-3xl bg-white p-4 sm:p-6">
 			<h2 className="text-sm font-semibold text-neutral-900">{t("settingsPage.mobile.tipsTitle")}</h2>
 			<ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-600">
 				{TIPS.map((key) => <li key={key}>{t(key)}</li>)}
