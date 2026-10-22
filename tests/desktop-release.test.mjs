@@ -22,7 +22,7 @@ await build({
 const desktop = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 
 const ORIGIN = "https://mail.one.test";
-// The shape HuLa's .github/scripts/desktop-manifest.mjs writes (Windows only when the macOS build failed).
+// The shape HuLa's .github/scripts/desktop-manifest.mjs writes.
 const MANIFEST = {
 	version: "1.0.2",
 	notes: "- 修复远程协助\n- 新增安装包",
