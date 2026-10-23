@@ -57,6 +57,8 @@ export async function parseSendRequest(request: Request): Promise<SendRequestPay
 		threadId: getOptionalFormValue(form, "threadId"),
 		draftId: getOptionalFormValue(form, "draftId"),
 		scheduledAt: getOptionalFormValue(form, "scheduledAt"),
+		undoSend: form.get("undoSend") === "true",
+		trackOpens: form.get("trackOpens") === "true",
 		subject: String(form.get("subject") ?? ""),
 		text: getOptionalFormValue(form, "text"),
 		html: getOptionalFormValue(form, "html"),
