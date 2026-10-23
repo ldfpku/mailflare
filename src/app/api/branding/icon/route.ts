@@ -15,14 +15,14 @@ async function getDefaultIcon(env: CloudflareEnv): Promise<Response> {
 	const asset = await env.ASSETS.fetch("https://mailflare.local/icon-96.png");
 	const headers = new Headers(asset.headers);
 	if (asset.ok) headers.set("Cache-Control", ICON_CACHE_CONTROL);
-	return new Response(await asset.arrayBuffer(), {
+	return new Response(asset.body, {
 		status: asset.status,
 		statusText: asset.statusText,
 		headers,
 	});
 }
 
-export async function GET(request: Request) {
+export async function GET() {
 	const env = await getEnvAsync();
 	try {
 		const [settings] = await getDb(env)

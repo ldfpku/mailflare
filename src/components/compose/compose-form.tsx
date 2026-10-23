@@ -389,7 +389,7 @@ export function ComposeForm({
 			return;
 		}
 		let res: Response;
-		let data: { messageId?: string; scheduled?: boolean; error?: string };
+		let data: { messageId?: string; scheduled?: boolean; undoSeconds?: number; error?: string };
 		try {
 			res = await authFetch("/api/send", {
 				method: "POST",
@@ -411,7 +411,7 @@ export function ComposeForm({
 					followUpDays,
 				}),
 			});
-			data = (await res.json()) as { messageId?: string; scheduled?: boolean; error?: string };
+			data = (await res.json()) as { messageId?: string; scheduled?: boolean; undoSeconds?: number; error?: string };
 		} catch {
 			setLoading(false);
 			setToast({ type: "error", message: t("compose.error.sendFailed") });
@@ -424,11 +424,9 @@ export function ComposeForm({
 			return;
 		}
 
-		if (currentDraftId) {
-			void authFetch(`/api/drafts/${currentDraftId}`, { method: "DELETE" }).finally(() => {
-				window.dispatchEvent(new Event("mailflare:messages-changed"));
-			});
-		}
+		// With a draft, refresh once it is gone so the lists reload a single time.
+		const refreshLists = () => window.dispatchEvent(new Event("mailflare:messages-changed"));
+		if (currentDraftId) void authFetch(`/api/drafts/${currentDraftId}`, { method: "DELETE" }).finally(refreshLists);
 		draftGeneration.current += 1;
 		draftIdRef.current = null;
 		setDraftId(null);
@@ -444,8 +442,19 @@ export function ComposeForm({
 		setQuotedHtml(null);
 		setAttachments([]);
 		setScheduledAt(null);
-		showNotice(data.scheduled ? t("compose.scheduled") : t("compose.sent"));
-		window.dispatchEvent(new Event("mailflare:messages-changed"));
+		const sentMessageId = data.messageId;
+		if (data.undoSeconds && sentMessageId) {
+			// The send is queued for the undo window; Cancel puts the message back in Drafts and reopens it.
+			showNotice(t("compose.sent"), {
+				durationMs: data.undoSeconds * 1000,
+				action: { label: t("compose.cancelSend"), onClick: () => void cancelSend(sentMessageId) },
+			});
+			// Refresh the lists once the queue has had time to deliver it.
+			setTimeout(() => window.dispatchEvent(new Event("mailflare:messages-changed")), (data.undoSeconds + 3) * 1000);
+		} else {
+			showNotice(data.scheduled ? t("compose.scheduled") : t("compose.sent"));
+		}
+		if (!currentDraftId) refreshLists();
 
 		if (onClose) {
 			dismiss();

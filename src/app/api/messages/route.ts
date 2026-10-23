@@ -7,7 +7,7 @@ import { getDb } from "@/db";
 import { messages, outboundJobs } from "@/db/schema";
 import { getContactDisplayNameMap } from "@/lib/contacts/service";
 import { getFirstEmailAddressEntry, normalizeEmailAddress } from "@/lib/email/address";
-import { getMailboxAccessLevel, listAccessibleMailboxes } from "@/lib/mailboxes/access";
+import { getMailboxAccessLevel, hasMailboxPermission, listAccessibleMailboxes } from "@/lib/mailboxes/access";
 import { tracksAccountIdentity } from "@/lib/profile/identity-utils";
 import { buildSearchConditions } from "@/lib/search/conditions";
 import { getRequestTimeZone } from "@/lib/time/utils";
@@ -41,15 +41,17 @@ export async function GET(request: Request) {
 	const groupByThread = url.searchParams.get("group") === "thread" && status !== "draft";
 
 	const db = getDb(env);
-	// Independent lookups share one round trip; D1 can be far from the Worker.
-	const [accessibleMailboxes, access] = await Promise.all([
-		listAccessibleMailboxes(db, user),
-		mailboxId ? getMailboxAccessLevel(db, user, mailboxId) : null,
-	]);
+	const accessibleMailboxes = await listAccessibleMailboxes(db, user);
 	const accessibleMailboxIds = accessibleMailboxes.map((mailbox) => mailbox.id);
 	const conditions: SQL[] = [];
 	if (mailboxId) {
-		if (!access?.canRead) {
+		const mailbox = accessibleMailboxes.find((mailbox) => mailbox.id === mailboxId);
+		// Reuse this request's authorization; retain the fallback for mailboxes
+		// omitted by the list's domain join (for example, legacy orphaned rows).
+		const canRead = mailbox
+			? hasMailboxPermission(mailbox.permission, "read_only")
+			: (await getMailboxAccessLevel(db, user, mailboxId))?.canRead;
+		if (!canRead) {
 			return NextResponse.json({ error: "Mailbox not found" }, { status: 404 });
 		}
 		conditions.push(eq(messages.mailboxId, mailboxId));
@@ -137,7 +139,7 @@ export async function GET(request: Request) {
 			}
 		}
 	} else {
-		const [[totalRow], pageRows] = await Promise.all([
+		const [totals, pageRows] = await Promise.all([
 			db.select({ total: count() }).from(messages).where(where),
 			db
 				.select(messageListColumns)
@@ -147,55 +149,37 @@ export async function GET(request: Request) {
 				.limit(limit)
 				.offset(offset),
 		]);
-		total = totalRow?.total ?? 0;
+		total = totals[0]?.total ?? 0;
 		rows = pageRows;
 	}
 	// Conversation sizes for the rows on this page, so the list can show "(3)"
 	// next to a subject the way threaded clients do.
 	const threadIds = Array.from(new Set(rows.map((row) => row.threadId).filter((id): id is string => !!id)));
-	const threadCounts = new Map<string, { total: number; unread: number }>();
-	// Thread sizes, scheduled times and contact names only need the page's rows: fetch them together.
-	const loadThreadCounts = async () => {
-		if (threadIds.length === 0) return;
-		const scope = mailboxId
-			? eq(messages.mailboxId, mailboxId)
-			: accessibleMailboxIds.length > 0
-				? inArray(messages.mailboxId, accessibleMailboxIds)
-				: eq(messages.userId, user.id);
-		const countRows = await db
-			.select({
-				threadId: messages.threadId,
-				total: count(),
-				unread: sum(sql`case when ${messages.read} = 0 then 1 else 0 end`),
-			})
-			.from(messages)
-			.where(and(scope, inArray(messages.threadId, threadIds), isNotNull(messages.threadId), notInArray(messages.status, ["draft", "trash"])))
-			.groupBy(messages.threadId);
-		for (const row of countRows) {
-			if (row.threadId) threadCounts.set(row.threadId, { total: row.total, unread: Number(row.unread ?? 0) });
-		}
-	};
-	const scheduledAtByMessageId = new Map<string, string>();
-	const loadScheduledTimes = async () => {
-		if (scheduled !== "true" || rows.length === 0) return;
-		const jobs = await db
-			.select({ messageId: outboundJobs.messageId, scheduledAt: outboundJobs.scheduledAt })
-			.from(outboundJobs)
-			.where(and(inArray(outboundJobs.messageId, rows.map((row) => row.id)), eq(outboundJobs.status, "queued"), isNotNull(outboundJobs.scheduledAt)));
-		for (const job of jobs) {
-			if (job.messageId && job.scheduledAt) scheduledAtByMessageId.set(job.messageId, job.scheduledAt.toISOString());
-		}
-	};
-	const openCounts = await getOpenCounts(env, rows.filter((row) => row.direction === "outbound").map((row) => row.id));
-	const mailboxNameMap = new Map(
-		accessibleMailboxes.map((mailbox) => [
-			mailbox.id,
-			mailbox.userId === user.id && tracksAccountIdentity(mailbox, user.email)
-				? user.name
-				: mailbox.displayName ?? mailbox.localPart,
-		]),
-	);
-	const [contactMapEntries] = await Promise.all([
+	const scope = mailboxId
+		? eq(messages.mailboxId, mailboxId)
+		: accessibleMailboxIds.length > 0
+			? inArray(messages.mailboxId, accessibleMailboxIds)
+			: eq(messages.userId, user.id);
+	// These enrichments depend only on the selected page, not on each other.
+	const [countRows, jobs, openCounts, contactMaps] = await Promise.all([
+		threadIds.length > 0
+			? db
+				.select({
+					threadId: messages.threadId,
+					total: count(),
+					unread: sum(sql`case when ${messages.read} = 0 then 1 else 0 end`),
+				})
+				.from(messages)
+				.where(and(scope, inArray(messages.threadId, threadIds), isNotNull(messages.threadId), notInArray(messages.status, ["draft", "trash"])))
+				.groupBy(messages.threadId)
+			: [],
+		scheduled === "true" && rows.length > 0
+			? db
+				.select({ messageId: outboundJobs.messageId, scheduledAt: outboundJobs.scheduledAt })
+				.from(outboundJobs)
+				.where(and(inArray(outboundJobs.messageId, rows.map((row) => row.id)), eq(outboundJobs.status, "queued"), isNotNull(outboundJobs.scheduledAt)))
+			: [],
+		getOpenCounts(env, rows.filter((row) => row.direction === "outbound").map((row) => row.id)),
 		Promise.all(
 			Array.from(new Set(rows.map((message) => message.userId))).map(async (userId) => [
 				userId,
@@ -208,10 +192,24 @@ export async function GET(request: Request) {
 				),
 			] as const),
 		),
-		loadThreadCounts(),
-		loadScheduledTimes(),
 	]);
-	const contactMapsByUserId = new Map(contactMapEntries);
+	const threadCounts = new Map<string, { total: number; unread: number }>();
+	for (const row of countRows) {
+		if (row.threadId) threadCounts.set(row.threadId, { total: row.total, unread: Number(row.unread ?? 0) });
+	}
+	const scheduledAtByMessageId = new Map<string, string>();
+	for (const job of jobs) {
+		if (job.messageId && job.scheduledAt) scheduledAtByMessageId.set(job.messageId, job.scheduledAt.toISOString());
+	}
+	const mailboxNameMap = new Map(
+		accessibleMailboxes.map((mailbox) => [
+			mailbox.id,
+			mailbox.userId === user.id && tracksAccountIdentity(mailbox, user.email)
+				? user.name
+				: mailbox.displayName ?? mailbox.localPart,
+		]),
+	);
+	const contactMapsByUserId = new Map(contactMaps);
 	// `Message.textBody`/`htmlBody` are optional on the wire type and the
 	// reading pane loads them from /api/messages/[id]/thread, so they are
 	// neither selected nor sent here.
