@@ -120,7 +120,7 @@ test("reminders that are not yet due stay pending; snooze and dismiss belong to 
 	assert.ok(new Date(again.dueAt).getTime() > Date.now() + 2 * DAY);
 });
 
-test("without migration 0071 reminders are absent instead of failing", async (t) => {
+test("without migration 0082 reminders are absent instead of failing", async (t) => {
 	const database = new SqliteDatabase(join(outDir, `${crypto.randomUUID()}.sqlite`));
 	t.after(() => database.db.close());
 	const env = { DB: database };

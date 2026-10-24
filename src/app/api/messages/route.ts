@@ -41,17 +41,16 @@ export async function GET(request: Request) {
 	const groupByThread = url.searchParams.get("group") === "thread" && status !== "draft";
 
 	const db = getDb(env);
-	const accessibleMailboxes = await listAccessibleMailboxes(db, user);
+	// Independent lookups share one round trip; D1 can be far from the Worker.
+	const [accessibleMailboxes, access] = await Promise.all([
+		listAccessibleMailboxes(db, user),
+		mailboxId ? getMailboxAccessLevel(db, user, mailboxId) : null,
+	]);
 	const accessibleMailboxIds = accessibleMailboxes.map((mailbox) => mailbox.id);
 	const conditions: SQL[] = [];
 	if (mailboxId) {
-		const mailbox = accessibleMailboxes.find((mailbox) => mailbox.id === mailboxId);
-		// Reuse this request's authorization; retain the fallback for mailboxes
-		// omitted by the list's domain join (for example, legacy orphaned rows).
-		const canRead = mailbox
-			? hasMailboxPermission(mailbox.permission, "read_only")
-			: (await getMailboxAccessLevel(db, user, mailboxId))?.canRead;
-		if (!canRead) {
+		// The explicit access check also rejects disabled, expired and otherwise invalid grants.
+		if (!access?.canRead) {
 			return NextResponse.json({ error: "Mailbox not found" }, { status: 404 });
 		}
 		conditions.push(eq(messages.mailboxId, mailboxId));

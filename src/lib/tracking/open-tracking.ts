@@ -96,7 +96,7 @@ export async function getOpenCounts(env: CloudflareEnv, messageIds: string[]): P
 			.where(inArray(messageTracking.messageId, messageIds));
 		for (const row of rows) counts.set(row.messageId, row.openCount);
 	} catch (error) {
-		// Lists keep working before migration 0068 is applied.
+		// Lists keep working before migration 0080 is applied.
 		if (!isMissingTableError(error)) throw error;
 	}
 	return counts;
@@ -120,7 +120,7 @@ export async function getTrackingHostForSender(env: CloudflareEnv, from: string)
 	}
 }
 
-/** Null when unset; throws `TrackingHostsUnavailableError` before migration 0069. */
+/** Null when unset; throws `TrackingHostsUnavailableError` before migration 0081. */
 export async function getDomainTrackingHost(env: CloudflareEnv, domainId: string): Promise<string | null> {
 	try {
 		const [row] = await getDb(env)

@@ -40,7 +40,7 @@ test("driver errors are found through drizzle's wrapper", () => {
 	assert.equal(isUniqueConstraintError(new Error("no such table")), false);
 });
 
-test("message lists with sent mail keep working before migration 0068", async (t) => {
+test("message lists with sent mail keep working before migration 0080", async (t) => {
 	const database = new SqliteDatabase(join(outDir, "empty.sqlite"));
 	t.after(() => database.db.close());
 	const counts = await getOpenCounts({ DB: database }, ["m1"]);
