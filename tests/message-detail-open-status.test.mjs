@@ -16,6 +16,14 @@ test("the current outbound message requests its open status above the body", () 
 	assert.ok(status < body, "the status belongs above the current message body");
 });
 
+test("the current non-draft outbound message renders its follow-up status", () => {
+	assert.match(detail, /import \{ MessageFollowUpStatus \} from "@\/components\/follow-ups\/message-follow-up-status";/);
+	const status = detail.indexOf('message.direction === "outbound" && message.status !== "draft" && <MessageFollowUpStatus messageId={message.id} />');
+	const body = detail.indexOf("<EmailHtmlRenderer");
+	assert.ok(status >= 0, "the current message must render MessageFollowUpStatus, not only other thread cards");
+	assert.ok(status < body, "the follow-up controls belong above the current message body");
+});
+
 test("the sent-message route uses the same detail page", () => {
 	assert.match(sent, /import Page from "@\/app\/\(dashboard\)\/inbox\/\[messageId\]\/page"/);
 	assert.match(sent, /export default Page;/);

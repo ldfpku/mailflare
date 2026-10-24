@@ -46,6 +46,7 @@ import clsx from "clsx";
 import { useAssistantOpen } from "@/components/agent/assistant-open-state";
 import { useMessageContentScroll } from "./use-message-content-scroll";
 import { MessageOpenStatus } from "@/components/messages/message-open-status";
+import { MessageFollowUpStatus } from "@/components/follow-ups/message-follow-up-status";
 
 export default function MessageDetailPage() {
   const { t } = useLanguage();
@@ -300,6 +301,7 @@ export default function MessageDetailPage() {
           {scheduledAt && <div className="px-4 sm:px-0 sm:pl-10"><ScheduledSendBanner messageId={message.id} scheduledAt={scheduledAt} /></div>}
           <div className="px-4 sm:px-0 sm:pl-16">
             {message.direction === "outbound" && <MessageOpenStatus messageId={message.id} />}
+            {message.direction === "outbound" && message.status !== "draft" && <MessageFollowUpStatus messageId={message.id} />}
           </div>
           <div className="prose max-w-none px-4 text-neutral-900 sm:px-0 sm:pl-16">
             {htmlBody ? (
