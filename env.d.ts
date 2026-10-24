@@ -35,6 +35,14 @@ interface CloudflareEnv {
 	APNS_TEAM_ID?: string;
 	/** The .p8 file contents (PKCS#8 PEM). */
 	APNS_PRIVATE_KEY?: string;
+	/** Origin of a Mailflare push relay (mailflare-relay); lets this server push without APNS_* keys. */
+	APNS_RELAY_URL?: string;
+	/** Spamhaus Data Query Service key; enables ZEN (sending IP) and DBL (domain) checks in spam analysis. */
+	SPAMHAUS_DQS_KEY?: string;
+	/** abuse.ch Auth-Key; enables URLhaus malware-host checks for links in incoming mail. */
+	ABUSECH_AUTH_KEY?: string;
+	/** "off" disables the RDAP domain-age check in spam analysis. */
+	SPAM_DOMAIN_AGE_CHECK?: string;
 	/** Assistant calls per minute per key (10/min); see src/lib/agent/rate-limit.ts. */
 	AGENT_RATE_LIMIT?: RateLimit;
 	/** Assistant calls per user per UTC day across chat, MCP and chat summaries; default 200, "0" disables. */

@@ -429,6 +429,68 @@ export const outboundJobs = sqliteTable("outbound_jobs", {
 		.$defaultFn(() => new Date()),
 });
 
+/** One row per sent message that carries an open-tracking pixel; the token is the pixel URL's secret. */
+export const messageTracking = sqliteTable(
+	"message_tracking",
+	{
+		token: text("token").primaryKey(),
+		messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+		/** Opens that were not classified as automated prefetches. */
+		openCount: integer("open_count").notNull().default(0),
+		firstOpenedAt: integer("first_opened_at", { mode: "timestamp" }),
+		lastOpenedAt: integer("last_opened_at", { mode: "timestamp" }),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+	},
+	(t) => [uniqueIndex("message_tracking_message_idx").on(t.messageId)],
+);
+
+/** Hostname under a domain that serves its read-receipt pixels, so the pixel matches the sender. Kept out of `domains` so sending works before the migration. */
+export const domainTrackingHosts = sqliteTable(
+	"domain_tracking_hosts",
+	{
+		domainId: text("domain_id").primaryKey().references(() => domains.id, { onDelete: "cascade" }),
+		hostname: text("hostname").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+	},
+	(t) => [uniqueIndex("domain_tracking_hosts_hostname_idx").on(t.hostname)],
+);
+
+export const messageOpens = sqliteTable(
+	"message_opens",
+	{
+		id: text("id").primaryKey(),
+		token: text("token").notNull().references(() => messageTracking.token, { onDelete: "cascade" }),
+		openedAt: integer("opened_at", { mode: "timestamp" }).notNull(),
+		client: text("client"),
+		device: text("device"),
+		country: text("country"),
+		city: text("city"),
+		automated: integer("automated", { mode: "boolean" }).notNull().default(false),
+	},
+	(t) => [index("message_opens_token_idx").on(t.token, t.openedAt)],
+);
+
+/**
+ * "Remind me if there is no reply": a sent message whose thread comes back to the
+ * inbox at `dueAt` unless an inbound message joined the thread after it.
+ */
+export const followUps = sqliteTable(
+	"follow_ups",
+	{
+		id: text("id").primaryKey(),
+		messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+		userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+		dueAt: integer("due_at", { mode: "timestamp" }).notNull(),
+		status: text("status", { enum: ["pending", "due", "replied", "dismissed"] }).notNull().default("pending"),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+	},
+	(t) => [
+		uniqueIndex("follow_ups_message_idx").on(t.messageId),
+		index("follow_ups_status_due_idx").on(t.status, t.dueAt),
+		index("follow_ups_user_status_idx").on(t.userId, t.status),
+	],
+);
+
 export const emailTemplates = sqliteTable(
 	"email_templates",
 	{
@@ -755,6 +817,12 @@ export const appSettings = sqliteTable("app_settings", {
 	agentApiKey: text("agent_api_key"),
 	agentModel: text("agent_model"),
 	agentModelRates: text("agent_model_rates"),
+	/** Spam analysis lookups; the SPAMHAUS_DQS_KEY and ABUSECH_AUTH_KEY env vars apply when these are null. */
+	spamhausDqsKey: text("spamhaus_dqs_key"),
+	abusechAuthKey: text("abusech_auth_key"),
+	spamDomainAgeCheck: integer("spam_domain_age_check", { mode: "boolean" }).notNull().default(true),
+	/** JSON: brands the administrator added for display-name impersonation checks (see src/lib/spam/settings.ts). */
+	spamBrands: text("spam_brands"),
 	updatedAt: integer("updated_at", { mode: "timestamp" })
 		.notNull()
 		.$defaultFn(() => new Date()),

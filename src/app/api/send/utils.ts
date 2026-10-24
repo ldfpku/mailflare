@@ -3,6 +3,7 @@ import { decodeBase64Content } from "@/lib/email/attachments";
 import { readFormDataBody, readJsonBody } from "@/lib/http/request";
 import { sendEmailSchema } from "@/lib/validators";
 import type { SendRequestPayload } from "./types";
+import { parseFollowUpDays } from "@/lib/follow-ups/follow-up-utils";
 
 const MAX_SEND_REQUEST_SIZE = 30 * 1024 * 1024;
 
@@ -57,6 +58,9 @@ export async function parseSendRequest(request: Request): Promise<SendRequestPay
 		threadId: getOptionalFormValue(form, "threadId"),
 		draftId: getOptionalFormValue(form, "draftId"),
 		scheduledAt: getOptionalFormValue(form, "scheduledAt"),
+		undoSend: form.get("undoSend") === "true",
+		trackOpens: form.get("trackOpens") === "true",
+		followUpDays: parseFollowUpDays(form.get("followUpDays")) ?? undefined,
 		subject: String(form.get("subject") ?? ""),
 		text: getOptionalFormValue(form, "text"),
 		html: getOptionalFormValue(form, "html"),
