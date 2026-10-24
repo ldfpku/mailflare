@@ -429,10 +429,10 @@ function RuleSection({
 									</p>
 								</div>
 								<Switch checked={rule.enabled} onCheckedChange={() => onToggle(rule)} aria-label={`${t("routing.enableRule")}: ${ruleName}`} />
-								<Button variant="ghost" size="sm" onClick={() => onEdit(rule)} aria-label={`${t("routing.editRule")}: ${ruleName}`}>
+								<Button variant="ghost" size="sm" onClick={() => onEdit(rule)} aria-label={`${t("routing.editRule")}: ${ruleName}`} title={`${t("routing.editRule")}: ${ruleName}`}>
 									<Pencil className="h-4 w-4" />
 								</Button>
-								<Button variant="ghost" size="sm" onClick={() => onDelete(rule.id)} aria-label={`${t("rules.delete")}: ${ruleName}`}>
+								<Button variant="ghost" size="sm" onClick={() => onDelete(rule.id)} aria-label={`${t("rules.delete")}: ${ruleName}`} title={`${t("rules.delete")}: ${ruleName}`}>
 									<Trash2 className="h-4 w-4 text-red-600" />
 								</Button>
 							</div>

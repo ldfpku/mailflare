@@ -429,6 +429,68 @@ export const outboundJobs = sqliteTable("outbound_jobs", {
 		.$defaultFn(() => new Date()),
 });
 
+/** One row per sent message that carries an open-tracking pixel; the token is the pixel URL's secret. */
+export const messageTracking = sqliteTable(
+	"message_tracking",
+	{
+		token: text("token").primaryKey(),
+		messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+		/** Opens that were not classified as automated prefetches. */
+		openCount: integer("open_count").notNull().default(0),
+		firstOpenedAt: integer("first_opened_at", { mode: "timestamp" }),
+		lastOpenedAt: integer("last_opened_at", { mode: "timestamp" }),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+	},
+	(t) => [uniqueIndex("message_tracking_message_idx").on(t.messageId)],
+);
+
+/** Hostname under a domain that serves its read-receipt pixels, so the pixel matches the sender. Kept out of `domains` so sending works before the migration. */
+export const domainTrackingHosts = sqliteTable(
+	"domain_tracking_hosts",
+	{
+		domainId: text("domain_id").primaryKey().references(() => domains.id, { onDelete: "cascade" }),
+		hostname: text("hostname").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+	},
+	(t) => [uniqueIndex("domain_tracking_hosts_hostname_idx").on(t.hostname)],
+);
+
+export const messageOpens = sqliteTable(
+	"message_opens",
+	{
+		id: text("id").primaryKey(),
+		token: text("token").notNull().references(() => messageTracking.token, { onDelete: "cascade" }),
+		openedAt: integer("opened_at", { mode: "timestamp" }).notNull(),
+		client: text("client"),
+		device: text("device"),
+		country: text("country"),
+		city: text("city"),
+		automated: integer("automated", { mode: "boolean" }).notNull().default(false),
+	},
+	(t) => [index("message_opens_token_idx").on(t.token, t.openedAt)],
+);
+
+/**
+ * "Remind me if there is no reply": a sent message whose thread comes back to the
+ * inbox at `dueAt` unless an inbound message joined the thread after it.
+ */
+export const followUps = sqliteTable(
+	"follow_ups",
+	{
+		id: text("id").primaryKey(),
+		messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+		userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+		dueAt: integer("due_at", { mode: "timestamp" }).notNull(),
+		status: text("status", { enum: ["pending", "due", "replied", "dismissed"] }).notNull().default("pending"),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+	},
+	(t) => [
+		uniqueIndex("follow_ups_message_idx").on(t.messageId),
+		index("follow_ups_status_due_idx").on(t.status, t.dueAt),
+		index("follow_ups_user_status_idx").on(t.userId, t.status),
+	],
+);
+
 export const emailTemplates = sqliteTable(
 	"email_templates",
 	{
@@ -755,6 +817,12 @@ export const appSettings = sqliteTable("app_settings", {
 	agentApiKey: text("agent_api_key"),
 	agentModel: text("agent_model"),
 	agentModelRates: text("agent_model_rates"),
+	/** Spam analysis lookups; the SPAMHAUS_DQS_KEY and ABUSECH_AUTH_KEY env vars apply when these are null. */
+	spamhausDqsKey: text("spamhaus_dqs_key"),
+	abusechAuthKey: text("abusech_auth_key"),
+	spamDomainAgeCheck: integer("spam_domain_age_check", { mode: "boolean" }).notNull().default(true),
+	/** JSON: brands the administrator added for display-name impersonation checks (see src/lib/spam/settings.ts). */
+	spamBrands: text("spam_brands"),
 	updatedAt: integer("updated_at", { mode: "timestamp" })
 		.notNull()
 		.$defaultFn(() => new Date()),
@@ -825,6 +893,16 @@ export const aiUsage = sqliteTable("ai_usage", {
 	outputTokens: integer("output_tokens"),
 	costUsdMicros: integer("cost_usd_micros"),
 }, (t) => [index("ai_usage_created_idx").on(t.createdAt)]);
+
+/**
+ * Call counters behind the assistant's daily caps (src/lib/agent/rate-limit.ts): one row per
+ * (scope, UTC day), scope being `user:<id>` or `global`. Operational and derived, so excluded from backups.
+ */
+export const aiDailyCounters = sqliteTable("ai_daily_counters", {
+	scope: text("scope").notNull(),
+	day: text("day").notNull(),
+	count: integer("count").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.scope, t.day] })]);
 
 export const agentConversations = sqliteTable("agent_conversations", {
 	id: text("id").primaryKey(),
@@ -1005,6 +1083,23 @@ export const imMessages = sqliteTable(
 );
 
 /** Kept by the socket hub; derived, so it is not backed up. */
+/** Group announcements (群公告, `src/lib/im/announcements.ts`); at most one per room is pinned (`top`). */
+export const imRoomAnnouncements = sqliteTable(
+	"im_room_announcements",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		roomId: text("room_id")
+			.notNull()
+			.references(() => imRooms.id, { onDelete: "cascade" }),
+		uid: text("uid").notNull(),
+		content: text("content").notNull(),
+		top: integer("top", { mode: "boolean" }).notNull().default(false),
+		createdAt: integer("created_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [index("im_room_announcements_room_idx").on(table.roomId, table.top, table.id)],
+);
+
 export const imPresence = sqliteTable("im_presence", {
 	userId: text("user_id")
 		.primaryKey()
@@ -1012,6 +1107,23 @@ export const imPresence = sqliteTable("im_presence", {
 	online: integer("online", { mode: "boolean" }).notNull().default(false),
 	lastOptTime: integer("last_opt_time").notNull(),
 });
+
+/**
+ * Who is in a call or meeting right now, so a new call to them is answered "busy" instead of ringing. `ref` is
+ * `call:<roomId>` or `meeting:<id>`; each row lives until `busy_until` unless the call or meeting renews it. Kept by
+ * `src/lib/im/call-busy.ts`; derived, so it is not backed up.
+ */
+export const imCallBusy = sqliteTable(
+	"im_call_busy",
+	{
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		ref: text("ref").notNull(),
+		busyUntil: integer("busy_until").notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.userId, table.ref] })],
+);
 
 /**
  * Files sent in HuLa chats. The id is the unguessable part of the download URL; the upload token is single-use and
@@ -1032,6 +1144,187 @@ export const imFiles = sqliteTable(
 		createdAt: integer("created_at").notNull(),
 	},
 	(table) => [index("im_files_uploader_idx").on(table.uploaderId, table.createdAt)],
+);
+
+/**
+ * A mail shared into a HuLa chat. Members of `room_id` may read the mail through the share for as long as they stay in
+ * the room, whether or not they can open the mailbox it lives in; the sharer's access was checked when it was shared.
+ */
+export const imMailShares = sqliteTable(
+	"im_mail_shares",
+	{
+		id: text("id").primaryKey(),
+		messageId: text("message_id")
+			.notNull()
+			.references(() => messages.id, { onDelete: "cascade" }),
+		roomId: text("room_id").notNull(),
+		sharedBy: text("shared_by").notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [index("im_mail_shares_room_idx").on(table.roomId)],
+);
+
+/** A group chat's own mail address: mail delivered to the mailbox is posted into the room as a mail card. */
+export const imRoomMailboxes = sqliteTable(
+	"im_room_mailboxes",
+	{
+		roomId: text("room_id")
+			.primaryKey()
+			.references(() => imRooms.id, { onDelete: "cascade" }),
+		mailboxId: text("mailbox_id")
+			.notNull()
+			.references(() => mailboxes.id, { onDelete: "cascade" }),
+		enabledBy: text("enabled_by").notNull(),
+		/** The web origin the group's mail cards link to; inbound mail is processed off any request. */
+		origin: text("origin").notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [uniqueIndex("im_room_mailboxes_mailbox_unique").on(table.mailboxId)],
+);
+
+/**
+ * A group chat's files, the group's folder in Drive. Every image, file and video sent into a group is listed here and
+ * opened through the `im_files` object; members of `room_id` see the list for as long as they stay in the room.
+ * `removed_at` takes a file off the list (recalled, or removed by its sender or a manager) without touching the message.
+ */
+export const imRoomFiles = sqliteTable(
+	"im_room_files",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		roomId: text("room_id")
+			.notNull()
+			.references(() => imRooms.id, { onDelete: "cascade" }),
+		fileId: text("file_id").notNull(),
+		msgId: integer("msg_id"),
+		uploaderId: text("uploader_id").notNull(),
+		fileName: text("file_name").notNull(),
+		contentType: text("content_type").notNull(),
+		size: integer("size").notNull(),
+		msgType: integer("msg_type").notNull(),
+		createdAt: integer("created_at").notNull(),
+		removedAt: integer("removed_at"),
+	},
+	(table) => [
+		index("im_room_files_room_idx").on(table.roomId, table.createdAt),
+		uniqueIndex("im_room_files_msg_file_unique").on(table.msgId, table.fileId),
+	],
+);
+
+/**
+ * The brand business card of an account (BIS C1 / C3). The account's name and email come from `users`; this row adds
+ * what a card needs beyond them. `token` is the random id of the public card page `/card/<token>`, so the staff list
+ * cannot be walked; resetting it retires links already handed out.
+ */
+export const businessCards = sqliteTable(
+	"business_cards",
+	{
+		userId: text("user_id")
+			.primaryKey()
+			.references(() => users.id, { onDelete: "cascade" }),
+		token: text("token").notNull(),
+		title: text("title").notNull().default(""),
+		department: text("department").notNull().default(""),
+		nameEn: text("name_en").notNull().default(""),
+		titleEn: text("title_en").notNull().default(""),
+		mobile: text("mobile").notNull().default(""),
+		phone: text("phone").notNull().default(""),
+		// BIS B9: the accent edge and the signature rule are Smijia blue at headquarters and signal orange in the field.
+		placement: text("placement", { enum: ["hq", "field"] }).notNull().default("hq"),
+		published: integer("published", { mode: "boolean" }).notNull().default(true),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [uniqueIndex("business_cards_token_unique").on(table.token)],
+);
+
+/**
+ * "我的待办" in chat: one person's to-dos, typed in or drafted by Workers AI from a mail. `source_id` is the mail's
+ * `messages.id` for a mail to-do; the title is kept so the item still reads well after the mail is deleted.
+ */
+export const imTodos = sqliteTable(
+	"im_todos",
+	{
+		id: text("id").primaryKey(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		title: text("title").notNull(),
+		notes: text("notes").notNull().default(""),
+		/** Epoch milliseconds, or null for no deadline. */
+		dueAt: integer("due_at"),
+		done: integer("done", { mode: "boolean" }).notNull().default(false),
+		doneAt: integer("done_at"),
+		sourceType: text("source_type", { enum: ["manual", "mail"] }).notNull().default("manual"),
+		sourceId: text("source_id"),
+		sourceTitle: text("source_title").notNull().default(""),
+		createdAt: integer("created_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [index("im_todos_user_idx").on(table.userId, table.done, table.dueAt)],
+);
+
+/**
+ * Video meetings on Cloudflare RealtimeKit. RealtimeKit has no schedule of its own, so the time, the invitees and the
+ * link back to a chat live here; `sequence` is the iCalendar SEQUENCE the next invitation for the meeting carries.
+ */
+export const imMeetings = sqliteTable(
+	"im_meetings",
+	{
+		id: text("id").primaryKey(),
+		rtkMeetingId: text("rtk_meeting_id").notNull(),
+		title: text("title").notNull(),
+		hostId: text("host_id").notNull(),
+		roomId: text("room_id"),
+		/** JSON array of user ids. */
+		inviteeIds: text("invitee_ids").notNull().default("[]"),
+		startsAt: integer("starts_at"),
+		durationMinutes: integer("duration_minutes").notNull().default(60),
+		sequence: integer("sequence").notNull().default(0),
+		createdAt: integer("created_at").notNull(),
+		endedAt: integer("ended_at"),
+	},
+	(table) => [index("im_meetings_host_idx").on(table.hostId, table.createdAt)],
+);
+
+/** One RealtimeKit participant per user and meeting; its auth token is reused for every join. */
+export const imMeetingParticipants = sqliteTable(
+	"im_meeting_participants",
+	{
+		meetingId: text("meeting_id")
+			.notNull()
+			.references(() => imMeetings.id, { onDelete: "cascade" }),
+		userId: text("user_id").notNull(),
+		rtkParticipantId: text("rtk_participant_id").notNull(),
+		authToken: text("auth_token").notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.meetingId, table.userId] })],
+);
+
+/**
+ * Meeting invitations (.ics) found in mail, parsed once per attachment for the scheduling assistant's busy times.
+ * Derived from `message_attachments` and rebuilt on demand, so backups leave it out.
+ */
+export const imCalendarInvites = sqliteTable(
+	"im_calendar_invites",
+	{
+		attachmentId: text("attachment_id")
+			.notNull()
+			.references(() => messageAttachments.id, { onDelete: "cascade" }),
+		eventIndex: integer("event_index").notNull().default(0),
+		messageId: text("message_id").notNull(),
+		userId: text("user_id").notNull(),
+		uid: text("uid"),
+		method: text("method"),
+		sequence: integer("sequence").notNull().default(0),
+		cancelled: integer("cancelled").notNull().default(0),
+		startsAt: integer("starts_at"),
+		endsAt: integer("ends_at"),
+		timeZone: text("time_zone"),
+		rrule: text("rrule"),
+		summary: text("summary"),
+		parsedAt: integer("parsed_at").notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.attachmentId, table.eventIndex] }), index("im_calendar_invites_user_idx").on(table.userId, table.startsAt)],
 );
 
 export const schema = {
@@ -1079,5 +1372,14 @@ export const schema = {
 	imRoomMembers,
 	imMessages,
 	imPresence,
+	imCallBusy,
 	imFiles,
+	imMailShares,
+	imRoomMailboxes,
+	imRoomFiles,
+	imMeetings,
+	imMeetingParticipants,
+	imCalendarInvites,
+	businessCards,
+	imTodos,
 };

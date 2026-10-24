@@ -7,16 +7,22 @@ import { getEnvAsync } from "@/lib/cloudflare";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Browsers ask for the favicon again on client-side navigations; without a cache lifetime each ask is a
+// Worker request with a D1 query. A changed icon shows within an hour (in-app images add ?v=).
+const ICON_CACHE_CONTROL = "public, max-age=3600";
+
 async function getDefaultIcon(env: CloudflareEnv): Promise<Response> {
 	const asset = await env.ASSETS.fetch("https://mailflare.local/icon-96.png");
-	return new Response(await asset.arrayBuffer(), {
+	const headers = new Headers(asset.headers);
+	if (asset.ok) headers.set("Cache-Control", ICON_CACHE_CONTROL);
+	return new Response(asset.body, {
 		status: asset.status,
 		statusText: asset.statusText,
-		headers: asset.headers,
+		headers,
 	});
 }
 
-export async function GET(request: Request) {
+export async function GET() {
 	const env = await getEnvAsync();
 	try {
 		const [settings] = await getDb(env)
@@ -30,7 +36,7 @@ export async function GET(request: Request) {
 				return new Response(object.body, {
 					headers: {
 						"Content-Type": object.httpMetadata?.contentType ?? "image/png",
-						"Cache-Control": "no-cache",
+						"Cache-Control": ICON_CACHE_CONTROL,
 						"X-Content-Type-Options": "nosniff",
 					},
 				});

@@ -1,6 +1,6 @@
 "use client";
 
-import { mobilePrimaryActionClass } from "@/components/page-header-utils";
+import { mobilePrimaryActionAboveNavClass, mobilePrimaryActionClass } from "@/components/page-header-utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -128,7 +128,7 @@ export default function MailboxesPage() {
 				<h1 className="text-2xl md:text-3xl font-medium">{t("mailboxes.title")}</h1>
 				<Dialog open={createOpen} onOpenChange={setCreateOpen}>
 					<DialogTrigger asChild>
-						<Button className={mobilePrimaryActionClass}>
+						<Button className={base === "/settings/mailboxes" ? mobilePrimaryActionAboveNavClass : mobilePrimaryActionClass}>
 							<Plus className="h-4 w-4" />
 							{t("mailboxes.new")}
 						</Button>

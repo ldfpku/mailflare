@@ -19,6 +19,11 @@ export default defineConfig({
 		observability: {
 			enabled: true,
 		},
+		// D1 lives in APAC while requests land at the colo nearest the user; a settings page or
+		// mail list makes several D1 round trips each, so run the Worker next to the database.
+		placement: {
+			mode: "smart",
+		},
 		assets: {
 			notFoundHandling: "none",
 		},
@@ -51,6 +56,11 @@ export default defineConfig({
 			}),
 			BUCKET: bindings.r2({
 				name: "mailflare-raw",
+			}),
+			// Desktop installers and updates (src/lib/desktop/), kept apart from mail so the CI upload token
+			// can be scoped to this bucket alone.
+			DESKTOP_BUCKET: bindings.r2({
+				name: "smj-desktop",
 			}),
 			EMAIL: bindings.sendEmail({
 				dev: {
@@ -97,10 +107,12 @@ export default defineConfig({
 					period: 60,
 				},
 			}),
+			// Per key (chat:<user>, im-ai:<user>). Lowered from 120 after the 2026-10-19 billing
+			// audit (§5 row 1); the daily caps are in src/lib/agent/rate-limit.ts.
 			AGENT_RATE_LIMIT: bindings.rateLimit({
 				namespace: "1002",
 				simple: {
-					limit: 120,
+					limit: 10,
 					period: 60,
 				},
 			}),

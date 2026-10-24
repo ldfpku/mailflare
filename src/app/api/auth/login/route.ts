@@ -14,6 +14,7 @@ import { readJsonBody } from "@/lib/http/request";
 import { RequestBodyTooLargeError } from "@/lib/http/errors";
 import { recordAuthActivity } from "@/lib/auth/activity";
 import { createLoginChallenge } from "@/lib/auth/login-challenge";
+import { resolveLoginEmail } from "@/lib/auth/login-domain";
 
 export async function POST(request: Request) {
 	const env = getEnv();
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
 	}
 
 	const db = getDb(env);
-	const [user] = await db.select().from(users).where(eq(users.email, parsed.data.email)).limit(1);
+	const [user] = await db.select().from(users).where(eq(users.email, await resolveLoginEmail(env, parsed.data.email))).limit(1);
 	if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
 		return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 	}

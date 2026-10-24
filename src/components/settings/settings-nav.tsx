@@ -2,16 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+import { prefetchAuthGets } from "@/lib/auth/client";
 import { useLanguage } from "@/components/language-provider";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { useSelectedMailbox } from "@/components/mailbox-provider";
 import { cn } from "@/lib/utils";
 import { SectionNavSheet } from "../section-nav-sheet";
-import { isActiveSettingsPath, settingsNavSections } from "./settings-nav-utils";
+import { isActiveSettingsPath, settingsNavSections, settingsWarmUpUrls } from "./settings-nav-utils";
 
 export function SettingsNav() {
 	const { t } = useLanguage();
 	const pathname = usePathname();
 	const user = useCurrentUser();
+	const { selectedMailbox } = useSelectedMailbox();
+	const mailboxId = selectedMailbox?.id;
 	const canManageMailboxes = user?.canManageMailboxes === true;
 	const sections = settingsNavSections.map((section) => ({
 		...section,
@@ -19,6 +24,17 @@ export function SettingsNav() {
 	}));
 	const currentItem = sections.flatMap((section) => section.items).find((item) => isActiveSettingsPath(pathname, item.href));
 	const currentLabel = t(currentItem?.labelKey ?? "settings.nav.settings");
+
+	// Once the open page has asked for its own data, fetch what the other pages need.
+	useEffect(() => {
+		const timer = window.setTimeout(() => prefetchAuthGets(settingsWarmUpUrls), 400);
+		return () => window.clearTimeout(timer);
+	}, []);
+	useEffect(() => {
+		if (!mailboxId) return;
+		const timer = window.setTimeout(() => prefetchAuthGets([`/api/routing-rules?${new URLSearchParams({ mailboxId })}`]), 400);
+		return () => window.clearTimeout(timer);
+	}, [mailboxId]);
 
 	return (
 		<SectionNavSheet title={t("settings.nav.menu")} label={currentLabel} className="w-full px-4 py-4 md:min-h-full md:w-64 md:border-r md:border-blue-100/70 md:py-10">
@@ -35,6 +51,8 @@ export function SettingsNav() {
 									<Link
 										key={item.href}
 										href={item.href}
+										// Full prefetch: the page is ready before the click instead of a server round trip after it.
+										prefetch
 										className={cn(
 											"block rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
 											active

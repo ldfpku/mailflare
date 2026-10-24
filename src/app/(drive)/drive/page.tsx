@@ -45,6 +45,8 @@ export default function DrivePage() {
 	const params = useSearchParams();
 	const view = params.get("view") ?? "my";
 	const folder = params.get("folder");
+	// Group files: without `room` the user's groups are listed as folders, with it one group's files.
+	const room = view === "groups" ? params.get("room") : null;
 	const query = params.get("q") ?? "";
 	const typesParam = params.get("types") ?? "";
 	const types = useMemo(() => typesParam.split(",").filter((entry): entry is DriveCategory => isDriveCategory(entry)), [typesParam]);
@@ -69,7 +71,7 @@ export default function DrivePage() {
 	const [movingIds, setMovingIds] = useState<Set<string>>(new Set());
 	const [dropFolder, setDropFolder] = useState<string | null>(null);
 
-	const requestKey = `${view}|${folder ?? ""}|${query}|${typesParam}`;
+	const requestKey = `${view}|${folder ?? ""}|${room ?? ""}|${query}|${typesParam}`;
 	// A listing seen before renders straight from memory while it is refetched; only a new one shows the skeleton.
 	const current = listing?.key === requestKey ? listing.data : readDriveListing(requestKey);
 	const items = useMemo(() => current?.items ?? [], [current]);
@@ -86,6 +88,7 @@ export default function DrivePage() {
 		const key = requestKey;
 		const search = new URLSearchParams({ view });
 		if (folder) search.set("parent", folder);
+		if (room) search.set("room", room);
 		if (query) search.set("q", query);
 		if (typesParam) search.set("types", typesParam);
 		try {
@@ -100,7 +103,7 @@ export default function DrivePage() {
 		} catch {
 			if (key === requestRef.current) setFailedKey(key);
 		}
-	}, [view, folder, query, typesParam, requestKey]);
+	}, [view, folder, room, query, typesParam, requestKey]);
 	// Reload after a change; other cached listings may be stale now, so they are dropped.
 	const refresh = useCallback(() => { clearDriveListings(); return load(); }, [load]);
 
@@ -180,7 +183,8 @@ export default function DrivePage() {
 
 	function open(item: DriveItemDto) {
 		if (item.trashedAt) return;
-		if (item.kind === "folder") router.push(`/drive?folder=${encodeURIComponent(item.id)}${view === "shared" ? "&view=shared" : ""}`);
+		if (item.group && item.kind === "folder") router.push(`/drive?view=groups&room=${encodeURIComponent(item.group.roomId)}`);
+		else if (item.kind === "folder") router.push(`/drive?folder=${encodeURIComponent(item.id)}${view === "shared" ? "&view=shared" : ""}`);
 		else setPreview(item);
 	}
 
@@ -228,9 +232,10 @@ export default function DrivePage() {
 	useEffect(() => { if (selectAllRef.current) selectAllRef.current.indeterminate = selectedItems.length > 0 && !allSelected; }, [selectedItems.length, allSelected]);
 	const toggleItem = (id: string) => setSelectedIds((current) => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; });
 	const attachmentsView = view === "attachments" && !folder;
-	const title = view === "attachments" ? t("drive.attachments") : view === "trash" ? t("drive.trash") : view === "shared" ? t("drive.sharedWithMe") : query ? t("drive.search") : t("drive.myDrive");
-	const rootHref = view === "shared" ? "/drive?view=shared" : "/drive";
-	const emptyText = view === "attachments" ? t("drive.emptyAttachments") : view === "trash" ? t("drive.emptyTrash") : view === "shared" ? t("drive.emptyShared") : query ? t("drive.emptySearch") : t("drive.empty");
+	const groupFilesView = view === "groups" && !!room;
+	const title = view === "groups" ? t("drive.groupFiles") : view === "attachments" ? t("drive.attachments") : view === "trash" ? t("drive.trash") : view === "shared" ? t("drive.sharedWithMe") : query ? t("drive.search") : t("drive.myDrive");
+	const rootHref = view === "shared" ? "/drive?view=shared" : view === "groups" ? "/drive?view=groups" : "/drive";
+	const emptyText = view === "groups" ? (room ? t("drive.emptyGroupFiles") : t("drive.emptyGroups")) : view === "attachments" ? t("drive.emptyAttachments") : view === "trash" ? t("drive.emptyTrash") : view === "shared" ? t("drive.emptyShared") : query ? t("drive.emptySearch") : t("drive.empty");
 
 	function toggleSort(key: DriveSortKey) {
 		if (key === sortKey) setAscending((value) => !value);
@@ -255,9 +260,9 @@ export default function DrivePage() {
 				<div className="flex min-h-[4.25rem] shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-5 py-3">
 				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
 					<nav aria-label={title} className="flex min-w-0 flex-wrap items-center gap-1 text-xl text-neutral-800 max-md:text-lg">
-					{loading && folder ? <Skeleton className="h-7 w-48" /> : path.length === 0 ? <h1 className="font-normal">{title}</h1> : (
+					{loading && (folder || room) ? <Skeleton className="h-7 w-48" /> : path.length === 0 ? <h1 className="font-normal">{title}</h1> : (
 						<>
-							<button type="button" onClick={() => router.push(rootHref)} className="rounded-full px-2 py-1 hover:bg-neutral-100">{view === "shared" || role !== "owner" ? t("drive.sharedWithMe") : t("drive.myDrive")}</button>
+							<button type="button" onClick={() => router.push(rootHref)} className="rounded-full px-2 py-1 hover:bg-neutral-100">{view === "groups" ? t("drive.groupFiles") : view === "shared" || role !== "owner" ? t("drive.sharedWithMe") : t("drive.myDrive")}</button>
 							{path.map((crumb, index) => (
 								<span key={crumb.id} className="flex items-center gap-1">
 									<ChevronRight size={18} className="text-neutral-500" />
@@ -269,7 +274,7 @@ export default function DrivePage() {
 				</nav>
 					{selectedItems.length > 0 && (
 						<span className="flex shrink-0 items-center gap-1 text-sm text-neutral-600">
-							<button type="button" onClick={() => setSelectedIds(new Set())} aria-label={t("navigation.close")} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-neutral-100"><X size={16} /></button>
+							<button type="button" onClick={() => setSelectedIds(new Set())} aria-label={t("navigation.close")} title={t("navigation.close")} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-neutral-100"><X size={16} /></button>
 							{t("drive.selected", { count: selectedItems.length })}
 						</span>
 					)}
@@ -283,7 +288,7 @@ export default function DrivePage() {
 				<div style={gridStyle} className="grid shrink-0 grid-cols-[2rem_minmax(0,1fr)_2.5rem] items-center gap-x-4 border-b border-neutral-200 px-5 py-2 text-sm md:grid-cols-[var(--drive-columns)]">
 					<Checkbox ref={selectAllRef} checked={allSelected} onChange={() => setSelectedIds(allSelected ? new Set() : new Set(selectable.map((item) => item.id)))} disabled={selectable.length === 0} aria-label={t("drive.selectAll")} className="ml-1" />
 					<span className="min-w-0 pl-7">{headerButton("name", t("drive.name"))}</span>
-					<span className="relative hidden min-w-0 md:block">{headerButton("owner", attachmentsView ? t("drive.from") : t("drive.owner"))}<ColumnResizeHandle column="owner" width={columns.widths.owner} onResize={columns.resize} label={t("drive.owner")} /></span>
+					<span className="relative hidden min-w-0 md:block">{headerButton("owner", attachmentsView ? t("drive.from") : groupFilesView ? t("drive.sentBy") : t("drive.owner"))}<ColumnResizeHandle column="owner" width={columns.widths.owner} onResize={columns.resize} label={t("drive.owner")} /></span>
 					<span className="relative hidden min-w-0 md:block">{headerButton("updatedAt", t("drive.modified"))}<ColumnResizeHandle column="updatedAt" width={columns.widths.updatedAt} onResize={columns.resize} label={t("drive.modified")} /></span>
 					<span className="relative hidden min-w-0 md:block">{headerButton("size", t("drive.fileSize"))}<ColumnResizeHandle column="size" width={columns.widths.size} onResize={columns.resize} label={t("drive.fileSize")} /></span>
 					<span />
@@ -315,12 +320,12 @@ export default function DrivePage() {
 										<span className="truncate text-neutral-900">{item.name}</span>
 										{item.shared && item.role === "owner" && <Share2 size={12} className="shrink-0 text-neutral-500" aria-label={t("drive.share")} />}
 									</button>
-									<span className="hidden md:block"><DriveOwnerAvatar item={item} /></span>
+									<span className="hidden md:block">{!(item.group && item.kind === "folder") && <DriveOwnerAvatar item={item} />}</span>
 									<span className="hidden text-neutral-600 md:block">{dateFormat.format(new Date(item.updatedAt))}</span>
 									<span className="hidden text-neutral-600 md:block">{item.kind === "file" ? formatDriveSize(item.size) : "—"}</span>
 									<DropdownMenu.Root>
 										<DropdownMenu.Trigger asChild>
-											<button type="button" aria-label={t("drive.actions")} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200"><MoreVertical size={16} /></button>
+											<button type="button" aria-label={t("drive.actions")} title={t("drive.actions")} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200"><MoreVertical size={16} /></button>
 										</DropdownMenu.Trigger>
 										<DropdownMenu.Portal>
 											<DropdownMenu.Content align="end" sideOffset={4} className="z-[200] min-w-52 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
@@ -364,7 +369,7 @@ export default function DrivePage() {
 								<span className="truncate text-base font-medium">{preview.name}</span>
 								<span className="flex shrink-0 items-center gap-1">
 									{preview.source && <a href={emailUrl(preview.source)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-full px-3 py-2 text-sm hover:bg-[rgb(255_255_255/0.15)]"><Mail size={16} />{t("drive.openEmail")}<ExternalLink size={12} aria-hidden="true" /><span className="sr-only"> ({t("common.opensInNewTab")})</span></a>}
-									<a href={driveFileUrl(preview, true)} aria-label={t("drive.download")} className="rounded-full p-2 hover:bg-[rgb(255_255_255/0.15)]"><Download size={18} /></a>
+									<a href={driveFileUrl(preview, true)} aria-label={t("drive.download")} title={t("drive.download")} className="rounded-full p-2 hover:bg-[rgb(255_255_255/0.15)]"><Download size={18} /></a>
 								</span>
 							</DialogTitle>
 							<div className="min-h-0 flex-1 p-3 pt-0"><DrivePreviewBody src={driveFileUrl(preview)} downloadHref={driveFileUrl(preview, true)} contentType={preview.contentType} name={preview.name} /></div>

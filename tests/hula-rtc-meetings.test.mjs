@@ -1,0 +1,430 @@
+import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
+import test, { after } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { build } from "esbuild";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const directory = mkdtempSync(join(root, "node_modules", "mailflare-rtc-test-"));
+after(() => rmSync(directory, { recursive: true, force: true }));
+await build({
+	stdin: {
+		contents: `
+			export { SqliteDatabase } from "./server/runtime/sqlite-database.ts";
+			export { applyMigrations } from "./server/runtime/migrate.ts";
+			export { hashPassword } from "./src/lib/auth/password.ts";
+			export { handleImRequest } from "./src/lib/im/handler.ts";
+			export { resolveRtcRelay } from "./src/lib/im/rtc.ts";
+			export { buildRtcRelay, parseRtcSocketRequest, withoutBlockedTurnPorts } from "./src/lib/im/rtc-utils.ts";
+			export { buildMeetingIcs, foldIcsLine } from "./src/lib/meetings/ics-utils.ts";
+			export { parseMeetingCreateInput, newMeetingId, MEETING_ID_PATTERN, meetingTiming, MEETING_JOIN_GRACE_MS } from "./src/lib/meetings/meeting-utils.ts";
+			export { handleMeetingRequest } from "./src/lib/meetings/http.ts";
+		`,
+		resolveDir: root,
+		sourcefile: "hula-rtc-test-entry.ts",
+	},
+	outfile: join(directory, "entry.mjs"),
+	bundle: true,
+	platform: "node",
+	format: "esm",
+	target: "node22",
+	tsconfig: join(root, "tsconfig.json"),
+	packages: "external",
+	alias: { "next/headers": "next/headers.js", "next/server": "next/server.js", "cloudflare:workers": "./server/runtime/cloudflare-workers.ts" },
+	logLevel: "silent",
+});
+const {
+	SqliteDatabase, applyMigrations, hashPassword, handleImRequest, resolveRtcRelay, buildRtcRelay, parseRtcSocketRequest,
+	withoutBlockedTurnPorts, buildMeetingIcs, foldIcsLine, parseMeetingCreateInput, newMeetingId, MEETING_ID_PATTERN, handleMeetingRequest,
+	meetingTiming, MEETING_JOIN_GRACE_MS,
+} = await import(pathToFileURL(join(directory, "entry.mjs")).href);
+
+async function fixture(t, extraEnv = {}) {
+	const database = new SqliteDatabase(":memory:");
+	t.after(() => database.db.close());
+	await applyMigrations(database, join(root, "drizzle/migrations"));
+	const addUser = (id, email, name) =>
+		database.db.prepare("INSERT INTO users (id, email, password_hash, name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run(id, email, hashPassword("right-password"), name, "user", 1);
+	addUser("u1", "sam@one.test", "Sam");
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const pushes = [];
+	const IM_HUB = {
+		getByName: (userId) => ({
+			fetch: async (url, init) => {
+				if (url.endsWith("/notify")) pushes.push({ userId, ...JSON.parse(init.body) });
+				return new Response(null, { status: 204 });
+			},
+		}),
+	};
+	const env = { DB: database, MAILFLARE_RUNTIME: "node", APP_URL: "https://mail.one.test", IM_HUB, ...extraEnv };
+	globalThis.__mailflareNodeEnv = env;
+	t.after(() => { delete globalThis.__mailflareNodeEnv; });
+	const call = async (method, path, { body, token, query } = {}) => {
+		const url = new URL(`https://mail.one.test/api/im/${path}`);
+		for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value);
+		const response = await handleImRequest(new Request(url, {
+			method,
+			headers: { "Content-Type": "application/json", ...(token ? { token } : {}) },
+			body: body === undefined ? undefined : JSON.stringify(body),
+		}), env);
+		return response.json();
+	};
+	const login = async (account) => (await call("POST", "oauth/anyTenant/login", { body: { account, password: "right-password" } })).data.token;
+	return { database, env, call, login, pushes };
+}
+
+/** Stands in for Cloudflare's TURN and RealtimeKit APIs and records what was asked of them. */
+function mockCloudflare(t) {
+	const requests = [];
+	const original = globalThis.fetch;
+	let participants = 0;
+	globalThis.fetch = async (input, init = {}) => {
+		const url = String(input);
+		const body = init.body ? JSON.parse(init.body) : null;
+		requests.push({ url, body, auth: init.headers?.Authorization });
+		if (url.includes("/credentials/generate-ice-servers")) {
+			return Response.json({
+				iceServers: [
+					{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.cloudflare.com:53"] },
+					{ urls: ["turn:turn.cloudflare.com:3478?transport=udp", "turn:turn.cloudflare.com:53?transport=udp"], username: "user", credential: "secret" },
+				],
+			}, { status: 201 });
+		}
+		if (url.endsWith("/meetings")) return Response.json({ success: true, data: { id: "rtk-meeting-1", title: body.title } }, { status: 201 });
+		if (url.endsWith("/participants")) {
+			participants += 1;
+			return Response.json({ success: true, data: { id: `rtk-participant-${participants}`, token: `token-${participants}` } }, { status: 201 });
+		}
+		return new Response("unexpected", { status: 500 });
+	};
+	t.after(() => { globalThis.fetch = original; });
+	return requests;
+}
+
+const RTK_ENV = { REALTIMEKIT_ACCOUNT_ID: "acc", REALTIMEKIT_APP_ID: "app", REALTIMEKIT_API_TOKEN: "rtk-token" };
+
+test("call frames become HuLa's call events for the other party", () => {
+	assert.equal(parseRtcSocketRequest({ type: "2" }), null, "heartbeats are not calls");
+	assert.equal(parseRtcSocketRequest({ type: 5 }), null);
+
+	const ring = buildRtcRelay("u1", parseRtcSocketRequest({ type: 5, data: { roomId: "r1", targetUid: "u2", isVideo: true } }));
+	assert.deepEqual(ring, { roomId: "r1", peerUid: "u2", toPeer: { type: "VideoCallRequest", data: { callerUid: "u1", targetUid: "u2", roomId: "r1", isVideo: true } } });
+
+	const accepted = buildRtcRelay("u2", parseRtcSocketRequest({ type: "6", data: { roomId: "r1", callerUid: "u1", accepted: 1 } }));
+	assert.equal(accepted.peerUid, "u1");
+	assert.equal(accepted.toPeer.type, "CallAccepted");
+	assert.equal(accepted.toOwnOtherDevices.type, "CANCEL", "answering stops the other devices ringing");
+	const events = [-1, 0, 2, 3].map((status) => buildRtcRelay("u2", { type: 6, data: { roomId: "r1", callerUid: "u1", accepted: status } }).toPeer.type);
+	assert.deepEqual(events, ["TIMEOUT", "CallRejected", "DROPPED", "CANCEL"]);
+	assert.equal(buildRtcRelay("u2", { type: 6, data: { roomId: "r1", callerUid: "u1", accepted: 9 } }), null);
+
+	const offer = buildRtcRelay("u1", { type: 14, data: { roomId: "r1", targetUid: "u2", signalType: "offer", signal: "{\"sdp\":\"v=0\"}", video: true } });
+	assert.deepEqual(offer.toPeer.data, { callerUid: "u1", targetUid: "u2", roomId: "r1", signal: "{\"sdp\":\"v=0\"}", signalType: "offer", video: true });
+	assert.equal(buildRtcRelay("u1", { type: 14, data: { roomId: "r1", targetUid: "u2", signalType: "bogus", signal: "x" } }), null);
+	assert.equal(buildRtcRelay("u1", { type: 14, data: { roomId: "r1", targetUid: "u2", signalType: "offer", signal: "x".repeat(40000) } }), null);
+	assert.equal(buildRtcRelay("u1", { type: 5, data: { roomId: "r1", targetUid: "u1" } }), null, "nobody calls themselves");
+});
+
+test("calls are relayed only between the two members of a private chat", async (t) => {
+	const { call, login, env } = await fixture(t);
+	const sam = await login("sam@one.test");
+	const roomId = (await call("GET", "im/chat/contact/detail/friend", { token: sam, query: { id: "u2", roomType: "2" } })).data.roomId;
+
+	const relay = await resolveRtcRelay(env, "u1", { type: 5, data: { roomId, targetUid: "u2", isVideo: false } });
+	assert.equal(relay.peerUid, "u2");
+	assert.equal(await resolveRtcRelay(env, "u1", { type: 5, data: { roomId, targetUid: "u3" } }), null, "u3 is not in the room");
+	assert.equal(await resolveRtcRelay(env, "u3", { type: 5, data: { roomId, targetUid: "u2" } }), null, "outsiders cannot ring members");
+	assert.equal(await resolveRtcRelay(env, "u1", { type: 5, data: { roomId: "1", targetUid: "u2" } }), null, "the all-staff group is not a private chat");
+});
+
+test("ICE servers: TURN credentials from the key, port 53 dropped, STUN only without a key", async (t) => {
+	const requests = mockCloudflare(t);
+	const plain = await fixture(t);
+	const sam = await plain.login("sam@one.test");
+	assert.deepEqual((await plain.call("GET", "im/rtc/iceServers", { token: sam })).data.iceServers, [{ urls: ["stun:stun.cloudflare.com:3478"] }]);
+	assert.equal(requests.length, 0);
+	assert.equal((await plain.call("GET", "im/rtc/iceServers")).code, 401, "credentials are for signed-in users only");
+
+	const { call, login } = await fixture(t, { REALTIME_TURN_KEY_ID: "key", REALTIME_TURN_KEY_API_TOKEN: "turn-token" });
+	const servers = (await call("GET", "im/rtc/iceServers", { token: await login("sam@one.test") })).data.iceServers;
+	assert.deepEqual(servers, [
+		{ urls: ["stun:stun.cloudflare.com:3478"] },
+		{ urls: ["turn:turn.cloudflare.com:3478?transport=udp"], username: "user", credential: "secret" },
+	]);
+	assert.equal(requests[0].auth, "Bearer turn-token");
+	assert.deepEqual(withoutBlockedTurnPorts([{ urls: "stun:x:53" }]), []);
+});
+
+test("meetings: unconfigured answers 501; a group meeting posts its link and reuses each join token", async (t) => {
+	const unconfigured = await fixture(t);
+	assert.equal((await unconfigured.call("POST", "im/meeting", { token: await unconfigured.login("sam@one.test"), body: {} })).code, 501);
+
+	const requests = mockCloudflare(t);
+	const { call, login, pushes } = await fixture(t, RTK_ENV);
+	const sam = await login("sam@one.test");
+	const kim = await login("kim@one.test");
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+	pushes.length = 0;
+
+	const created = await call("POST", "im/meeting", { token: sam, body: { roomId, title: "周会" } });
+	assert.equal(created.code, 200);
+	assert.match(created.data.id, MEETING_ID_PATTERN);
+	assert.equal(created.data.url, `https://mail.one.test/meet/${created.data.id}`);
+	assert.deepEqual(created.data.inviteeIds.sort(), ["u2", "u3"], "the group is invited");
+	assert.equal(created.data.mailError, "发起人没有可用的邮箱", "no mailbox: the meeting still starts, without mail");
+	assert.match(created.data.message.message.body.content, new RegExp(`发起了视频会议「周会」[\\s\\S]*${created.data.url}`));
+	assert.deepEqual(pushes.map((push) => push.userId).sort(), ["u1", "u2", "u3"], "the host's other devices get the card too");
+	assert.deepEqual(requests[0].body, { title: "周会" });
+	const chosen = await call("POST", "im/meeting", { token: sam, body: { roomId, inviteUids: ["u3"], sendMail: false } });
+	assert.deepEqual(chosen.data.inviteeIds, ["u3"], "the scheduler's own list replaces the group");
+	const nobody = await call("POST", "im/meeting", { token: sam, body: { roomId, inviteUids: [], sendMail: false } });
+	assert.deepEqual(nobody.data.inviteeIds, [], "an empty list stays empty");
+	requests.splice(0, 2);
+
+	const hostJoin = await call("POST", "im/meeting/join", { token: sam, body: { id: created.data.id } });
+	assert.deepEqual({ token: hostJoin.data.authToken, host: hostJoin.data.host }, { token: "token-1", host: true });
+	assert.equal(requests[1].body.preset_name, "group_call_host");
+	assert.equal(requests[1].body.custom_participant_id, "u1");
+	const kimJoin = await call("POST", "im/meeting/join", { token: kim, body: { id: created.data.id } });
+	assert.deepEqual({ token: kimJoin.data.authToken, host: kimJoin.data.host }, { token: "token-2", host: false });
+	assert.equal(requests[2].body.preset_name, "group_call_participant");
+	assert.equal((await call("POST", "im/meeting/join", { token: kim, body: { id: created.data.id } })).data.authToken, "token-2");
+	assert.equal(requests.length, 3, "a second join does not add another participant");
+
+	assert.equal((await call("POST", "im/meeting/join", { token: kim, body: { id: "aaaaaaaaaaaaaaaa" } })).code, 404);
+	assert.equal((await call("POST", "im/meeting", { token: sam, body: { roomId: "nope" } })).code, 403);
+	const listed = (await call("GET", "im/meeting/list", { token: kim })).data;
+	assert.deepEqual(listed.map((meeting) => meeting.id), [created.data.id]);
+	const ics = (await call("GET", "im/meeting/ics", { token: kim, query: { id: created.data.id } })).data;
+	assert.match(ics.body, /METHOD:PUBLISH/);
+
+	assert.equal((await call("POST", "im/meeting/cancel", { token: kim, body: { id: created.data.id } })).code, 403, "only the host cancels");
+	assert.equal((await call("POST", "im/meeting/cancel", { token: sam, body: { id: created.data.id } })).code, 200);
+	assert.deepEqual((await call("GET", "im/meeting/list", { token: kim })).data, [], "a cancelled meeting leaves the list");
+	assert.equal((await call("POST", "im/meeting/join", { token: kim, body: { id: created.data.id } })).code, 404, "and cannot be joined");
+});
+
+test("meeting input validation", () => {
+	const now = Date.parse("2026-10-19T00:00:00Z");
+	assert.deepEqual(parseMeetingCreateInput({}, now), { title: "", roomId: null, startsAt: null, durationMinutes: 60, inviteeIds: [], inviteesChosen: false, sendMail: true });
+	assert.equal(parseMeetingCreateInput({ startAt: "2026-10-20T02:00:00Z", durationMinutes: 30 }, now).startsAt, Date.parse("2026-10-20T02:00:00Z"));
+	assert.throws(() => parseMeetingCreateInput({ startAt: "2026-10-18T00:00:00Z" }, now), /早于现在/);
+	assert.throws(() => parseMeetingCreateInput({ durationMinutes: 2 }, now), /时长/);
+	assert.throws(() => parseMeetingCreateInput({ startAt: "tomorrow-ish" }, now), /时间无效/);
+	assert.match(newMeetingId(), MEETING_ID_PATTERN);
+});
+
+test("invitations are RFC 5545 requests the recipient's own calendar can accept", () => {
+	const ics = buildMeetingIcs({
+		uid: "abc@smj-meeting",
+		sequence: 0,
+		title: "季度复盘, 第一场; 全员",
+		description: "Sam 邀请你参加视频会议。\n加入会议：https://mail.one.test/meet/abc",
+		joinUrl: "https://mail.one.test/meet/abc",
+		startsAt: Date.parse("2026-10-20T02:00:00Z"),
+		durationMinutes: 45,
+		organizer: { name: "Sam", email: "sam@one.test" },
+		attendees: [{ name: "Kim \"K\"", email: "kim@one.test" }],
+		method: "REQUEST",
+	});
+	assert.ok(ics.endsWith("\r\n"));
+	const lines = ics.split("\r\n");
+	assert.equal(lines[0], "BEGIN:VCALENDAR");
+	assert.ok(lines.includes("METHOD:REQUEST"));
+	assert.ok(lines.includes("DTSTART:20261020T020000Z"));
+	assert.ok(lines.includes("DTEND:20261020T024500Z"));
+	assert.ok(lines.includes("SUMMARY:季度复盘\\, 第一场\\; 全员"));
+	assert.ok(lines.includes("ORGANIZER;CN=\"Sam\":mailto:sam@one.test"));
+	assert.ok(ics.replace(/\r\n /g, "").includes("ATTENDEE;CN=\"Kim K\";ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:kim@one.test"));
+	for (const line of lines) assert.ok(new TextEncoder().encode(line).byteLength <= 75, `folded: ${line}`);
+
+	const long = "DESCRIPTION:" + "会".repeat(60);
+	const folded = foldIcsLine(long);
+	assert.equal(folded.split("\r\n ").join(""), long, "unfolding restores the line");
+});
+
+test("the meeting page allows camera and microphone, and web joins need a session", async (t) => {
+	const { env, database } = await fixture(t, RTK_ENV);
+	database.db.prepare("INSERT INTO im_meetings (id, rtk_meeting_id, title, host_id, created_at) VALUES ('abcdefghijklmnop', 'rtk', 'T', 'u1', 1)").run();
+	const page = await handleMeetingRequest(new Request("https://mail.one.test/meet/abcdefghijklmnop"), env);
+	assert.equal(page.status, 200);
+	assert.match(page.headers.get("Permissions-Policy"), /camera=\(self\), microphone=\(self\)/);
+	// Only this origin and Cloudflare: RealtimeKit is served from public/vendor.
+	const hosts = page.headers.get("Content-Security-Policy").match(/(?:https|wss):\/\/[^\s;]+/g);
+	assert.deepEqual(hosts.filter((host) => !/^(?:https|wss):\/\/(?:\*\.realtime\.cloudflare\.com|static\.cloudflareinsights\.com|cloudflareinsights\.com)$/.test(host)), []);
+	const html = await page.text();
+	assert.match(html, /"\/vendor\/realtimekit\/2\.0\.2\/ui"/);
+	assert.doesNotMatch(html, /https?:\/\//);
+	const vendor = join(root, "public", "vendor", "realtimekit", "2.0.2");
+	assert.ok(existsSync(join(vendor, "core", "browser.js")) && existsSync(join(vendor, "ui", "loader", "index.es2017.js")));
+	for (const file of readdirSync(join(vendor, "ui", "dist", "esm"))) {
+		assert.doesNotMatch(readFileSync(join(vendor, "ui", "dist", "esm", file), "utf8"), /fonts\.(?:googleapis|gstatic)\.com/, file);
+	}
+	// /vendor is immutable-cached: the page must point at a committed video background directory.
+	const background = html.match(/"videoBackground":"([^"]+)"/)?.[1];
+	assert.ok(background && existsSync(join(root, "public", background)), `video background module ${background} is committed`);
+	assert.match(page.headers.get("Permissions-Policy"), /display-capture=\(self\)/, "screen sharing stays allowed");
+	assert.match(html, /仅主持人可共享屏幕/);
+	assert.match(html, /"hostPreset":"group_call_host"/, "the page compares presets with the configured host preset");
+	assert.match(html, /id="share-frame"/, "sharing shows a frame round the page");
+	assert.match(html, /"● 正在共享"/, "sharing prefixes the title, which the desktop window watches");
+
+	const anonymous = await handleMeetingRequest(new Request("https://mail.one.test/api/meetings/abcdefghijklmnop/join", { method: "POST" }), env);
+	assert.equal(anonymous.status, 401);
+	const ics = await handleMeetingRequest(new Request("https://mail.one.test/api/meetings/abcdefghijklmnop/meeting.ics"), env);
+	assert.equal(ics.headers.get("Content-Type"), "text/calendar; charset=UTF-8");
+	assert.equal((await handleMeetingRequest(new Request("https://mail.one.test/api/meetings/zzzzzzzzzzzzzzzz/meeting.ics"), env)).status, 404);
+});
+
+test("people already in a meeting can add others, who get the link in a private chat", async (t) => {
+	mockCloudflare(t);
+	const { call, login, pushes, env } = await fixture(t, RTK_ENV);
+	const sam = await login("sam@one.test");
+	const kim = await login("kim@one.test");
+	const created = (await call("POST", "im/meeting", { token: sam, body: { title: "评审", inviteUids: ["u2"], sendMail: false } })).data;
+	const kimToken = (await call("POST", "im/meeting/join", { token: kim, body: { id: created.id } })).data.authToken;
+	const page = (path, init = {}) => handleMeetingRequest(new Request(`https://mail.one.test/api/meetings/${created.id}/${path}`, init), env);
+
+	assert.equal((await page("people")).status, 401, "no token, no session");
+	assert.equal((await page("people", { headers: { Authorization: "Bearer someone-else" } })).status, 401);
+	const people = (await (await page("people", { headers: { Authorization: `Bearer ${kimToken}` } })).json()).people;
+	assert.deepEqual(people.map((person) => [person.id, person.invited, person.joined]), [["u3", false, false], ["u1", true, false]], "the directory, without the viewer");
+
+	pushes.length = 0;
+	const invite = await page("invite", {
+		method: "POST",
+		headers: { Authorization: `Bearer ${kimToken}`, "Content-Type": "application/json" },
+		body: JSON.stringify({ userIds: ["u3", "u2"], sendMail: false }),
+	});
+	assert.equal(invite.status, 200);
+	assert.deepEqual(await invite.json(), { invited: 1, mailed: [], mailError: null });
+	const pushed = pushes.filter((push) => push.type === "receiveMessage");
+	assert.deepEqual(pushed.map((push) => push.userId).sort(), ["u2", "u3"], "the invitee and the inviter's own client");
+	assert.match(pushed[0].data.message.body.content, new RegExp(`邀请你加入视频会议「评审」[\\s\\S]*/meet/${created.id}`));
+	assert.equal(pushed[0].data.fromUser.uid, "u2");
+	const lee = await login("lee@one.test");
+	assert.deepEqual((await call("GET", "im/meeting/list", { token: lee })).data.map((meeting) => meeting.id), [created.id], "now on the invitee's list");
+
+	const outsider = await page("invite", { method: "POST", headers: { Authorization: "Bearer token-x" }, body: "{}" });
+	assert.equal(outsider.status, 401);
+});
+
+test("a call to someone already in a call or a meeting answers busy and rings nobody", async (t) => {
+	mockCloudflare(t);
+	const { call, login, env, database } = await fixture(t, RTK_ENV);
+	const sam = await login("sam@one.test");
+	const lee = await login("lee@one.test");
+	const roomOf = async (token, uid) => (await call("GET", "im/chat/contact/detail/friend", { token, query: { id: uid, roomType: "2" } })).data.roomId;
+	const samKim = await roomOf(sam, "u2");
+	const leeSam = await roomOf(lee, "u1");
+	const leeKim = await roomOf(lee, "u2");
+
+	const ring = await resolveRtcRelay(env, "u1", { type: 5, data: { roomId: samKim, targetUid: "u2", isVideo: true } });
+	assert.equal(ring.toPeer.type, "VideoCallRequest", "a free person rings");
+	await resolveRtcRelay(env, "u2", { type: 6, data: { roomId: samKim, callerUid: "u1", accepted: 1 } });
+
+	for (const [roomId, target] of [[leeSam, "u1"], [leeKim, "u2"]]) {
+		const busy = await resolveRtcRelay(env, "u3", { type: 5, data: { roomId, targetUid: target, isVideo: false } });
+		assert.equal(busy.toPeer, undefined, "nobody rings on top of a call");
+		assert.deepEqual(busy.toSender, { type: "CallRejected", data: { callerUid: target, targetUid: "u3", roomId, accepted: 0, busy: true } });
+	}
+	const again = await resolveRtcRelay(env, "u1", { type: 5, data: { roomId: samKim, targetUid: "u2" } });
+	assert.equal(again.toPeer.type, "VideoCallRequest", "the call itself never counts as busy");
+
+	// The call window renews while it is open; the rows lapse when nobody does.
+	database.db.prepare("UPDATE im_call_busy SET busy_until = 1").run();
+	assert.equal(await resolveRtcRelay(env, "u1", { type: 4, data: { roomId: samKim, targetUid: "u2" } }), null, "keep-alives relay nothing");
+	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toSender, "Sam renewed, still busy");
+	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeKim, targetUid: "u2" } })).toPeer, "Kim did not renew, rings");
+	await resolveRtcRelay(env, "u2", { type: 6, data: { roomId: leeKim, callerUid: "u3", accepted: 0, busy: true } });
+	assert.equal(database.db.prepare("SELECT COUNT(*) AS n FROM im_call_busy WHERE ref = ?").get(`call:${leeKim}`).n, 0, "declining clears the ring");
+
+	await resolveRtcRelay(env, "u1", { type: 6, data: { roomId: samKim, callerUid: "u2", accepted: 2 } });
+	assert.equal((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toPeer.type, "VideoCallRequest", "hanging up frees Sam");
+	await resolveRtcRelay(env, "u3", { type: 6, data: { roomId: leeSam, callerUid: "u1", accepted: 3 } });
+
+	const declined = buildRtcRelay("u2", { type: 6, data: { roomId: leeKim, callerUid: "u3", accepted: 0, busy: true } });
+	assert.equal(declined.toPeer.data.busy, true, "a client that sees its own call window declines as busy");
+
+	// Meetings: the page reports presence with its participant token.
+	const created = (await call("POST", "im/meeting", { token: sam, body: { title: "周会", inviteUids: [], sendMail: false } })).data;
+	const samToken = (await call("POST", "im/meeting/join", { token: sam, body: { id: created.id } })).data.authToken;
+	const presence = (active, token = samToken) =>
+		handleMeetingRequest(new Request(`https://mail.one.test/api/meetings/${created.id}/presence`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+			body: JSON.stringify({ active }),
+		}), env);
+	assert.equal((await presence(true, "not-a-token")).status, 401);
+	const reported = Date.now();
+	assert.equal((await presence(true)).status, 204);
+	const meetingUntil = database.db.prepare("SELECT busy_until FROM im_call_busy WHERE ref = ?").get(`meeting:${created.id}`).busy_until;
+	assert.ok(meetingUntil - reported >= 115_000, "a background meeting window renews late, so a meeting counts for two minutes");
+	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toSender, "in a meeting counts as busy");
+	const pageScript = await (await handleMeetingRequest(new Request(`https://mail.one.test/meet/${created.id}`), env)).text();
+	assert.match(pageScript, /state !== "disconnected"\) stop\(\)/, "a network blip (RealtimeKit rejoins by itself) does not end presence");
+	assert.equal((await presence(false)).status, 204);
+	assert.ok((await resolveRtcRelay(env, "u3", { type: 5, data: { roomId: leeSam, targetUid: "u1" } })).toPeer, "leaving the meeting frees Sam");
+});
+
+test("a meeting is upcoming, live until 30 minutes past its end, then ended unless someone is still in it", () => {
+	const start = Date.parse("2026-10-20T10:43:00Z");
+	const meeting = { startsAt: start, createdAt: start - 3_600_000, durationMinutes: 60, cancelledAt: null };
+	const end = start + 3_600_000;
+	assert.deepEqual(meetingTiming(meeting, start - 1), { status: "upcoming", startsAt: start, endsAt: end, joinableUntil: end + MEETING_JOIN_GRACE_MS, cancelledAt: null, nextCheckAt: start });
+	assert.equal(meetingTiming(meeting, start).status, "live");
+	assert.equal(meetingTiming(meeting, end + MEETING_JOIN_GRACE_MS - 1).status, "live", "joinable in the grace after the end");
+	assert.deepEqual(
+		[meetingTiming(meeting, end + MEETING_JOIN_GRACE_MS).status, meetingTiming(meeting, end + MEETING_JOIN_GRACE_MS).nextCheckAt],
+		["ended", null],
+	);
+	const overrun = meetingTiming(meeting, end + MEETING_JOIN_GRACE_MS + 5, true);
+	assert.deepEqual([overrun.status, overrun.nextCheckAt], ["live", end + MEETING_JOIN_GRACE_MS + 5 + 60_000], "people still in it keep it live");
+	const instant = meetingTiming({ startsAt: null, createdAt: start, durationMinutes: 60, cancelledAt: null }, start + 1);
+	assert.deepEqual([instant.status, instant.startsAt], ["live", start], "an instant meeting starts when it was made");
+	const cancelled = meetingTiming({ ...meeting, cancelledAt: start - 5 }, start - 10);
+	assert.deepEqual([cancelled.status, cancelled.joinableUntil, cancelled.nextCheckAt], ["cancelled", null, null]);
+});
+
+test("cards and the page see each meeting's status; closed meetings refuse joins and cancelling pushes the change", async (t) => {
+	mockCloudflare(t);
+	const { call, login, pushes, env, database } = await fixture(t, RTK_ENV);
+	const sam = await login("sam@one.test");
+	const kim = await login("kim@one.test");
+	const roomId = (await call("POST", "im/room/group", { token: sam, body: { uidList: ["u2", "u3"] } })).data.roomId;
+	const soon = new Date(Date.now() + 3_600_000).toISOString();
+	const scheduled = (await call("POST", "im/meeting", { token: sam, body: { roomId, title: "周会", startAt: soon, inviteUids: ["u2"], sendMail: false } })).data;
+	assert.equal(scheduled.status, "upcoming");
+	const old = "oldmeetingaaaaaa";
+	database.db.prepare("INSERT INTO im_meetings (id, rtk_meeting_id, title, host_id, starts_at, duration_minutes, created_at) VALUES (?, 'rtk', '旧会', 'u1', ?, 60, ?)")
+		.run(old, Date.now() - 3 * 3_600_000, Date.now() - 4 * 3_600_000);
+
+	const statuses = await call("GET", "im/meeting/status", { token: kim, query: { ids: `${scheduled.id},${old},zzzzzzzzzzzzzzzz,bad` } });
+	assert.equal(statuses.code, 200);
+	assert.ok(Math.abs(statuses.data.serverNow - Date.now()) < 5_000);
+	assert.deepEqual(Object.fromEntries(statuses.data.meetings.map((meeting) => [meeting.id, meeting.status])), { [scheduled.id]: "upcoming", [old]: "ended" }, "unknown ids are left out");
+
+	const ended = await call("POST", "im/meeting/join", { token: kim, body: { id: old } });
+	assert.deepEqual([ended.code, ended.msg], [404, "会议已结束"]);
+	assert.equal((await call("POST", "im/meeting/cancel", { token: sam, body: { id: old } })).msg, "会议已结束，无需取消");
+	database.db.prepare("INSERT INTO im_call_busy (user_id, ref, busy_until) VALUES ('u3', ?, ?)").run(`meeting:${old}`, Date.now() + 30_000);
+	assert.equal((await call("POST", "im/meeting/join", { token: kim, body: { id: old } })).code, 200, "someone still in an overrunning meeting keeps it open");
+
+	pushes.length = 0;
+	assert.equal((await call("POST", "im/meeting/cancel", { token: sam, body: { id: scheduled.id } })).code, 200);
+	const pushed = pushes.filter((push) => push.type === "meetingStatus");
+	assert.deepEqual(pushed.map((push) => push.userId).sort(), ["u1", "u2", "u3"], "the host, the invitee and the chat it was posted in");
+	assert.deepEqual([pushed[0].data.id, pushed[0].data.status], [scheduled.id, "cancelled"]);
+	const cancelledJoin = await call("POST", "im/meeting/join", { token: kim, body: { id: scheduled.id } });
+	assert.deepEqual([cancelledJoin.code, cancelledJoin.msg], [404, "会议已取消"]);
+
+	const page = async (id) => handleMeetingRequest(new Request(`https://mail.one.test/api/meetings/${id}/status`), env);
+	const body = await (await page(scheduled.id)).json();
+	assert.deepEqual([body.meeting.status, body.meeting.title], ["cancelled", "周会"]);
+	assert.equal((await page("zzzzzzzzzzzzzzzz")).status, 404);
+	const html = await (await handleMeetingRequest(new Request(`https://mail.one.test/meet/${scheduled.id}`), env)).text();
+	assert.match(html, /closedMeeting\(\)\) return;/, "the page checks the status before entering");
+});

@@ -1,6 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { setPresence } from "./chat";
 import { IM_HEARTBEAT_REQUEST, IM_HEARTBEAT_RESPONSE, type ImSocketAttachment, type ImSocketEvent } from "./hub-utils";
+import { notifyImUsers } from "./notify";
+import { resolveRtcRelay } from "./rtc";
+import { randomHex, sha256Hex } from "./files-utils";
+import { IM_WS_TICKET_STORAGE_PREFIX, IM_WS_TICKET_TTL_MS, staleImWsTickets } from "./ws-ticket-utils";
 
 /**
  * One per user: holds every HuLa client the user has open and speaks HuLa's
@@ -8,6 +12,9 @@ import { IM_HEARTBEAT_REQUEST, IM_HEARTBEAT_RESPONSE, type ImSocketAttachment, t
  * an idle connection lets the object hibernate instead of waking every 10s.
  */
 export class ImUserHub extends DurableObject<CloudflareEnv> {
+	/** The last online write, so an offline write cannot land before it. */
+	private presenceWrite: Promise<unknown> = Promise.resolve();
+
 	constructor(ctx: DurableObjectState, env: CloudflareEnv) {
 		super(ctx, env);
 		ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(IM_HEARTBEAT_REQUEST, IM_HEARTBEAT_RESPONSE));
@@ -22,6 +29,10 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 			}
 			const userId = request.headers.get("X-Mailflare-Im-User");
 			if (!userId) return new Response("Unauthorized", { status: 401 });
+			// The Worker has already checked a legacy token; anything else must bring a ticket this hub issued.
+			if (request.headers.get("X-Mailflare-Im-Auth") !== "token" && !(await this.redeemTicket(request.headers.get("X-Mailflare-Im-Ticket")))) {
+				return new Response("Unauthorized", { status: 401 });
+			}
 			const pair = new WebSocketPair();
 			const [client, server] = [pair[0], pair[1]];
 			this.ctx.acceptWebSocket(server);
@@ -31,8 +42,14 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 				connectedAt: Date.now(),
 			};
 			server.serializeAttachment(attachment);
-			await setPresence(this.env, userId, true).catch(() => undefined);
+			// The upgrade answers at once; the presence write must not hold up the client's handshake.
+			this.presenceWrite = setPresence(this.env, userId, true).catch(() => undefined);
+			this.ctx.waitUntil(this.presenceWrite);
 			return new Response(null, { status: 101, webSocket: client });
+		}
+
+		if (url.pathname === "/ticket" && request.method === "POST") {
+			return Response.json({ secret: await this.issueTicket() });
 		}
 
 		if (url.pathname === "/notify" && request.method === "POST") {
@@ -58,10 +75,60 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 	async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
 		// A heartbeat that missed the auto-response (different spacing, binary frame) still gets its pong.
 		const text = typeof message === "string" ? message : new TextDecoder().decode(message);
+		let frame: unknown;
 		try {
-			if ((JSON.parse(text) as { type?: unknown }).type === "2") socket.send(IM_HEARTBEAT_RESPONSE);
+			frame = JSON.parse(text);
 		} catch {
-			// Delivery acknowledgements and anything else are ignored until message sync needs them.
+			return;
+		}
+		if ((frame as { type?: unknown } | null)?.type === "2") {
+			socket.send(IM_HEARTBEAT_RESPONSE);
+			return;
+		}
+		// Call setup and WebRTC signals are relayed to the other party; delivery acknowledgements and anything else are ignored.
+		const userId = (socket.deserializeAttachment() as ImSocketAttachment | null)?.userId;
+		if (!userId) return;
+		const relay = await resolveRtcRelay(this.env, userId, frame).catch(() => null);
+		if (!relay) return;
+		if (relay.toSender) {
+			try {
+				socket.send(JSON.stringify(relay.toSender));
+			} catch {}
+		}
+		if (relay.toPeer) await notifyImUsers(this.env, [relay.peerUid], relay.toPeer);
+		if (relay.toOwnOtherDevices) this.sendToOthers(socket, relay.toOwnOtherDevices);
+	}
+
+	/** Ticket secrets are stored hashed with their expiry; issuing one also clears out stale ones. */
+	private async issueTicket(): Promise<string> {
+		const secret = randomHex(24);
+		const now = Date.now();
+		const stored = await this.ctx.storage.list<number>({ prefix: IM_WS_TICKET_STORAGE_PREFIX });
+		const stale = staleImWsTickets([...stored.entries()], now);
+		if (stale.length) await this.ctx.storage.delete(stale);
+		await this.ctx.storage.put(`${IM_WS_TICKET_STORAGE_PREFIX}${await sha256Hex(secret)}`, now + IM_WS_TICKET_TTL_MS);
+		return secret;
+	}
+
+	/** True once per issued secret, within its lifetime. Storage calls hold the input gate, so two upgrades cannot both read the same ticket. */
+	private async redeemTicket(secret: string | null): Promise<boolean> {
+		if (!secret) return false;
+		const key = `${IM_WS_TICKET_STORAGE_PREFIX}${await sha256Hex(secret)}`;
+		const expiresAt = await this.ctx.storage.get<number>(key);
+		if (expiresAt === undefined) return false;
+		await this.ctx.storage.delete(key);
+		return expiresAt > Date.now();
+	}
+
+	private sendToOthers(origin: WebSocket, event: ImSocketEvent): void {
+		const body = JSON.stringify(event);
+		for (const socket of this.ctx.getWebSockets()) {
+			if (socket === origin) continue;
+			try {
+				socket.send(body);
+			} catch {
+				// A socket that is closing is cleaned up by webSocketClose.
+			}
 		}
 	}
 
@@ -83,6 +150,7 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 		const open = this.ctx.getWebSockets().filter((socket) => socket !== closing && socket.readyState === WebSocket.OPEN);
 		if (open.length) return;
 		const userId = (closing.deserializeAttachment() as ImSocketAttachment | null)?.userId;
+		await this.presenceWrite;
 		if (userId) await setPresence(this.env, userId, false).catch(() => undefined);
 	}
 }

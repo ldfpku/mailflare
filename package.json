@@ -11,7 +11,8 @@
     "build:next": "npm run db:bundle && MAILFLARE_RUNTIME=node next build",
     "start": "vp preview --port 3000",
     "lint": "vp lint .",
-    "deploy": "npm run build && npm run deploy:worker",
+    "deploy": "npm run build:im-web && npm run build && npm run deploy:worker",
+    "build:im-web": "node scripts/build-im-web.mjs",
     "deploy:worker": "cf deploy --prebuilt",
     "deploy:local": "npm run deploy",
     "preview": "npm run build && vp preview --port 3000",
@@ -62,6 +63,9 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.55",
     "@ai-sdk/react": "^4.0.116",
+    "@dicebear/core": "9.4.2",
+    "@dicebear/notionists": "9.4.2",
+    "@dicebear/shapes": "9.4.2",
     "@modelcontextprotocol/server": "^2.1.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
@@ -107,6 +111,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^2.0.0-beta.v.1",
     "@cloudflare/workers-types": "^5.20260828.1",
+    "@mediapipe/tasks-vision": "0.10.21",
     "@next/eslint-plugin-next": "16.3.3",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",

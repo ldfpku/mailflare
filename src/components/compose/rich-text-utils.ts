@@ -76,7 +76,20 @@ export function applyMailboxSignatureHtml(
 	const previousBlock = signatureBlock(previousSignature);
 	const nextBlock = signatureBlock(nextSignature);
 	if (previousBlock && html.includes(previousBlock)) return html.replace(previousBlock, nextBlock);
-	if (!nextBlock || html.includes(nextBlock)) return html;
+	if (nextBlock && html.includes(nextBlock)) return html;
+	// The editor re-serialises what it shows, so the old block may no longer match as text; its marker still does.
+	if (previousBlock && typeof document !== "undefined") {
+		const template = document.createElement("template");
+		template.innerHTML = html;
+		const marked = template.content.querySelector(`[${SIGNATURE_ATTRIBUTE}]`);
+		if (marked) {
+			const replacement = document.createElement("template");
+			replacement.innerHTML = nextBlock;
+			marked.replaceWith(replacement.content);
+			return template.innerHTML;
+		}
+	}
+	if (!nextBlock) return html;
 	return `${html}${nextBlock}`;
 }
 

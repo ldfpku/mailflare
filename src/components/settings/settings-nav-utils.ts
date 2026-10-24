@@ -9,6 +9,10 @@ export const settingsNavSections: SettingsNavSection[] = [
 				labelKey: "settings.nav.account",
 			},
 			{
+				href: "/settings/business-card",
+				labelKey: "settings.nav.businessCard",
+			},
+			{
 				href: "/settings/inbox",
 				labelKey: "settings.nav.inbox",
 			},
@@ -27,6 +31,14 @@ export const settingsNavSections: SettingsNavSection[] = [
 			{
 				href: "/settings/rules",
 				labelKey: "settings.nav.rules",
+			},
+			{
+				href: "/settings/desktop",
+				labelKey: "settings.nav.desktop",
+			},
+			{
+				href: "/settings/mobile",
+				labelKey: "settings.nav.mobile",
 			},
 		],
 	},
@@ -53,3 +65,21 @@ export const settingsNavSections: SettingsNavSection[] = [
 export function isActiveSettingsPath(pathname: string, href: string): boolean {
 	return pathname === href || pathname.startsWith(`${href}/`);
 }
+
+/**
+ * What the settings pages load when they open. The menu asks for these once it is on screen, so the
+ * pages behind it open from the client cache (src/lib/auth/get-cache.ts) instead of waiting on the server.
+ */
+export const settingsWarmUpUrls = [
+	"/api/auth/me",
+	"/api/settings/business-card",
+	"/api/push/config",
+	"/api/settings/recipient-addresses",
+	"/api/settings/trash-retention",
+	"/api/settings/remote-content",
+	"/api/settings/spam",
+	"/api/settings/mfa",
+	"/api/devices",
+	"/api/api-keys",
+	"/api/desktop/latest",
+];

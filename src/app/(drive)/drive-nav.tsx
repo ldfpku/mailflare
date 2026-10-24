@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import clsx from "clsx";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import toast from "react-hot-toast";
-import { ChevronRight, Folder, FolderPlus, HardDrive, Paperclip, Plus, Trash2, UploadCloud, UsersRound } from "lucide-react";
+import { ChevronRight, Folder, FolderPlus, HardDrive, MessagesSquare, Paperclip, Plus, Trash2, UploadCloud, UsersRound } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -125,6 +125,7 @@ export function DriveNav({ onNavigate }: { onNavigate?: () => void }) {
 		{ key: "my", href: "/drive", label: t("drive.myDrive"), icon: HardDrive },
 		{ key: "attachments", href: "/drive?view=attachments", label: t("drive.attachments"), icon: Paperclip },
 		{ key: "shared", href: "/drive?view=shared", label: t("drive.sharedWithMe"), icon: UsersRound },
+		{ key: "groups", href: "/drive?view=groups", label: t("drive.groupFiles"), icon: MessagesSquare },
 		{ key: "trash", href: "/drive?view=trash", label: t("drive.trash"), icon: Trash2 },
 	];
 	const percent = storage?.limit ? Math.min(100, Math.round((storage.used / storage.limit) * 100)) : 0;

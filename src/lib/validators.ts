@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getEmailAddress, splitEmailAddressList } from "@/lib/email/address";
 import { DEFAULT_FOLDER_COLOR, FOLDER_COLOR_VALUES } from "@/lib/folders/colors";
+import { MAX_FOLLOW_UP_DAYS } from "@/lib/follow-ups/follow-up-utils";
 
 /**
  * Recipients arrive either as one comma-separated header string (the composer)
@@ -30,6 +31,9 @@ export const sendEmailSchema = z.object({
 	text: z.string().max(2 * 1024 * 1024).optional(),
 	mailboxId: z.string().min(1).max(200),
 	scheduledAt: z.string().datetime().optional(),
+	undoSend: z.boolean().optional(),
+	trackOpens: z.boolean().optional(),
+	followUpDays: z.number().int().min(1).max(MAX_FOLLOW_UP_DAYS).optional(),
 	attachments: z
 		.array(
 			z.object({
@@ -78,13 +82,16 @@ export const addDomainSchema = z.object({
 	receivingProvider: z.enum(["none", "cloudflare", "resend", "ses"]).optional(),
 });
 
+// Sign-in names may omit the domain; routes complete them with resolveLoginEmail.
+const loginNameSchema = z.string().trim().min(1).max(254);
+
 export const loginSchema = z.object({
-	email: z.string().email(),
+	email: loginNameSchema,
 	password: z.string().min(1),
 });
 
 export const passwordResetRequestSchema = z.object({
-	email: z.string().trim().email(),
+	email: loginNameSchema,
 });
 
 export const passwordResetConfirmSchema = z.object({
@@ -94,7 +101,7 @@ export const passwordResetConfirmSchema = z.object({
 
 /** `/api/auth/device`: either email + password, or a challenge + code after MFA. */
 export const deviceLoginSchema = z.union([
-	z.object({ email: z.string().trim().email(), password: z.string().min(1), deviceName: z.string().trim().min(1).max(100) }),
+	z.object({ email: loginNameSchema, password: z.string().min(1), deviceName: z.string().trim().min(1).max(100) }),
 	z.object({ challengeToken: z.string().min(8).max(200), code: z.string().trim().min(6).max(32), deviceName: z.string().trim().min(1).max(100) }),
 ]);
 

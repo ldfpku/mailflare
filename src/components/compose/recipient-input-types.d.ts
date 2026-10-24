@@ -11,3 +11,11 @@ export type RecipientInputProps = {
 	/** Rendered at the right edge of the row, e.g. the Cc/Bcc toggles. */
 	trailing?: React.ReactNode;
 };
+
+/** A colleague offered while typing a recipient, from `/api/directory`. */
+export type DirectorySuggestion = {
+	name: string;
+	email: string;
+	department: string;
+	title: string;
+};

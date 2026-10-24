@@ -22,7 +22,7 @@ export function HeaderSearch({ value, onChange, label, placeholder, onSubmit, tr
 			<button
 				type="button"
 				onClick={() => setExpanded(true)}
-				aria-label={label}
+				aria-label={label} title={label}
 				className={clsx("flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-neutral-200 md:hidden", value ? "bg-blue-100 text-blue-700" : "text-neutral-600", expanded && "hidden")}
 			>
 				<Search className="h-5 w-5" />

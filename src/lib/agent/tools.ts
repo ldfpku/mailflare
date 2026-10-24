@@ -19,6 +19,8 @@ import { formatAgentDraftBody } from "./draft-format";
 import { editAgentDraft } from "./edit-draft";
 import { requestAgentSend } from "./approvals/utils";
 import { toolEmailSchema } from "./schema-utils";
+import { buildAgentSearchQuery } from "./task-tools-utils";
+import { CJK_RE } from "@/lib/im/search-utils";
 import type { AgentDraftEditInput } from "./types";
 
 const id = z.string().min(1).max(160);
@@ -29,7 +31,17 @@ export const emailToolSchemas = {
 	list_emails: z.object({ folder: z.enum(["inbox", "sent", "scheduled", "draft", "archived", "trash", "spam"]).default("inbox"), limit, cursor: id.nullish().describe("Omit or set to null for the first page. For subsequent pages, use only the exact nextCursor returned by list_emails for this mailbox and folder. Stop when nextCursor is null. Never invent a cursor or use a page number or offset such as '0'.") }),
 	get_email: z.object({ emailId: id }),
 	get_thread: z.object({ emailId: id }),
-	search_emails: z.object({ query: z.string().trim().min(1).max(300), folder: z.enum(["inbox", "sent", "scheduled", "draft", "archived", "trash", "spam"]).optional(), limit }),
+	search_emails: z.object({
+		query: z.string().trim().max(300).optional().describe("Keywords in subject or body. May also use operators such as from:, to:, subject:, after:YYYY-MM-DD, before:YYYY-MM-DD, has:attachment, is:unread"),
+		from: z.string().trim().max(200).optional().describe("Sender name or address"),
+		to: z.string().trim().max(200).optional().describe("Recipient name or address"),
+		subject: z.string().trim().max(200).optional(),
+		after: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("On or after this date, YYYY-MM-DD in the user's timezone"),
+		before: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Before this date, YYYY-MM-DD in the user's timezone"),
+		hasAttachment: z.boolean().optional(),
+		unread: z.boolean().optional(),
+		folder: z.enum(["inbox", "sent", "scheduled", "draft", "archived", "trash", "spam"]).optional(), limit,
+	}),
 	draft_email: z.object({ to: toolEmailSchema, subject: z.string().trim().min(1).max(500), body }),
 	draft_reply: z.object({ emailId: id, body, replyAll: z.boolean().default(false) }),
 	edit_draft: z.object({
@@ -52,7 +64,7 @@ export const emailToolDescriptions: Record<EmailToolName, string> = {
 	list_emails: "List email metadata in a mailbox folder with pagination. Omit cursor or set it to null for the first page; use the returned nextCursor for subsequent pages.",
 	get_email: "Read one email and its attachment metadata without marking it read.",
 	get_thread: "Read the recent conversation containing an email before drafting a reply.",
-	search_emails: "Search email subject and body in this mailbox.",
+	search_emails: "Search emails in this mailbox by keywords, sender, recipient, subject, date range, attachments and read state. Give at least one condition. Without a folder it searches every folder except other people's drafts.",
 	draft_email: "Save a new email draft. This never sends.",
 	draft_reply: "Save a reply draft with recipients and threading derived from the source email. This never sends.",
 	edit_draft: "Update a draft created by the assistant in the selected mailbox. First read it with get_email to get its current revision and attachment IDs. Can change sender, recipients, subject, body, requested schedule, and copy or remove attachments from accessible emails. Use an ISO 8601 send time with timezone offset; null clears it. This never sends or schedules delivery by itself.",
@@ -131,7 +143,12 @@ export async function runEmailTool(context: AgentToolContext, name: EmailToolNam
 		else if (folder === "inbox") conditions.push(eq(messages.status, "received"), isNull(messages.folderId));
 		else if (folder === "archived" || folder === "trash" || folder === "spam") conditions.push(eq(messages.status, folder));
 		else conditions.push(or(eq(messages.userId, context.user.id), eq(messages.direction, "inbound"))!);
-		if (name === "search_emails") conditions.push(...buildSearchConditions(input.query as string, context.timeZone));
+		if (name === "search_emails") {
+			const query = buildAgentSearchQuery(input as Parameters<typeof buildAgentSearchQuery>[0]);
+			if (!query) throw new Error("Give at least one search condition");
+			// Chinese words sit inside longer runs the full-text index keeps as one token, so they match by substring.
+			conditions.push(...buildSearchConditions(query, context.timeZone, { substringTerm: (term) => CJK_RE.test(term) }));
+		}
 		if (input.cursor) {
 			const cursor = await ownMessage(context, input.cursor as string, "Invalid pagination cursor. To start from the first page, omit cursor or set it to null. For subsequent pages, use only the nextCursor returned by list_emails for this mailbox and folder; never invent a cursor or use a page number or offset.");
 			conditions.push(lt(messages.createdAt, cursor.createdAt));

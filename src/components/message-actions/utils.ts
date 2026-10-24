@@ -9,6 +9,8 @@ import { sanitizeEmailHtml } from "@/app/(dashboard)/inbox/[messageId]/email-htm
 import { escapeHtml, htmlToPlainText, textToHtml, wrapQuotedHtml } from "@/components/compose/rich-text-utils";
 import type {
   BlockMessageContactInput,
+  ChatShareTarget,
+  MailTodoDraft,
   ForwardDraftInput,
   MoveMessageActionItem,
   ReplyableMessage,
@@ -311,4 +313,65 @@ export async function createReplyDraft({
   if (!response.ok || !data.draft)
     throw new Error(data.error ?? "Unable to create reply draft");
   return data.draft.id;
+}
+
+export async function fetchChatShareTargets(messageId: string): Promise<ChatShareTarget[]> {
+	const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/chat-share`, { cache: "no-store" });
+	if (!response.ok) throw new Error("Could not load chats");
+	const data = (await response.json()) as { targets?: ChatShareTarget[] };
+	return data.targets ?? [];
+}
+
+/** Posts the message as a mail card into the chosen chats; resolves to how many were sent. */
+export async function shareMessageToChats(messageId: string, roomIds: string[]): Promise<number> {
+	const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/chat-share`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ roomIds }),
+	});
+	const data = (await response.json().catch(() => ({}))) as { shared?: number; error?: string };
+	if (!response.ok) throw new Error(data.error || "Could not share");
+	return data.shared ?? roomIds.length;
+}
+
+export function filterChatShareTargets(targets: ChatShareTarget[], query: string): ChatShareTarget[] {
+	const needle = query.trim().toLowerCase();
+	return needle ? targets.filter((target) => target.name.toLowerCase().includes(needle)) : targets;
+}
+
+/** Asks Workers AI for a to-do drafted from the message (title, deadline, points). */
+export async function draftMessageTodo(messageId: string): Promise<MailTodoDraft> {
+	const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/todo`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ draft: true }),
+	});
+	const data = (await response.json().catch(() => ({}))) as { draft?: MailTodoDraft; error?: string };
+	if (!response.ok || !data.draft) throw new Error(data.error || "Could not draft a to-do");
+	return data.draft;
+}
+
+/** Saves the to-do to 我的待办 in chat. */
+export async function saveMessageTodo(messageId: string, todo: { title: string; notes: string; dueAt: number | null }): Promise<void> {
+	const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/todo`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(todo),
+	});
+	const data = (await response.json().catch(() => ({}))) as { error?: string };
+	if (!response.ok) throw new Error(data.error || "Could not save the to-do");
+}
+
+/** `datetime-local` value for epoch milliseconds, in the browser's time zone. */
+export function toDateTimeLocal(at: number | null): string {
+	if (at === null) return "";
+	const date = new Date(at);
+	const pad = (value: number) => String(value).padStart(2, "0");
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function fromDateTimeLocal(value: string): number | null {
+	if (!value) return null;
+	const at = new Date(value).getTime();
+	return Number.isFinite(at) ? at : null;
 }

@@ -48,7 +48,7 @@ export function TemplateMenu({ onApply, onNew }: TemplateMenuProps) {
 									<span className="whitespace-normal break-words">{template.subject || t("template.untitled")}</span>
 									<button
 										type="button"
-										aria-label={t("template.delete")}
+										aria-label={t("template.delete")} title={t("template.delete")}
 										onPointerDown={(event) => event.stopPropagation()}
 										onClick={(event) => { event.stopPropagation(); void remove(template.id); }}
 										className="shrink-0 rounded p-1 text-neutral-400 opacity-0 hover:text-red-600 group-hover:opacity-100 group-focus:opacity-100"

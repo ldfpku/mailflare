@@ -12,6 +12,8 @@ import {
   Webhook,
   KeyRound,
   Bot,
+  Eraser,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "./language-provider";
@@ -48,6 +50,7 @@ const sections: { id?: string; labelKey?: TranslationKey; links: AdminNavLink[] 
       { href: "/domains", labelKey: "admin.nav.domains", icon: Globe2, permission: "domains" },
       { href: "/routing", labelKey: "admin.nav.routing", icon: Route, permission: "domains" },
       { href: "/webhooks", labelKey: "admin.nav.webhooks", icon: Webhook, permission: "primary" },
+      { href: "/spam-filter", labelKey: "admin.nav.spamFilter", icon: ShieldCheck, permission: "primary" },
     ],
   },
   {
@@ -60,6 +63,7 @@ const sections: { id?: string; labelKey?: TranslationKey; links: AdminNavLink[] 
       { href: "/accounts", labelKey: "admin.nav.accounts", icon: Users },
       { href: "/activity", labelKey: "admin.nav.activity", icon: Activity, permission: "primary" },
       { href: "/backups", labelKey: "admin.nav.backups", icon: DatabaseBackup, permission: "primary" },
+      { href: "/chat-cleanup", labelKey: "admin.nav.chatCleanup", icon: Eraser, permission: "primary" },
     ],
   },
   {

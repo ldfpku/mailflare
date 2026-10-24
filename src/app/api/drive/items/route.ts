@@ -7,6 +7,8 @@ import { getDriveChain, getDriveItem, getDriveRole, toDriveItemDtos, withoutTras
 import { canEditDrive, normalizeDriveName, toDriveCrumbs } from "@/lib/drive/utils";
 import { driveTypesCondition, parseDriveCategories } from "@/lib/drive/categories";
 import { listDriveAttachments } from "@/lib/drive/attachments";
+import { ImChatError } from "@/lib/im/chat-utils";
+import { listDriveGroupFiles, listDriveGroupFolders } from "@/lib/im/room-files";
 import { getDriveStorageLimit, getDriveStorageUsed } from "@/lib/drive/storage";
 import type { DriveRole } from "@/lib/drive/types";
 
@@ -37,6 +39,19 @@ export async function GET(request: Request) {
 	}
 
 	if (view === "attachments") return respond(await listDriveAttachments(db, user, types), { role: "view" });
+
+	// Group chats' files: each group the user is in is a folder, readable only while they are a member.
+	if (view === "groups") {
+		const roomId = url.searchParams.get("room");
+		if (!roomId) return respond(await listDriveGroupFolders(env, user.id), { role: "view" });
+		try {
+			const group = await listDriveGroupFiles(env, user.id, roomId);
+			return respond(group.items, { path: [{ id: `room:${group.roomId}`, name: group.roomName }], role: "view" });
+		} catch (error) {
+			if (error instanceof ImChatError) return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+			throw error;
+		}
+	}
 
 	if (view === "shared") {
 		const rows = await db

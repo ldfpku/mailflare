@@ -17,12 +17,16 @@ import { resolveThreadId } from "@/lib/email/threading";
 import { normalizeMessageId } from "@/lib/email/thread-lookup";
 import type { SessionUser } from "@/lib/auth/types";
 import { analyzeSpam } from "@/lib/spam/engine";
+import { ExternalSpamIntelligenceProvider } from "@/lib/spam/providers/external";
+import { getSpamIntelligenceConfig } from "@/lib/spam/settings";
+import type { ProviderVerdicts } from "@/lib/spam/types";
 import { getReputationKeys } from "@/lib/spam/analyzers/reputation";
 import { recordReputationObservation } from "@/lib/spam/repository";
 import {
 	getMailboxNotificationUserIds,
 	notifyUsersOfNewMessage,
 } from "@/lib/realtime/utils";
+import { postRoomMailCard } from "@/lib/im/mail-share";
 import { scheduleAutoDraft } from "@/lib/agent/jobs/utils";
 
 export type InboundQueueMessage = {
@@ -30,6 +34,8 @@ export type InboundQueueMessage = {
 	to: string;
 	rawR2Key: string;
 	headers?: Record<string, string>;
+	verdicts?: ProviderVerdicts;
+	senderIp?: string;
 };
 
 /** True when the address is a mailbox or alias owned by the user, so their own mail never counts as unread. */
@@ -123,12 +129,17 @@ export async function processInboundMessage(
 	const [owner] = await db.select({ enabled: users.spamProtectionEnabled }).from(users).where(eq(users.id, decision.mailbox.userId)).limit(1);
 	if (owner?.enabled !== false) {
 		try {
+			const intelligence = await getSpamIntelligenceConfig(env);
 			spamAnalysis = await analyzeSpam(db, {
 				mailboxId: decision.mailbox.mailboxId,
 				userId: decision.mailbox.userId,
 				envelopeFrom: payload.from,
 				headers: payload.headers,
+				verdicts: payload.verdicts,
+				senderIp: payload.senderIp,
+				brands: intelligence.brands,
 				message: parsed,
+				intelligenceProvider: new ExternalSpamIntelligenceProvider(intelligence, env.BUCKET),
 			});
 		} catch (error) {
 			spamAnalysisError = error instanceof Error ? error.message.slice(0, 300) : "Spam analysis failed";
@@ -235,7 +246,16 @@ export async function processInboundMessage(
 		}
 	}
 
+	// Mail to a group address goes into the group chat instead of notifying the mailbox owner.
+	let postedToGroup = false;
 	if (status !== "spam") {
+		try {
+			postedToGroup = await postRoomMailCard(env, decision.mailbox.mailboxId, messageId);
+		} catch (error) {
+			console.error(`Group mail card failed for ${messageId}`, error);
+		}
+	}
+	if (status !== "spam" && !postedToGroup) {
 		const notificationUserIds = await getMailboxNotificationUserIds(
 			env,
 			decision.mailbox.mailboxId,

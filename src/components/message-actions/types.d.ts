@@ -82,3 +82,34 @@ export type MoveMessageActionItem = {
 	labelKey: TranslationKey;
 	icon: any
 };
+
+export type ChatShareTarget = {
+	roomId: string;
+	name: string;
+	avatar: string;
+	/** 1 is a group, 2 a one-to-one chat. */
+	type: number;
+	memberNum?: number;
+};
+
+export type ChatShareDialogProps = {
+	messageId: string;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+};
+
+export type MailTodoDraft = {
+	title: string;
+	/** Epoch milliseconds, or null. */
+	dueAt: number | null;
+	points: string[];
+	notes: string;
+	mailId: string;
+	mailSubject: string;
+};
+
+export type MailTodoDialogProps = {
+	messageId: string;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+};

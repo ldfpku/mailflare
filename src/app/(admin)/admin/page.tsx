@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bot, Globe2, KeyRound, Mail, Palette, Users } from "lucide-react";
+import { Bot, Eraser, Globe2, KeyRound, Mail, Palette, Users } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import type { TranslationKey } from "@/lib/i18n/types";
 import { AdminUpdateCard } from "@/components/admin-update-card";
@@ -55,6 +55,13 @@ const sections: AdminSection[] = [
 		titleKey: "admin.section.apiKeysTitle",
 		descriptionKey: "admin.section.apiKeys",
 		icon: KeyRound,
+		permission: "primary",
+	},
+	{
+		href: "/chat-cleanup",
+		titleKey: "admin.nav.chatCleanup",
+		descriptionKey: "admin.section.chatCleanup",
+		icon: Eraser,
 		permission: "primary",
 	},
 	// {

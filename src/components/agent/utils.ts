@@ -1,6 +1,15 @@
 import type { Translator } from "../../lib/i18n/utils";
 import type { KeyboardEvent } from "react";
-import type { AgentActionProposal, AgentDraftAction, AgentEmailReference, AgentEvent, AgentMessage, AgentTurn, QueuedAgentMessage } from "./types";
+import type { TranslationKey } from "../../lib/i18n/types";
+import type { AgentActionProposal, AgentConversation, AgentDraftAction, AgentEmailReference, AgentErrorResponse, AgentEvent, AgentMessage, AgentTurn, QueuedAgentMessage } from "./types";
+
+/** The message for each refusal reason the assistant routes return with their 429 or 503. */
+export const AGENT_LIMIT_MESSAGE_KEYS: Record<NonNullable<AgentErrorResponse["reason"]>, TranslationKey> = {
+	rate: "agent.panel.limit.rate",
+	"user-daily": "agent.panel.limit.userDaily",
+	"global-daily": "agent.panel.limit.globalDaily",
+	unavailable: "agent.panel.limit.unavailable",
+};
 
 export function enqueueAgentMessage(messages: QueuedAgentMessage[], text: string): QueuedAgentMessage[] {
 	return [...messages, { id: crypto.randomUUID(), text: text.trim() }];
@@ -113,19 +122,14 @@ export function shouldSubmitAgentInput(event: KeyboardEvent<HTMLTextAreaElement>
 	return event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.nativeEvent.isComposing;
 }
 
-export function appendAgentReasoning(messages: AgentMessage[], assistantId: string, text: string, reclassify = false): AgentMessage[] {
-	const reasoningId = `${assistantId}:reasoning`;
-	const existing = messages.some((item) => item.id === reasoningId);
-	const updated = messages.map((item) => {
-		if (item.id === reasoningId) return { ...item, content: item.content + text };
-		if (reclassify && item.id === assistantId && item.content.endsWith(text)) return { ...item, content: item.content.slice(0, -text.length) };
-		return item;
-	});
-	return existing ? updated : [...updated, { id: reasoningId, role: "reasoning", content: text }];
+/** Drops text the model wrote before calling a tool from the streamed answer; it is not shown anywhere. */
+export function removeAgentStepText(messages: AgentMessage[], assistantId: string, text: string): AgentMessage[] {
+	return messages.map((item) => item.id === assistantId && item.content.endsWith(text) ? { ...item, content: item.content.slice(0, -text.length) } : item);
 }
 
+/** Older chats stored the model's thinking as `__reasoning__` rows; they stay hidden. */
 export function normalizeAgentHistory(messages: AgentMessage[]): AgentMessage[] {
-	return messages.map((item) => item.role === "tool" && item.toolName === "__reasoning__" ? { ...item, role: "reasoning" as const } : item.role === "tool" ? { ...item, recordId: item.id } : item);
+	return messages.filter((item) => !(item.role === "tool" && item.toolName === "__reasoning__")).map((item) => item.role === "tool" ? { ...item, recordId: item.id } : item);
 }
 
 export function groupAgentMessages(messages: AgentMessage[]): AgentTurn[] {
@@ -157,7 +161,7 @@ export function formatAgentDuration(durationMs: number): string {
 
 export const AGENT_TOOL_NAMES = [
 	"list_emails", "get_email", "get_thread", "search_emails", "draft_email", "draft_reply", "mark_email_read", "move_email", "move_emails",
-	"discard_draft", "get_schedule", "search_events", "get_event", "create_event", "update_events", "delete_events", "find_free_time", "get_calendars",
+	"discard_draft", "edit_draft", "review_draft_send", "suggest_todos", "propose_meeting", "read_attachment", "get_schedule", "search_events", "get_event", "create_event", "update_events", "delete_events", "find_free_time", "get_calendars",
 ] as const;
 
 type AgentToolName = typeof AGENT_TOOL_NAMES[number];
@@ -202,9 +206,11 @@ export function parseAgentToolContent(content: string): Record<string, unknown> 
 	catch { return null; }
 }
 
+const AGENT_PROPOSAL_ACTIONS: AgentActionProposal["action"][] = ["move_email", "move_emails", "mark_email_read", "discard_draft", "create_todos", "schedule_meeting"];
+
 export function agentActionProposal(content: string): AgentActionProposal | null {
 	const value = parseAgentToolContent(content);
-	return value && (value.action === "move_email" || value.action === "move_emails" || value.action === "mark_email_read" || value.action === "discard_draft") && (value.status === "pending_approval" || value.status === "processing" || value.status === "approved") ? value as AgentActionProposal : null;
+	return value && typeof value.action === "string" && AGENT_PROPOSAL_ACTIONS.includes(value.action as AgentActionProposal["action"]) && (value.status === "pending_approval" || value.status === "processing" || value.status === "approved") ? value as AgentActionProposal : null;
 }
 
 export function agentToolLabel(name: string | null | undefined, state: AgentMessage["toolState"], content: string, t: Translator): { label: string; description: string } {
@@ -218,4 +224,30 @@ export function agentToolLabel(name: string | null | undefined, state: AgentMess
 	if (name === "get_thread" && emails !== null) return { label: t("agent.tool.threadCount", { count: emails }), description };
 	if ((name === "move_emails" || name === "move_email") && emails !== null) return { label: t(result?.status === "approved" ? "agent.tool.movedCount" : "agent.tool.preparedCount", { count: emails }), description };
 	return { label: agentToolText(name, "completed", t)!, description };
+}
+
+/** History sections by last activity in the viewer's own day: today, yesterday, earlier. */
+export function groupAgentConversations(conversations: AgentConversation[], now = new Date()): { key: "today" | "yesterday" | "earlier"; items: AgentConversation[] }[] {
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+	const startOfYesterday = startOfToday - 86_400_000;
+	const groups = { today: [] as AgentConversation[], yesterday: [] as AgentConversation[], earlier: [] as AgentConversation[] };
+	for (const item of conversations) {
+		const at = typeof item.updatedAt === "number" ? item.updatedAt : item.updatedAt ? Date.parse(item.updatedAt) : NaN;
+		const key = !Number.isFinite(at) ? "earlier" : at >= startOfToday ? "today" : at >= startOfYesterday ? "yesterday" : "earlier";
+		groups[key].push(item);
+	}
+	return (["today", "yesterday", "earlier"] as const).filter((key) => groups[key].length).map((key) => ({ key, items: groups[key] }));
+}
+
+export function filterAgentConversations(conversations: AgentConversation[], query: string): AgentConversation[] {
+	const needle = query.trim().toLocaleLowerCase();
+	return needle ? conversations.filter((item) => item.title.toLocaleLowerCase().includes(needle)) : conversations;
+}
+
+/** A due date or meeting time in the viewer's locale and timezone. */
+export function formatAgentTime(value: string | null | undefined, locale: string): string {
+	const at = Date.parse(value ?? "");
+	if (!Number.isFinite(at)) return "";
+	try { return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(at); }
+	catch { return new Date(at).toLocaleString(); }
 }

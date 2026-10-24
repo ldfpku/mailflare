@@ -11,7 +11,13 @@ export const IM_ALL_STAFF_ROOM_NAME = "全员群";
 export const IM_ROOM_TYPE = { GROUP: 1, SINGLE: 2 } as const;
 export const IM_ROLE = { OWNER: 1, ADMIN: 2, MEMBER: 3 } as const;
 /** The subset of HuLa's MsgEnum this server stores. */
-export const IM_MSG_TYPE = { TEXT: 1, RECALL: 2, IMAGE: 3, FILE: 4, VOICE: 5, VIDEO: 6, EMOJI: 7, SYSTEM: 8 } as const;
+export const IM_MSG_TYPE = { TEXT: 1, RECALL: 2, IMAGE: 3, FILE: 4, VOICE: 5, VIDEO: 6, EMOJI: 7, SYSTEM: 8, NOTICE: 10, MAIL_CARD: 19 } as const;
+/** HuLa's member-change kinds (`ChangeTypeEnum`), pushed as `memberChange`. */
+export const IM_MEMBER_CHANGE = { JOIN: 1, REMOVE: 2, EXIT: 3 } as const;
+/** HuLa's session `operate`: what the "delete" entry of a session does for the viewer. */
+export const IM_SESSION_OPERATE = { DELETE_FRIEND: 0, DISSOLVE_GROUP: 1, EXIT_GROUP: 2 } as const;
+/** The `atUidList` entry that mentions everyone in a group; only its owner and admins may send it. */
+export const IM_AT_ALL_UID = "0";
 
 /** Message types whose body points at an uploaded chat file. */
 export const IM_MEDIA_TYPES: ReadonlySet<number> = new Set([IM_MSG_TYPE.IMAGE, IM_MSG_TYPE.FILE, IM_MSG_TYPE.VOICE, IM_MSG_TYPE.VIDEO, IM_MSG_TYPE.EMOJI]);
@@ -30,7 +36,6 @@ export interface ImUserRow {
 	id: string;
 	email: string;
 	name: string;
-	avatar_key: string | null;
 }
 
 export interface ImMessageRow {
@@ -172,6 +177,14 @@ export function messageText(row: Pick<ImMessageRow, "type" | "body">): string {
 		return typeof name === "string" && name ? `[文件] ${name}` : "[文件]";
 	}
 	if (MEDIA_LABELS[row.type]) return MEDIA_LABELS[row.type];
+	if (row.type === IM_MSG_TYPE.NOTICE) {
+		const content = body && typeof body === "object" ? (body as { content?: unknown }).content : null;
+		return typeof content === "string" && content ? `[群公告] ${content}` : "[群公告]";
+	}
+	if (row.type === IM_MSG_TYPE.MAIL_CARD) {
+		const subject = body && typeof body === "object" ? (body as { subject?: unknown }).subject : null;
+		return typeof subject === "string" && subject ? `[邮件] ${subject}` : "[邮件]";
+	}
 	if (body && typeof body === "object" && typeof (body as { content?: unknown }).content === "string") {
 		return stripHtml((body as { content: string }).content);
 	}
@@ -202,6 +215,16 @@ export function sessionPreview(options: {
 	const text = messageText(row);
 	if (row.type === IM_MSG_TYPE.SYSTEM || !isGroup) return text;
 	return `${senderName}:${text}`;
+}
+
+/** Longest search term the staff directory accepts; longer input is cut, not refused. */
+export const DIRECTORY_SEARCH_KEY_LIMIT = 40;
+/** Most people one directory search returns. */
+export const DIRECTORY_SEARCH_LIMIT = 50;
+
+/** The staff directory search term: trimmed, lower-cased (SQLite's `lower` only folds ASCII, as this does for Chinese). */
+export function normalizeDirectoryKey(key: unknown): string {
+	return typeof key === "string" ? key.trim().toLowerCase().slice(0, DIRECTORY_SEARCH_KEY_LIMIT) : "";
 }
 
 export function imUserName(user: Pick<ImUserRow, "name" | "email"> | null | undefined): string {
@@ -270,6 +293,21 @@ export function toImMessage(row: ImMessageRow, context: ImMessageResponseContext
 }
 
 export type ImMessageResponse = ReturnType<typeof toImMessage>;
+
+/** What a file message turns into once its file is deleted (see `deleteMessageFile`). */
+export function deletedFileNotice(deleterName: string, type: number, body: Record<string, unknown>): string {
+	const name = (value: unknown) => (typeof value === "string" && value.trim() ? `「${value.trim()}」` : "");
+	switch (type) {
+		case IM_MSG_TYPE.FILE:
+			return `${deleterName}删除了文件${name(body.fileName)}`;
+		case IM_MSG_TYPE.VIDEO:
+			return `${deleterName}删除了视频${name(body.filename)}`;
+		case IM_MSG_TYPE.VOICE:
+			return `${deleterName}删除了一条语音`;
+		default:
+			return `${deleterName}删除了一张图片`;
+	}
+}
 
 /** Names for a new group without one: the first few members, the way chat apps title an ad-hoc group. */
 export function defaultGroupName(names: string[]): string {

@@ -1,4 +1,5 @@
-import { getEmailAddress, joinEmailAddressList, parseEmailAddressParts, splitEmailAddressList } from "@/lib/email/address";
+import { formatEmailAddress, getEmailAddress, joinEmailAddressList, parseEmailAddressParts, splitEmailAddressList } from "@/lib/email/address";
+import type { DirectorySuggestion } from "./recipient-input-types";
 
 const EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 
@@ -31,4 +32,18 @@ export function headerToRecipients(value: string | null | undefined): string[] {
 export function getRecipientLabel(entry: string): string {
 	const parts = parseEmailAddressParts(entry);
 	return parts.name && parts.name !== parts.address ? parts.name : parts.address;
+}
+
+/** The text typed so far is worth a directory lookup: something other than a finished or pasted address list. */
+export function shouldSuggestRecipients(draft: string): boolean {
+	const term = draft.trim();
+	return term.length > 0 && !/[,;<>"]/.test(term);
+}
+
+/** Suggestions not already among the chips, as recipient entries with the colleague's name. */
+export function directorySuggestionEntries(people: DirectorySuggestion[], existing: string[]): { person: DirectorySuggestion; entry: string }[] {
+	const seen = new Set(existing.map((entry) => getEmailAddress(entry).toLowerCase()));
+	return people
+		.filter((person) => !seen.has(person.email.toLowerCase()))
+		.map((person) => ({ person, entry: formatEmailAddress(person.email, person.name) }));
 }

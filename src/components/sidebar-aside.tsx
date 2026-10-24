@@ -53,10 +53,10 @@ export function MobileMenuButton({ className }: { className?: string }) {
 	if (!mobile) return null;
 	return (
 		<>
-			<button type="button" data-mobile-menu onClick={toggle} aria-label={t("navigation.openMenu")} aria-expanded={mobileOpen} className={clsx("flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200 md:hidden", className)}>
+			<button type="button" data-mobile-menu onClick={toggle} aria-label={t("navigation.openMenu")} title={t("navigation.openMenu")} aria-expanded={mobileOpen} className={clsx("flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-200 md:hidden", className)}>
 				<Menu size={20} />
 			</button>
-			<Link href="/inbox" aria-label={t("navigation.inbox")} className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-neutral-200 md:hidden">
+			<Link href="/inbox" aria-label={t("navigation.inbox")} title={t("navigation.inbox")} className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-neutral-200 md:hidden">
 				<BrandIcon className="h-7 w-7" />
 			</Link>
 		</>

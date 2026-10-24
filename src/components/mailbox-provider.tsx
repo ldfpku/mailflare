@@ -20,6 +20,7 @@ import {
 } from "@/lib/auth/client";
 import { PROFILE_NAME_CHANGED_EVENT } from "@/lib/profile/name-client";
 import { PROFILE_AVATAR_CHANGED_EVENT } from "@/lib/profile/avatar-client";
+import { MAILBOX_SIGNATURES_CHANGED_EVENT, MAILBOX_SIGNATURES_CHANGED_KEY } from "@/lib/business-card/signature-client";
 import type { ProfileNameChangedDetail } from "@/lib/profile/types";
 
 export type MailboxOption = {
@@ -134,6 +135,36 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
 
 		window.addEventListener(PROFILE_AVATAR_CHANGED_EVENT, updatePersonalMailboxAvatars);
 		return () => window.removeEventListener(PROFILE_AVATAR_CHANGED_EVENT, updatePersonalMailboxAvatars);
+	}, []);
+
+	useEffect(() => {
+		// The card signature is written to mailboxes on the server, so the copies loaded at sign-in are stale.
+		function reloadSignatures() {
+			clearMailboxesCache();
+			fetchMailboxOptions(true)
+				.then((items) => {
+					const signatures = new Map(items.map((mailbox) => [mailbox.id, mailbox.signature ?? null]));
+					const withSignature = (mailbox: MailboxOption) => (
+						signatures.has(mailbox.id) && signatures.get(mailbox.id) !== (mailbox.signature ?? null)
+							? { ...mailbox, signature: signatures.get(mailbox.id) }
+							: mailbox
+					);
+					setMailboxes((current) => current.map(withSignature));
+					setSelectedMailboxState((mailbox) => (mailbox ? withSignature(mailbox) : mailbox));
+				})
+				.catch(() => {});
+		}
+
+		function reloadFromOtherTab(event: StorageEvent) {
+			if (event.key === MAILBOX_SIGNATURES_CHANGED_KEY) reloadSignatures();
+		}
+
+		window.addEventListener(MAILBOX_SIGNATURES_CHANGED_EVENT, reloadSignatures);
+		window.addEventListener("storage", reloadFromOtherTab);
+		return () => {
+			window.removeEventListener(MAILBOX_SIGNATURES_CHANGED_EVENT, reloadSignatures);
+			window.removeEventListener("storage", reloadFromOtherTab);
+		};
 	}, []);
 
 	const setSelectedMailbox = useCallback((mb: MailboxOption | null) => {
