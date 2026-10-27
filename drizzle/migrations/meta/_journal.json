@@ -505,6 +505,34 @@
       "when": 1792200015000,
       "tag": "0079_add_im_room_announcements",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "6",
+      "when": 1792850000000,
+      "tag": "0080_add_message_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "6",
+      "when": 1792853600000,
+      "tag": "0081_add_domain_tracking_hosts",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "6",
+      "when": 1792857200000,
+      "tag": "0082_add_follow_ups",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "6",
+      "when": 1792860800000,
+      "tag": "0083_add_spam_intelligence_settings",
+      "breakpoints": true
     }
   ]
 }
