@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { createUserAccountSchema } from "@/lib/validators";
-import { canManageUsers } from "@/lib/auth/admin";
 import { deleteAccounts } from "@/lib/accounts/deletion";
 import { createAccountResponse } from "./create";
 import { accountListItemFromUser, listAccountsForAdmin, requireTeamAdmin } from "./utils";
@@ -22,11 +21,7 @@ export async function POST(request: Request) {
 	if (!parsed.success) {
 		return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 	}
-	const actor = access.user!;
-	if (!canManageUsers(actor)) {
-		return NextResponse.json({ error: "You do not have permission to manage users" }, { status: 403 });
-	}
-	return createAccountResponse(access.env, actor.id, parsed.data);
+	return createAccountResponse(access.env, access.user!.id, parsed.data);
 }
 
 export async function DELETE(request: Request) {

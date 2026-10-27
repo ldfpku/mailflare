@@ -27,7 +27,7 @@ async function fetchAccounts(): Promise<AccountResponse> {
 export default function AccountsPage() {
 	const { t } = useLanguage();
 	const currentUser = useCurrentUser();
-	const canManage = !!currentUser && (currentUser.isPrimaryAdmin || currentUser.canManageUsers);
+	const canManage = currentUser?.role === "admin";
 	const canChooseRole = canManage;
 	const [accounts, setAccounts] = useState<Account[]>([]);
 	const [domains, setDomains] = useState<Domain[]>([]);

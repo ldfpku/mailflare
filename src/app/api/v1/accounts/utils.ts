@@ -4,7 +4,6 @@ import { getEnv } from "@/lib/cloudflare";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { authenticateAdminApiKey } from "@/lib/api/admin-auth";
-import { canManageUsers } from "@/lib/auth/admin";
 import { createUserAccountSchema } from "@/lib/validators";
 import { accountListItemFromUser } from "@/app/api/accounts/utils";
 import { createAccountResponse } from "@/app/api/accounts/create";
@@ -23,8 +22,5 @@ export async function POST(request: Request) {
 	if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 	const parsed = createUserAccountSchema.safeParse(await request.json().catch(() => null));
 	if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-	if (!canManageUsers(auth.user)) {
-		return NextResponse.json({ error: "You do not have permission to manage users" }, { status: 403 });
-	}
 	return createAccountResponse(env, auth.userId, parsed.data);
 }
