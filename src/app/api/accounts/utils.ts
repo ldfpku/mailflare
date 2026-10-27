@@ -8,6 +8,16 @@ import { getEnv } from "@/lib/cloudflare";
 
 type Db = ReturnType<typeof getDb>;
 
+/** Account creation always operates on the primary admin's domains. */
+export async function getPrimaryAdminId(db: Db) {
+	const [primaryAdmin] = await db
+		.select({ id: users.id })
+		.from(users)
+		.where(and(eq(users.role, "admin"), eq(users.isPrimaryAdmin, true)))
+		.limit(1);
+	return primaryAdmin?.id ?? null;
+}
+
 export function listAccountsForAdmin(db: Db) {
 	return db
 		.select({

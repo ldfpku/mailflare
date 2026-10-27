@@ -18,6 +18,7 @@ await build({
 			export { generateApiKey } from "./src/lib/api-keys.ts";
 			export { createUserAccountSchema } from "./src/lib/validators.ts";
 			export { POST as dashboardCreate } from "./src/app/api/accounts/route.ts";
+			export { GET as dashboardAccountDomains } from "./src/app/api/accounts/domains/route.ts";
 			export { POST as apiCreate } from "./src/app/api/v1/accounts/route.ts";
 			export { registerAdminMcpTools } from "./src/lib/mcp/admin-tools.ts";
 			export { getMailboxDomainAddresses } from "./src/lib/mailboxes/domain-addresses.ts";
@@ -39,7 +40,7 @@ await build({
 });
 const {
 	SqliteDatabase, applyMigrations, getDb, createSession, generateApiKey, createUserAccountSchema,
-	dashboardCreate, apiCreate, registerAdminMcpTools, getMailboxDomainAddresses, resolveInboundAddress, getAuthorizedSenderAddress,
+	dashboardCreate, dashboardAccountDomains, apiCreate, registerAdminMcpTools, getMailboxDomainAddresses, resolveInboundAddress, getAuthorizedSenderAddress,
 } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 const key = generateApiKey();
 
@@ -48,9 +49,9 @@ async function fixture(t, { rules = [], failAddress, slowAddress } = {}) {
 	t.after(() => database.db.close());
 	await applyMigrations(database, join(root, "drizzle/migrations"));
 	database.db.exec(`
-		INSERT INTO users (id, email, password_hash, name, role, is_primary_admin, created_at) VALUES
-			('admin', 'owner@one.test', 'hash', 'Owner', 'admin', 1, 1),
-			('other', 'owner@foreign.test', 'hash', 'Other', 'admin', 0, 1);
+		INSERT INTO users (id, email, password_hash, name, role, is_primary_admin, created_by_user_id, created_at) VALUES
+			('admin', 'owner@one.test', 'hash', 'Owner', 'admin', 1, NULL, 1),
+			('other', 'owner@foreign.test', 'hash', 'Other', 'admin', 0, 'admin', 1);
 		INSERT INTO domains (id, user_id, hostname, zone_id, status, created_at) VALUES
 			('one', 'admin', 'one.test', 'zone-one', 'active', 1),
 			('two', 'admin', 'two.test', 'zone-two', 'active', 1),
@@ -284,18 +285,32 @@ async function adminToken(f, kind) {
 	return otherKey.fullKey;
 }
 
+test("dashboard: every admin gets the primary admin domains for account creation", async (t) => {
+	const f = await fixture(t);
+	const token = await adminToken(f, "dashboard");
+	const response = await dashboardAccountDomains(new Request("https://mailflare.test/api/accounts/domains", {
+		headers: { Authorization: `Bearer ${token}` },
+	}));
+	assert.equal(response.status, 200);
+	const body = await response.json();
+	assert.deepEqual(body.domains.map((domain) => domain.id).sort(), ["one", "pending", "two"]);
+});
+
 for (const kind of ["dashboard", "api"]) {
 	for (const role of ["user", "admin"]) {
-		test(`${kind}: every admin can create ${role} accounts without a separate user management permission`, async (t) => {
+		test(`${kind}: every admin can create ${role} accounts on primary admin domains without a separate user management permission`, async (t) => {
 			const f = await fixture(t);
 			const token = await adminToken(f, kind);
-			const response = await f.post(kind, { domainId: "foreign", role, useAllDomains: false }, token);
+			const response = await f.post(kind, { domainId: "one", role, useAllDomains: false }, token);
 			assert.equal(response.status, 201);
-			assert.equal((await response.json()).account.role, role);
-			const account = f.database.db.prepare("SELECT role, is_primary_admin, created_by_user_id FROM users WHERE email = 'sam@foreign.test'").get();
+			const body = await response.json();
+			assert.equal(body.account.role, role);
+			assert.equal(body.account.email, "sam@one.test");
+			const account = f.database.db.prepare("SELECT role, is_primary_admin, created_by_user_id FROM users WHERE email = 'sam@one.test'").get();
 			assert.equal(account.role, role);
 			assert.equal(account.is_primary_admin, 0);
 			assert.equal(account.created_by_user_id, "other");
+			assert.equal(f.mailbox().domainId, "one");
 		});
 	}
 }

@@ -10,17 +10,19 @@ import { normalizeRecipientLocalPart } from "@/lib/email/recipient-address";
 import { newId } from "@/lib/ids";
 import { ensureMailboxDomainRouting } from "@/lib/mailboxes/domain-addresses";
 import type { CreateUserAccountInput } from "./types";
-import { accountListItemFromUser, getDomainForAdmin } from "./utils";
+import { accountListItemFromUser, getDomainForAdmin, getPrimaryAdminId } from "./utils";
 
 /** Shared by dashboard and admin API/MCP account creation. */
 export async function createAccountResponse(env: CloudflareEnv, adminUserId: string, input: CreateUserAccountInput) {
 	const db = getDb(env);
-	const primaryDomain = await getDomainForAdmin(db, adminUserId, input.domainId);
+	const domainOwnerId = await getPrimaryAdminId(db);
+	if (!domainOwnerId) return NextResponse.json({ error: "Primary administrator not found" }, { status: 500 });
+	const primaryDomain = await getDomainForAdmin(db, domainOwnerId, input.domainId);
 	if (!primaryDomain) return NextResponse.json({ error: "Domain not found" }, { status: 404 });
 	const username = input.username.toLowerCase().trim();
 	const email = `${username}@${primaryDomain.hostname}`;
 	const requested = [{ domainId: primaryDomain.id, localPart: username }, ...input.aliases];
-	const ownedDomains = await db.select().from(domains).where(eq(domains.userId, adminUserId));
+	const ownedDomains = await db.select().from(domains).where(eq(domains.userId, domainOwnerId));
 	const byId = new Map(ownedDomains.map((domain) => [domain.id, domain]));
 	const seen = new Set<string>();
 	for (const [index, address] of requested.entries()) {
@@ -39,7 +41,7 @@ export async function createAccountResponse(env: CloudflareEnv, adminUserId: str
 	const [registered] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
 	if (registered) return NextResponse.json({ error: "Email already registered" }, { status: 409 });
 	// A subquery avoids one bound parameter per selected domain.
-	const ownedDomainIds = db.select({ id: domains.id }).from(domains).where(eq(domains.userId, adminUserId));
+	const ownedDomainIds = db.select({ id: domains.id }).from(domains).where(eq(domains.userId, domainOwnerId));
 	const [existingMailboxes, existingAliases] = await Promise.all([
 		db.select({ domainId: mailboxes.domainId, localPart: mailboxes.localPart }).from(mailboxes).where(inArray(mailboxes.domainId, ownedDomainIds)),
 		db.select({ domainId: mailboxAliases.domainId, localPart: mailboxAliases.localPart }).from(mailboxAliases).where(inArray(mailboxAliases.domainId, ownedDomainIds)),
