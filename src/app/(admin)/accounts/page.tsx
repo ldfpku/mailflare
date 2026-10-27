@@ -28,7 +28,7 @@ export default function AccountsPage() {
 	const { t } = useLanguage();
 	const currentUser = useCurrentUser();
 	const canManage = !!currentUser && (currentUser.isPrimaryAdmin || currentUser.canManageUsers);
-	const canChooseRole = !!currentUser?.isPrimaryAdmin;
+	const canChooseRole = canManage;
 	const [accounts, setAccounts] = useState<Account[]>([]);
 	const [domains, setDomains] = useState<Domain[]>([]);
 	const [username, setUsername] = useState("");

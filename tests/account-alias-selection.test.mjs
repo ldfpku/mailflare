@@ -276,6 +276,39 @@ for (const separateDomains of [false, true]) {
 	});
 }
 
+async function adminToken(f, kind) {
+	if (kind === "dashboard") return createSession(f.env, "other");
+	const otherKey = generateApiKey();
+	f.database.db.prepare("INSERT INTO api_keys (id, user_id, name, prefix, key_hash, scopes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+		.run("other-key", "other", "Test", otherKey.prefix, otherKey.hash, '["accounts"]', 1);
+	return otherKey.fullKey;
+}
+
+for (const kind of ["dashboard", "api"]) {
+	test(`${kind}: admins with user management permission can create admin accounts`, async (t) => {
+		const f = await fixture(t);
+		f.database.db.exec("UPDATE users SET can_manage_users = 1 WHERE id = 'other'");
+		const token = await adminToken(f, kind);
+		const response = await f.post(kind, { domainId: "foreign", role: "admin", useAllDomains: false }, token);
+		assert.equal(response.status, 201);
+		assert.equal((await response.json()).account.role, "admin");
+		const account = f.database.db.prepare("SELECT role, is_primary_admin, created_by_user_id FROM users WHERE email = 'sam@foreign.test'").get();
+		assert.equal(account.role, "admin");
+		assert.equal(account.is_primary_admin, 0);
+		assert.equal(account.created_by_user_id, "other");
+	});
+
+	test(`${kind}: admins without user management permission cannot create accounts`, async (t) => {
+		const f = await fixture(t);
+		const token = await adminToken(f, kind);
+		for (const role of ["user", "admin"]) {
+			assert.equal((await f.post(kind, { domainId: "foreign", role }, token)).status, 403);
+		}
+		assert.equal(f.database.db.prepare("SELECT count(*) AS count FROM users").get().count, 2);
+		assert.equal(f.calls.length, 0);
+	});
+}
+
 test("the all-domain boolean rejects truthy strings", () => {
 	const input = { username: "sam", domainId: "one", password: "test-password" };
 	assert.equal(createUserAccountSchema.safeParse({ ...input, useAllDomains: "false" }).success, false);
