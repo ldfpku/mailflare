@@ -96,6 +96,8 @@ Remote migrations require the target account's `database_id` in your local `wran
 
 For an existing installation, apply `0084_add_im_display_name.sql` before deploying the version that uses it. It adds nullable chat-only display name and avatar fields to `users`; existing accounts keep their mailbox profile name and avatar until they choose chat-specific values. Backups without these columns remain restorable after the migration. Uploaded chat avatars are copied to independent `im-avatars/` objects so removing unsent chat files does not remove a current avatar.
 
+Before deploying the AI-consent update, apply `0085_pause_unconfirmed_ai_drafts.sql`. It turns off previously enabled automatic drafts so mailbox managers can review the recurring AI usage warning and opt back in; it does not delete accounts, mail, or drafts.
+
 ## Object storage (R2, Backblaze B2 or AWS S3)
 
 Raw mail, attachments, Drive files, avatars, branding icons, JMAP uploads and backups all live in one bucket. By default that is the `BUCKET` R2 binding in `wrangler.jsonc`. To use Backblaze B2 instead, set four Worker variables (as secrets, or in `.dev.vars` locally):

@@ -8,7 +8,7 @@ import { hasValidSessionMutationOrigin } from "@/lib/auth/origin";
 import { agentProviderErrorMessage } from "@/lib/agent/errors";
 import { getRequestTimeZone } from "@/lib/time/utils";
 
-const schema = z.object({ mailboxId: z.string().min(1), conversationId: z.string().nullish(), text: z.string().trim().min(1).max(4_000), timeZone: z.string().max(80).optional(), currentMessageId: z.string().max(100).nullish(), locale: z.string().max(20).nullish(), title: z.string().max(120).nullish() });
+const schema = z.object({ confirmed: z.literal(true), mailboxId: z.string().min(1), conversationId: z.string().nullish(), text: z.string().trim().min(1).max(4_000), timeZone: z.string().max(80).optional(), currentMessageId: z.string().max(100).nullish(), locale: z.string().max(20).nullish(), title: z.string().max(120).nullish() });
 
 export async function POST(request: Request) {
 	const env = getEnv();
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 	if (!hasValidSessionMutationOrigin(request)) return Response.json({ error: "Invalid origin" }, { status: 403 });
 	const raw = await readJsonBody(request, 8_000).catch(() => null);
 	const parsed = schema.safeParse(raw);
-	if (!parsed.success) return Response.json({ error: "请求无效" }, { status: 400 });
+	if (!parsed.success) return Response.json({ error: "请求无效，请确认使用 AI 后重试" }, { status: 400 });
 	// Per-minute limit plus the per-user and global daily caps; checked after validation so a malformed
 	// request does not use up the day's budget, and before anything is stored or sent to the model.
 	const limit = await checkAgentLimits(env, `chat:${user.id}`, `user:${user.id}`);

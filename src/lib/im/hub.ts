@@ -12,8 +12,7 @@ import { IM_WS_TICKET_STORAGE_PREFIX, IM_WS_TICKET_TTL_MS, staleImWsTickets } fr
  * an idle connection lets the object hibernate instead of waking every 10s.
  */
 export class ImUserHub extends DurableObject<CloudflareEnv> {
-	/** The last online write, so an offline write cannot land before it. */
-	private presenceWrite: Promise<unknown> = Promise.resolve();
+	private presenceWrite: Promise<void> = Promise.resolve();
 
 	constructor(ctx: DurableObjectState, env: CloudflareEnv) {
 		super(ctx, env);
@@ -43,8 +42,7 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 			};
 			server.serializeAttachment(attachment);
 			// The upgrade answers at once; the presence write must not hold up the client's handshake.
-			this.presenceWrite = setPresence(this.env, userId, true).catch(() => undefined);
-			this.ctx.waitUntil(this.presenceWrite);
+			this.ctx.waitUntil(this.updatePresence(userId));
 			return new Response(null, { status: 101, webSocket: client });
 		}
 
@@ -132,6 +130,16 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 		}
 	}
 
+	private updatePresence(userId: string, closing?: WebSocket): Promise<void> {
+		this.presenceWrite = this.presenceWrite.then(async () => {
+			const online = this.ctx.getWebSockets().some((socket) => socket !== closing && socket.readyState === WebSocket.OPEN);
+			await setPresence(this.env, userId, online);
+		}).catch((error) => {
+			console.error("[im-presence] Failed to update connection state:", error);
+		});
+		return this.presenceWrite;
+	}
+
 	async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
 		try {
 			socket.close(code, reason);
@@ -147,10 +155,7 @@ export class ImUserHub extends DurableObject<CloudflareEnv> {
 
 	/** Presence is per user: offline once the last of their clients has gone. */
 	private async markOfflineIfLast(closing: WebSocket): Promise<void> {
-		const open = this.ctx.getWebSockets().filter((socket) => socket !== closing && socket.readyState === WebSocket.OPEN);
-		if (open.length) return;
 		const userId = (closing.deserializeAttachment() as ImSocketAttachment | null)?.userId;
-		await this.presenceWrite;
-		if (userId) await setPresence(this.env, userId, false).catch(() => undefined);
+		if (userId) await this.updatePresence(userId, closing);
 	}
 }

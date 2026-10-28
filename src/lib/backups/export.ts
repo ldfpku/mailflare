@@ -108,6 +108,7 @@ export async function restoreDatabaseRecords(db: D1Database, content: ArrayBuffe
 	// tables in includedTables; only format 2 documents must cover every group.
 	if (document.includedTables && !groupsForDocumentVersion(document.version).every((group) => group.tables.some((table) => document.includedTables?.includes(table)))) throw new Error("This backup contains selected table groups only. Restore requires a backup that includes every table group.");
 	mergeLegacyMessageBodies(document);
+	for (const settings of document.tables.mailbox_agent_settings ?? []) settings.auto_draft_enabled = 0;
 	fillMissingBackupTables(document);
 	validateDatabaseBackup(document);
 	const sharedLinksTable = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'shared_attachment_links'").first<{ name: string }>();

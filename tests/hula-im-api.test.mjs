@@ -205,6 +205,21 @@ test("backups from before and after the chat nickname migration remain restorabl
 	});
 });
 
+test("the AI consent migration and backup restore pause automatic drafts without deleting data", async (t) => {
+	const { database, env } = await fixture(t);
+	database.db.prepare("INSERT INTO domains (id, user_id, hostname, zone_id, created_at) VALUES ('d1', 'u1', 'one.test', 'z', 1)").run();
+	database.db.prepare("INSERT INTO mailboxes (id, user_id, domain_id, local_part, created_at) VALUES ('m1', 'u1', 'd1', 'sam', 1)").run();
+	database.db.prepare("INSERT INTO mailbox_agent_settings (mailbox_id, auto_draft_enabled, daily_limit, updated_at) VALUES ('m1', 1, 7, 1)").run();
+	database.db.prepare("INSERT INTO messages (id, user_id, mailbox_id, direction, from_addr, to_addr, status, created_at) VALUES ('x1', 'u1', 'm1', 'inbound', 'a@b.test', 'sam@one.test', 'received', 1)").run();
+	const backup = await exportDatabaseRecords(env.DB);
+	database.db.exec(readFileSync(join(root, "drizzle", "migrations", "0085_pause_unconfirmed_ai_drafts.sql"), "utf8"));
+	assert.deepEqual(database.db.prepare("SELECT auto_draft_enabled, daily_limit FROM mailbox_agent_settings WHERE mailbox_id = 'm1'").get(), { auto_draft_enabled: 0, daily_limit: 7 });
+	await restoreDatabaseRecords(env.DB, backup.buffer);
+	assert.deepEqual(database.db.prepare("SELECT auto_draft_enabled, daily_limit FROM mailbox_agent_settings WHERE mailbox_id = 'm1'").get(), { auto_draft_enabled: 0, daily_limit: 7 });
+	assert.equal(database.db.prepare("SELECT count(*) AS count FROM users").get().count, 1);
+	assert.equal(database.db.prepare("SELECT count(*) AS count FROM messages").get().count, 1);
+});
+
 test("chat avatars persist presets and owned uploads without replacing the mail avatar", async (t) => {
 	const { database, env, call, raw, login, addUser, pushes, objects } = await fixture(t);
 	addUser("u2", "kim@one.test", "Kim");
@@ -488,6 +503,23 @@ test("the directory lists every other active account and the all-staff room foll
 	assert.equal((await call("DELETE", "im/room/group/member/exit", { token, body: { roomId: "1" } })).code, 400);
 	const people = (await call("POST", "im/user/getUserByIds", { token, body: { uidList: ["u2", "u3", "nobody"] } })).data;
 	assert.deepEqual(people.map((person) => person.uid), ["u2"]);
+});
+
+test("group counts use the same active users and presence as the member list", async (t) => {
+	const { database, call, login, addUser } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	addUser("u3", "lee@one.test", "Lee");
+	const { token } = (await login()).data;
+	const created = await call("POST", "im/room/group", { token, body: { uidList: ["u2", "u3"] } });
+	const roomId = created.data.roomId;
+	database.db.prepare("INSERT INTO im_presence (user_id, online, last_opt_time) VALUES ('u1', 1, 1), ('u2', 0, 1), ('u3', 1, 1)").run();
+	database.db.prepare("UPDATE users SET disabled = 1 WHERE id = 'u3'").run();
+	const members = (await call("GET", "im/room/group/listMember", { token, query: { roomId } })).data;
+	const detail = (await call("GET", "im/room/group/detail", { token, query: { id: roomId } })).data;
+	const group = (await call("GET", "im/room/group/list", { token })).data.find((item) => item.roomId === roomId);
+	assert.equal(detail.memberNum, members.length);
+	assert.equal(detail.onlineNum, members.filter((member) => member.activeStatus === 1).length);
+	assert.deepEqual({ memberNum: group.memberNum, onlineNum: group.onlineNum }, { memberNum: 2, onlineNum: 1 });
 });
 
 test("the directory search finds anyone by name, pinyin mailbox, department or title", async (t) => {

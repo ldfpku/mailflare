@@ -194,7 +194,7 @@ export async function requireGroupRole(env: Env, roomId: unknown, userId: string
 const SESSION_SELECT = `
 	SELECT r.id, r.type, r.hot_flag, r.name, r.avatar, r.active_time, r.created_at,
 		m.role, m.my_name, m.remark, m.top, m.hide, m.mute_notification, m.shield,
-		(SELECT COUNT(*) FROM im_room_members c WHERE c.room_id = r.id) AS member_count,
+		(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id WHERE c.room_id = r.id AND ${ACTIVE_USER}) AS member_count,
 		(SELECT COUNT(*) FROM im_messages x WHERE x.room_id = r.id AND x.id > m.last_read_msg_id AND x.from_uid <> m.user_id) AS unread_count,
 		lm.type AS lm_type, lm.body AS lm_body, lm.from_uid AS lm_from_uid, lm.recalled_by AS lm_recalled_by,
 		COALESCE(lu.im_display_name, lu.name) AS lm_sender_name, lu.email AS lm_sender_email,
@@ -960,7 +960,8 @@ async function pushMemberChange(env: Env, roomId: string, changeType: number, ch
 	const counts = await db(env)
 		.prepare(
 			`SELECT COUNT(*) AS total, SUM(CASE WHEN p.online = 1 THEN 1 ELSE 0 END) AS online
-			FROM im_room_members m LEFT JOIN im_presence p ON p.user_id = m.user_id WHERE m.room_id = ?`,
+			FROM im_room_members m JOIN users u ON u.id = m.user_id LEFT JOIN im_presence p ON p.user_id = m.user_id
+			WHERE m.room_id = ? AND ${ACTIVE_USER}`,
 		)
 		.bind(roomId)
 		.first<{ total: number; online: number | null }>();
@@ -1155,8 +1156,8 @@ export async function groupDetail(env: Env, userId: string, roomId: unknown, ori
 	const row = await db(env)
 		.prepare(
 			`SELECT r.id, r.name, r.avatar, m.my_name, m.remark,
-				(SELECT COUNT(*) FROM im_room_members c WHERE c.room_id = r.id) AS member_count,
-				(SELECT COUNT(*) FROM im_room_members c JOIN im_presence p ON p.user_id = c.user_id AND p.online = 1 WHERE c.room_id = r.id) AS online_count
+				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id WHERE c.room_id = r.id AND ${ACTIVE_USER}) AS member_count,
+				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id JOIN im_presence p ON p.user_id = c.user_id AND p.online = 1 WHERE c.room_id = r.id AND ${ACTIVE_USER}) AS online_count
 			FROM im_rooms r JOIN im_room_members m ON m.room_id = r.id AND m.user_id = ? WHERE r.id = ?`,
 		)
 		.bind(userId, member.room_id)
@@ -1182,8 +1183,8 @@ export async function listGroups(env: Env, userId: string, origin: string) {
 	const result = await db(env)
 		.prepare(
 			`SELECT r.id, r.name, r.avatar, m.remark, m.my_name, m.role,
-				(SELECT COUNT(*) FROM im_room_members c WHERE c.room_id = r.id) AS member_count,
-				(SELECT COUNT(*) FROM im_room_members c JOIN im_presence p ON p.user_id = c.user_id AND p.online = 1 WHERE c.room_id = r.id) AS online_count
+				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id WHERE c.room_id = r.id AND ${ACTIVE_USER}) AS member_count,
+				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id JOIN im_presence p ON p.user_id = c.user_id AND p.online = 1 WHERE c.room_id = r.id AND ${ACTIVE_USER}) AS online_count
 			FROM im_room_members m JOIN im_rooms r ON r.id = m.room_id
 			WHERE m.user_id = ? AND r.type = ? ORDER BY r.active_time DESC`,
 		)

@@ -5,6 +5,7 @@ import { getEnv } from "@/lib/cloudflare";
 import { getCurrentUser } from "@/lib/auth/cookies";
 import { getMailboxAccessLevel } from "@/lib/mailboxes/access";
 import { hasValidSessionMutationOrigin } from "@/lib/auth/origin";
+import { readJsonBody } from "@/lib/http/request";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -13,6 +14,8 @@ export async function POST(request: Request, { params }: Params) {
 	const user = await getCurrentUser(env, request);
 	if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 	if (!hasValidSessionMutationOrigin(request)) return Response.json({ error: "Invalid origin" }, { status: 403 });
+	const body = await readJsonBody<{ confirmed?: unknown }>(request, 1024).catch(() => null);
+	if (body?.confirmed !== true) return Response.json({ error: "Confirm AI use before retrying" }, { status: 400 });
 	const { id } = await params;
 	const db = getDb(env);
 	const [job] = await db.select().from(agentJobs).where(eq(agentJobs.id, id)).limit(1);

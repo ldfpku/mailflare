@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,14 @@ import { draftMessageTodo, fromDateTimeLocal, saveMessageTodo, toDateTimeLocal }
 
 /** "转为待办": Workers AI drafts a to-do from the mail, the reader edits it and saves it to 我的待办 in chat. */
 export function MailTodoDialog({ messageId, open, onOpenChange }: MailTodoDialogProps) {
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			{open && <MailTodoContent key={messageId} messageId={messageId} onOpenChange={onOpenChange} />}
+		</Dialog>
+	);
+}
+
+function MailTodoContent({ messageId, onOpenChange }: Pick<MailTodoDialogProps, "messageId" | "onOpenChange">) {
 	const { t } = useLanguage();
 	const [drafting, setDrafting] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -21,29 +29,27 @@ export function MailTodoDialog({ messageId, open, onOpenChange }: MailTodoDialog
 	const [notes, setNotes] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
+	const requestVersion = useRef(0);
 
-	useEffect(() => {
-		if (!open) return;
-		let cancelled = false;
-		setTitle("");
-		setDue("");
-		setNotes("");
+	useEffect(() => () => { requestVersion.current += 1; }, []);
+
+	async function handleDraft() {
+		if (drafting) return;
+		const version = ++requestVersion.current;
 		setError(null);
-		setNotice(null);
 		setDrafting(true);
-		draftMessageTodo(messageId)
-			.then((draft) => {
-				if (cancelled) return;
-				setTitle(draft.title);
-				setDue(toDateTimeLocal(draft.dueAt));
-				setNotes(draft.notes);
-			})
-			.catch((draftError) => !cancelled && setError(draftError instanceof Error && draftError.message ? draftError.message : t("mailTodo.draftFailed")))
-			.finally(() => !cancelled && setDrafting(false));
-		return () => {
-			cancelled = true;
-		};
-	}, [open, messageId, t]);
+		try {
+			const draft = await draftMessageTodo(messageId);
+			if (version !== requestVersion.current) return;
+			setTitle(draft.title);
+			setDue(toDateTimeLocal(draft.dueAt));
+			setNotes(draft.notes);
+		} catch (draftError) {
+			if (version === requestVersion.current) setError(draftError instanceof Error && draftError.message ? draftError.message : t("mailTodo.draftFailed"));
+		} finally {
+			if (version === requestVersion.current) setDrafting(false);
+		}
+	}
 
 	async function handleSave() {
 		setSaving(true);
@@ -60,11 +66,10 @@ export function MailTodoDialog({ messageId, open, onOpenChange }: MailTodoDialog
 	}
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-h-[calc(100vh-4rem)] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>{t("mailTodo.title")}</DialogTitle>
-					<DialogDescription>{t("mailTodo.description")}</DialogDescription>
+					<DialogDescription>{t("mailTodo.aiWarning")}</DialogDescription>
 				</DialogHeader>
 				{drafting ? (
 					<p role="status" className="flex items-center gap-2 py-6 text-sm text-neutral-500">
@@ -89,10 +94,12 @@ export function MailTodoDialog({ messageId, open, onOpenChange }: MailTodoDialog
 				)}
 				{error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 				{notice && <p role="status" className="text-sm text-green-700">{notice}</p>}
+				<Button type="button" variant="outline" onClick={() => void handleDraft()} disabled={drafting || saving || notice !== null}>
+					<Sparkles className="h-4 w-4" /> {t("mailTodo.confirmDraft")}
+				</Button>
 				<Button type="button" onClick={() => void handleSave()} disabled={drafting || saving || !title.trim() || notice !== null}>
 					{saving ? t("mailTodo.saving") : t("mailTodo.save")}
 				</Button>
 			</DialogContent>
-		</Dialog>
 	);
 }

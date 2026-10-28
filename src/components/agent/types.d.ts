@@ -24,11 +24,11 @@ export type AgentTurn = { id: string; user: AgentMessage | null; assistant: Agen
 export type AgentDraftAction = { messageId: string; draftId: string; revision: number; scheduledAt: string | null };
 export type AgentTurnProps = { turn: AgentTurn; draftActions: AgentDraftAction[]; onOpenDraft: (draftId: string) => void; onApproveDraft: (draftId: string, revision: number) => void; onApproveAction: (item: AgentMessage, options?: AgentApproveOptions) => void; approvingId: string | null };
 
-export type AgentSettings = { mailboxId: string; enabled: boolean; modelId: string | null; autoDraftEnabled: boolean; reviewerUserId: string | null; instructions: string; dailyLimit: number };
+export type AgentSettings = { mailboxId: string; enabled: boolean; modelId: string | null; autoDraftEnabled: boolean; autoDraftConfirmed: boolean; reviewerUserId: string | null; instructions: string; dailyLimit: number };
 
 export type AgentPanelProps = { open: boolean; fullSize: boolean; onClose: () => void; onToggleFullSize: () => void };
 export type QueuedAgentMessage = { id: string; text: string };
-export type QueuedAgentMessagesProps = { messages: QueuedAgentMessage[]; running: boolean; onRemove: (id: string) => void; onEdit: (id: string, text: string) => void; onSteer: (id: string) => void };
+export type QueuedAgentMessagesProps = { messages: QueuedAgentMessage[]; running: boolean; onRemove: (id: string) => void; onEdit: (id: string, text: string) => boolean; onSteer: (id: string) => void };
 
 export type AgentPanelView = "chat" | "history" | "settings";
 export type AgentConversation = { id: string; title: string; updatedAt?: string | number | null };

@@ -361,8 +361,16 @@ const userRoutes: ImRouteTable<ImContext> = {
 	},
 	"GET im/drive/items": async ({ env, user, url }) => imOk(await listDriveForPicker(env, user.id, url.searchParams.get("parentId"))),
 	// Workers AI: a summary only the caller sees (nothing is stored or posted), and a to-do drafted from a mail.
-	"POST im/ai/summary": async ({ request, env, user }) => imOk(await summarizeRoom(env, user, await readBody(request))),
-	"POST im/ai/mailTodo": async ({ request, env, user }) => imOk(await draftMailTodo(env, user, await readBody(request))),
+	"POST im/ai/summary": async ({ request, env, user }) => {
+		const body = await readBody(request);
+		if (body.confirmed !== true) return imFail(IM_CODE.BAD_REQUEST, "请升级客户端并确认使用 AI 后重试");
+		return imOk(await summarizeRoom(env, user, body));
+	},
+	"POST im/ai/mailTodo": async ({ request, env, user }) => {
+		const body = await readBody(request);
+		if (body.confirmed !== true) return imFail(IM_CODE.BAD_REQUEST, "请升级客户端并确认使用 AI 后重试");
+		return imOk(await draftMailTodo(env, user, body));
+	},
 	// "我的待办" (see todos.ts).
 	"GET im/todo/list": async ({ env, user, url }) => imOk(await listTodos(env, user.id, url.searchParams.get("status"))),
 	"POST im/todo": async ({ request, env, user }) => imOk(await createTodo(env, user, await readBody(request))),

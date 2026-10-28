@@ -62,19 +62,30 @@ async function fixture(t, ai = fakeAi(() => "概要：测试摘要。")) {
 	const env = { DB: database, MAILFLARE_RUNTIME: "node", APP_URL: "https://mail.one.test", IM_HUB, AI: ai?.binding };
 	globalThis.__mailflareNodeEnv = env;
 	t.after(() => { delete globalThis.__mailflareNodeEnv; });
-	const call = async (method, path, { body, token, query } = {}) => {
+	const call = async (method, path, { body, token, query, confirmAi = true } = {}) => {
 		const url = new URL(`https://mail.one.test/api/im/${path}`);
 		for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value);
+		const requestBody = confirmAi && (path === "im/ai/summary" || path === "im/ai/mailTodo") ? { ...body, confirmed: true } : body;
 		const response = await handleImRequest(new Request(url, {
 			method,
 			headers: { "Content-Type": "application/json", ...(token ? { token } : {}) },
-			body: body === undefined ? undefined : JSON.stringify(body),
+			body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
 		}), env);
 		return response.json();
 	};
 	const login = async (account) => (await call("POST", "oauth/anyTenant/login", { body: { account, password: "right-password" } })).data.token;
 	return { database, env, call, login, ai };
 }
+
+test("unconfirmed AI requests are rejected before invoking the model", async (t) => {
+	const { call, login, ai } = await fixture(t);
+	const token = await login("sam@one.test");
+	const summary = await call("POST", "im/ai/summary", { token, body: { roomId: "1" }, confirmAi: false });
+	const todo = await call("POST", "im/ai/mailTodo", { token, body: { mailId: "x1", confirmed: false }, confirmAi: false });
+	assert.equal(summary.code, 400);
+	assert.equal(todo.code, 400);
+	assert.equal(ai.calls.length, 0);
+});
 
 test("chat text keeps only what the model may read: file and image names, never their contents or links", () => {
 	assert.equal(mod.imMessageText({ type: 1, body: JSON.stringify({ content: "明天 <b>9 点</b>开会" }), recalled_at: null }), "明天 9 点开会");

@@ -19,6 +19,9 @@ await build({
 			export { requestAgentSend } from "./src/lib/agent/approvals/utils.ts";
 			export { createSession } from "./src/lib/auth/session.ts";
 			export { POST as postAgentChat } from "./src/app/api/agent/chat/route.ts";
+			export { PUT as putAgentSettings } from "./src/app/api/agent/settings/route.ts";
+			export { POST as postAgentRetry } from "./src/app/api/agent/jobs/[id]/retry/route.ts";
+			export { POST as postMailTodo } from "./src/app/api/messages/[messageId]/todo/route.ts";
 		`,
 		resolveDir: root,
 		sourcefile: "agent-test-entry.ts",
@@ -32,11 +35,12 @@ await build({
 	packages: "external",
 	alias: {
 		"next/headers": "next/headers.js",
+		"next/server": "next/server.js",
 		"cloudflare:workers": "./server/runtime/cloudflare-workers.ts",
 	},
 	logLevel: "silent",
 });
-const { SqliteDatabase, applyMigrations, createAgentChatStream, runEmailTool, requestAgentSend, createSession, postAgentChat } = await import(pathToFileURL(join(bundleDirectory, "entry.mjs")).href);
+const { SqliteDatabase, applyMigrations, createAgentChatStream, runEmailTool, requestAgentSend, createSession, postAgentChat, putAgentSettings, postAgentRetry, postMailTodo } = await import(pathToFileURL(join(bundleDirectory, "entry.mjs")).href);
 after(() => rmSync(bundleDirectory, { recursive: true, force: true }));
 
 test("assistant reads mail, creates an editable reply draft, and invokes tools through chat", async (t) => {
@@ -121,7 +125,19 @@ test("assistant reads mail, creates an editable reply draft, and invokes tools t
 	t.after(() => { delete globalThis.__mailflareNodeEnv; });
 	const token = await createSession(env, "user-1");
 	const request = new Request("http://mailflare.local/api/agent/chat", { method: "POST", headers: { Origin: "http://mailflare.local", Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ mailboxId: "mailbox-1", text: "What arrived in my inbox?" }) });
-	const routeResponse = await postAgentChat(request);
+	const rejected = await postAgentChat(request.clone());
+	assert.equal(rejected.status, 400, "AI chat requires explicit confirmation");
+	const jsonRequest = (url, body, method = "POST") => new Request(url, { method, headers: request.headers, body: JSON.stringify(body) });
+	const settings = { mailboxId: "mailbox-1", enabled: true, modelId: "test-model", autoDraftEnabled: true, reviewerUserId: "user-1", instructions: "", dailyLimit: 5 };
+	assert.equal((await putAgentSettings(jsonRequest("http://mailflare.local/api/agent/settings", settings, "PUT"))).status, 400);
+	assert.equal((await putAgentSettings(jsonRequest("http://mailflare.local/api/agent/settings", { ...settings, autoDraftConfirmed: true }, "PUT"))).status, 200);
+	assert.equal(database.db.prepare("SELECT auto_draft_enabled FROM mailbox_agent_settings WHERE mailbox_id = 'mailbox-1'").get().auto_draft_enabled, 1);
+	assert.equal((await putAgentSettings(jsonRequest("http://mailflare.local/api/agent/settings", { ...settings, autoDraftEnabled: false }, "PUT"))).status, 200);
+	const mailTodo = jsonRequest("http://mailflare.local/api/messages/email-1/todo", { draft: true });
+	assert.equal((await postMailTodo(mailTodo, { params: Promise.resolve({ messageId: "email-1" }) })).status, 400);
+	const retry = jsonRequest("http://mailflare.local/api/agent/jobs/job-1/retry", {});
+	assert.equal((await postAgentRetry(retry, { params: Promise.resolve({ id: "job-1" }) })).status, 400);
+	const routeResponse = await postAgentChat(new Request(request, { body: JSON.stringify({ confirmed: true, mailboxId: "mailbox-1", text: "What arrived in my inbox?" }) }));
 	assert.equal(routeResponse.status, 200);
 	const routeEvents = (await routeResponse.text()).trim().split("\n").map((line) => JSON.parse(line));
 	assert.ok(routeEvents.some((event) => event.type === "tool" && event.name === "list_emails" && event.state === "complete"));

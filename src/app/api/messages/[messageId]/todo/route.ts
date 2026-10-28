@@ -27,7 +27,10 @@ export async function POST(request: Request, { params }: MailTodoRouteParams) {
 		return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 	}
 	try {
-		if (body.draft === true) return NextResponse.json({ draft: await draftMailTodo(env, user, { mailId: messageId }) });
+		if (body.draft === true) {
+			if (body.confirmed !== true) return NextResponse.json({ error: "Confirm AI use before generating a draft" }, { status: 400 });
+			return NextResponse.json({ draft: await draftMailTodo(env, user, { mailId: messageId }) });
+		}
 		return NextResponse.json({ todo: await createTodo(env, user, { title: body.title, notes: body.notes, dueAt: body.dueAt, mailId: messageId }) });
 	} catch (todoError) {
 		if (todoError instanceof ImChatError) return NextResponse.json({ error: todoError.message }, { status: todoError.status });

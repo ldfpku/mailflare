@@ -344,7 +344,7 @@ export async function draftMessageTodo(messageId: string): Promise<MailTodoDraft
 	const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/todo`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ draft: true }),
+		body: JSON.stringify({ draft: true, confirmed: true }),
 	});
 	const data = (await response.json().catch(() => ({}))) as { draft?: MailTodoDraft; error?: string };
 	if (!response.ok || !data.draft) throw new Error(data.error || "Could not draft a to-do");

@@ -227,7 +227,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		setError(null);
 		setMessages((current) => [...current, { id: userMessageId, role: "user", content: text, createdAt: new Date(startedAt).toISOString() }, { id: assistantMessageId, role: "assistant", content: "", pending: true }]);
 		try {
-			const response = await authFetch("/api/agent/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mailboxId, ...(selectedConversationRef.current ? { conversationId: selectedConversationRef.current } : {}), ...(openEmailIdRef.current ? { currentMessageId: openEmailIdRef.current } : {}), ...(title && !selectedConversationRef.current ? { title } : {}), text, timeZone: getUserTimeZone(), locale }), signal: controller.signal });
+			const response = await authFetch("/api/agent/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true, mailboxId, ...(selectedConversationRef.current ? { conversationId: selectedConversationRef.current } : {}), ...(openEmailIdRef.current ? { currentMessageId: openEmailIdRef.current } : {}), ...(title && !selectedConversationRef.current ? { title } : {}), text, timeZone: getUserTimeZone(), locale }), signal: controller.signal });
 			if (!response.ok) {
 				const failure = (await response.json().catch(() => ({}))) as AgentErrorResponse;
 				throw new Error(failure.reason ? t(AGENT_LIMIT_MESSAGE_KEYS[failure.reason]) : failure.error || t("agent.panel.unavailable"));
@@ -279,6 +279,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 
 	function submitMessage(text: string, title?: string) {
 		if (!mailboxId || !text.trim() || !settings || !providerConfigured || loadingConversation) return;
+		if (!window.confirm(t("agent.panel.confirmAi"))) return;
 		setInput("");
 		if (runningRef.current || queuedMessagesRef.current.length) {
 			queuedMessagesRef.current = enqueueAgentMessage(queuedMessagesRef.current, text);
@@ -370,7 +371,8 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 	}
 
 	async function retryJob(id: string) {
-		const response = await authFetch(`/api/agent/jobs/${id}/retry`, { method: "POST" });
+		if (!window.confirm(t("agent.panel.confirmAi"))) return;
+		const response = await authFetch(`/api/agent/jobs/${id}/retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true }) });
 		if (response.ok) await refresh();
 		else setError(((await response.json()) as AgentErrorResponse).error || t("agent.panel.retryFailed"));
 	}
@@ -429,7 +431,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 					{jobs.filter((job) => job.status === "completed" && job.draftId).slice(0, 5).map((job) => <div key={job.id} className="rounded-2xl border border-neutral-200 bg-white p-3"><p>{t("agent.panel.autoDraftReady")}</p><div className="mt-2 flex gap-3 text-blue-700"><button type="button" onClick={() => openDraftComposer(job.draftId!)}>{t("agent.panel.openDraft")}</button><button type="button" disabled={busy} onClick={() => submitMessage(t("agent.panel.regeneratePrompt", { id: job.sourceMessageId }))}>{t("agent.panel.regenerate")}</button><button type="button" className="text-red-600" onClick={() => void discardJobDraft(job.draftId!)}>{t("agent.panel.discard")}</button></div></div>)}
 				</div>
 			</div>
-			<QueuedAgentMessages messages={queuedMessages} running={busy} onRemove={(id) => { queuedMessagesRef.current = removeQueuedAgentMessage(queuedMessagesRef.current, id); setQueuedMessages(queuedMessagesRef.current); }} onEdit={(id, text) => { queuedMessagesRef.current = editQueuedAgentMessage(queuedMessagesRef.current, id, text); setQueuedMessages(queuedMessagesRef.current); }} onSteer={(id) => { queuedMessagesRef.current = steerQueuedAgentMessage(queuedMessagesRef.current, id); setQueuedMessages(queuedMessagesRef.current); if (runningRef.current) abort.current?.abort(); else { const [next, ...remaining] = queuedMessagesRef.current; if (next) { queuedMessagesRef.current = remaining; setQueuedMessages(remaining); void send(next.text, next); } } }} />
+			<QueuedAgentMessages messages={queuedMessages} running={busy} onRemove={(id) => { queuedMessagesRef.current = removeQueuedAgentMessage(queuedMessagesRef.current, id); setQueuedMessages(queuedMessagesRef.current); }} onEdit={(id, text) => { if (!window.confirm(t("agent.panel.confirmAi"))) return false; queuedMessagesRef.current = editQueuedAgentMessage(queuedMessagesRef.current, id, text); setQueuedMessages(queuedMessagesRef.current); return true; }} onSteer={(id) => { queuedMessagesRef.current = steerQueuedAgentMessage(queuedMessagesRef.current, id); setQueuedMessages(queuedMessagesRef.current); if (runningRef.current) abort.current?.abort(); else { const [next, ...remaining] = queuedMessagesRef.current; if (next) { queuedMessagesRef.current = remaining; setQueuedMessages(remaining); void send(next.text, next); } } }} />
 			{busy && activeTool && <div role="status" aria-live="polite" className="mx-auto flex w-full max-w-3xl items-center gap-2 px-5 py-2 text-sm text-neutral-500"><LoaderCircle size={14} className="shrink-0 animate-spin" aria-hidden="true" /><span>{activeAgentToolLabel(activeTool.toolName, t)}</span></div>}
 			{messages.length > 0 && !loadingConversation && <div className="agent-task-chips mx-auto flex w-full max-w-3xl gap-1.5 overflow-x-auto px-3 pb-1.5" role="toolbar" aria-label={t("agent.panel.quickTasks")}>{quickTasks.map((task) => { const Icon = task.icon; return <button key={task.id} type="button" className="inline-flex shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-700 hover:border-blue-300 hover:text-blue-700 disabled:opacity-50" disabled={tasksDisabled} onClick={() => runQuickTask(task)}><Icon size={12} aria-hidden="true" />{t(`agent.task.${task.id}.label`)}</button>; })}</div>}
 			{openEmailId && <div className="mx-auto flex w-full max-w-3xl px-4 pb-1.5">
@@ -447,7 +449,7 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 			{settings && <>
 				<label className="block">{t("agent.panel.reviewer")}<select className="mt-2 w-full rounded-xl border border-neutral-200 bg-white p-2 outline-none focus:border-blue-400" value={settings.reviewerUserId ?? ""} disabled={!canManage} onChange={(event) => setSettings({ ...settings, reviewerUserId: event.target.value })}>{reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name} ({reviewer.email})</option>)}</select></label>
 				<label className="block">{t("agent.panel.model")}<select className="mt-2 w-full rounded-xl border border-neutral-200 bg-white p-2 outline-none focus:border-blue-400" value={settings.modelId ?? ""} disabled={!canManage || !availableModels.length} onChange={(event) => setSettings({ ...settings, modelId: event.target.value })}>{!availableModels.length && <option value="">{t("agent.panel.noModels")}</option>}{availableModels.map((model) => <option key={model} value={model}>{model}</option>)}</select></label>
-				<div className="flex items-center justify-between gap-3"><span>{t("agent.panel.autoDraft")}</span><Switch checked={settings.autoDraftEnabled} disabled={!canManage || autoReplyEnabled} onCheckedChange={(checked) => setSettings({ ...settings, autoDraftEnabled: checked })} aria-label={t("agent.panel.autoDraft")} /></div>
+				<div className="flex items-center justify-between gap-3"><span>{t("agent.panel.autoDraft")}</span><Switch checked={settings.autoDraftEnabled} disabled={!canManage || autoReplyEnabled} onCheckedChange={(checked) => { if (checked && !window.confirm(t("agent.panel.confirmAutoAi"))) return; setSettings({ ...settings, autoDraftEnabled: checked, autoDraftConfirmed: checked }); }} aria-label={t("agent.panel.autoDraft")} /></div>
 				{autoReplyEnabled && <p className="text-amber-700">{t("agent.panel.disableOoo")}</p>}
 				<label className="block">{t("agent.panel.instructions")}<textarea className="mt-2 min-h-32 w-full rounded-xl border border-neutral-200 p-2 outline-none focus:border-blue-400" value={settings.instructions} disabled={!canManage} onChange={(event) => setSettings({ ...settings, instructions: event.target.value })} /></label>
 				<label className="block">{t("agent.panel.dailyLimit")}<input className="mt-2 w-full rounded-xl border border-neutral-200 p-2 outline-none focus:border-blue-400" type="number" min="1" max="100" value={settings.dailyLimit} disabled={!canManage} onChange={(event) => setSettings({ ...settings, dailyLimit: Number(event.target.value) })} /></label>

@@ -97,3 +97,54 @@ test("a socket upgrade without a legacy-token mark needs a ticket", async () => 
 	assert.equal((await upgrade({})).status, 401);
 	assert.equal((await upgrade({ "X-Mailflare-Im-Auth": "ticket", "X-Mailflare-Im-Ticket": "c".repeat(48) })).status, 401);
 });
+
+test("presence writes stay ordered when a user reconnects during the last disconnect", async () => {
+	let sockets = [];
+	let releaseFirst;
+	const firstWrite = new Promise((resolve) => { releaseFirst = resolve; });
+	const writes = [];
+	const DB = {
+		prepare: () => ({
+			bind: (uid, online) => ({
+				run: async () => {
+					if (!writes.length) {
+						writes.push({ uid, online, finished: false });
+						await firstWrite;
+						writes[0].finished = true;
+					} else writes.push({ uid, online, finished: true });
+				},
+			}),
+		}),
+	};
+	const ctx = { setWebSocketAutoResponse() {}, getWebSockets: () => sockets };
+	const object = new ImUserHub(ctx, { DB });
+	const socket = () => ({ readyState: WebSocket.OPEN, deserializeAttachment: () => ({ userId: "u1" }) });
+	const oldSocket = socket();
+	sockets = [oldSocket];
+	const online = object.updatePresence("u1");
+	await Promise.resolve();
+	sockets = [];
+	const disconnect = object.markOfflineIfLast(oldSocket);
+	const newSocket = socket();
+	sockets = [newSocket];
+	const reconnect = object.updatePresence("u1");
+	releaseFirst();
+	await Promise.all([online, disconnect, reconnect]);
+	assert.deepEqual(writes.map((entry) => entry.online), [1, 1, 1]);
+	assert.ok(writes.every((entry) => entry.finished));
+	sockets = [];
+	await object.markOfflineIfLast(newSocket);
+	assert.equal(writes.at(-1).online, 0);
+});
+
+test("closing one of multiple devices does not mark the user offline", async () => {
+	const writes = [];
+	const DB = { prepare: () => ({ bind: (_uid, online) => ({ run: async () => void writes.push(online) }) }) };
+	const socket = () => ({ readyState: WebSocket.OPEN, deserializeAttachment: () => ({ userId: "u1" }) });
+	const first = socket();
+	const second = socket();
+	const ctx = { setWebSocketAutoResponse() {}, getWebSockets: () => [first, second] };
+	const object = new ImUserHub(ctx, { DB });
+	await object.markOfflineIfLast(first);
+	assert.deepEqual(writes, [1]);
+});

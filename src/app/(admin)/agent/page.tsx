@@ -97,6 +97,7 @@ export default function AdminAgentPage() {
 			<CardContent className="flex items-center justify-between gap-4 p-0">
 				<div><p className="font-medium text-neutral-900">{t("agentAdmin.enable")}</p><p className="mt-1 text-sm text-neutral-500">{t("agentAdmin.enableHint")}</p></div>
 				<Switch checked={assistantEnabled} disabled={!loaded || enabledSaving} onCheckedChange={(checked) => {
+					if (checked && !window.confirm(t("agent.panel.confirmAutoAi"))) return;
 					setEnabledSaving(true);
 					setEnabledStatus(null);
 					void saveAgentEnabled(checked).then((data) => { setAssistantEnabled(data.assistantEnabled); saveAssistantAvailability(data.assistantEnabled); }).catch((error) => setEnabledStatus(error instanceof Error ? error.message : t("agentAdmin.availabilityFailed"))).finally(() => setEnabledSaving(false));
