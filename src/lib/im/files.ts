@@ -281,10 +281,10 @@ export async function createImFileFromObject(
 }
 
 /** The stored object behind an uploaded chat file. */
-export async function findUploadedImFile(env: Env, id: string): Promise<{ objectKey: string; fileName: string; contentType: string; size: number } | null> {
+export async function findUploadedImFile(env: Env, id: string): Promise<{ objectKey: string; fileName: string; contentType: string; size: number; uploaderId: string } | null> {
 	const file = await findFile(env, id);
 	if (!file?.uploaded_at || file.size === null) return null;
-	return { objectKey: file.object_key, fileName: file.file_name, contentType: file.content_type, size: file.size };
+	return { objectKey: file.object_key, fileName: file.file_name, contentType: file.content_type, size: file.size, uploaderId: file.uploader_id };
 }
 
 /** Matches a stored message body that points at the chat file `id` (a bound parameter or a column). */

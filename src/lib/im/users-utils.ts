@@ -12,6 +12,8 @@ export interface ImUserSource {
 	id: string;
 	email: string;
 	name: string;
+	imDisplayName?: string | null;
+	imAvatar?: string | null;
 	role: "admin" | "user";
 	avatarKey: string | null;
 }
@@ -22,9 +24,9 @@ export function toImUserInfo(user: ImUserSource, origin: string) {
 		uid: user.id,
 		account: user.email,
 		email: user.email,
-		name: user.name,
+		name: user.imDisplayName || user.name,
 		avatar: imAvatarUrl(user, origin),
-		modifyNameChance: 0,
+		modifyNameChance: null,
 		sex: 1,
 		power: user.role === "admin" ? 1 : 0,
 		itemIds: [] as string[],
@@ -36,14 +38,24 @@ export function toImUserInfo(user: ImUserSource, origin: string) {
 }
 
 /**
- * HuLa renders avatars in plain `<img>` tags that cannot carry the token
- * header, so `/api/im/avatar/<uid>` serves a user's own avatar without
- * authentication, the way a mail client shows a sender's picture. Without an
- * upload it serves a generated one (`default-avatar-utils.ts`), so every
- * account has a URL.
+ * HuLa renders avatars in plain `<img>` tags without a token header. Presets
+ * resolve locally; uploaded chat and existing mail avatars use a public,
+ * versioned-or-revalidated image endpoint.
  */
-export function imAvatarUrl(user: Pick<ImUserSource, "id">, origin: string): string {
-	return `${origin}/api/im/avatar/${encodeURIComponent(user.id)}`;
+export function defaultImAvatarForUser(uid: string): string {
+	let hash = 2166136261;
+	for (let index = 0; index < uid.length; index++) hash = Math.imul(hash ^ uid.charCodeAt(index), 16777619);
+	return String(((hash >>> 0) % 22) + 1).padStart(3, "0");
+}
+
+export function imAvatarUrl(user: Pick<ImUserSource, "id" | "imAvatar"> & { avatarKey?: string | null }, origin: string): string {
+	const avatar = user.imAvatar;
+	if (avatar && /^preset:(00[1-9]|01[0-9]|02[0-2])$/.test(avatar)) return avatar.slice(7);
+	const url = `${origin}/api/im/avatar/${encodeURIComponent(user.id)}`;
+	if (!avatar) return user.avatarKey === null || user.avatarKey === "" ? defaultImAvatarForUser(user.id) : url;
+	const match = /^im-avatars\/([a-f0-9]{32})$/.exec(avatar);
+	if (!match) throw new Error("Invalid stored chat avatar");
+	return `${url}?v=${match[1]}`;
 }
 
 /** A group's own picture, or the generated one for its room id. */

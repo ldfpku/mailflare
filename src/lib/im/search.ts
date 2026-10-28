@@ -29,8 +29,12 @@ interface ChatHitRow extends ImMessageRow {
 	peer_id: string | null;
 	peer_name: string | null;
 	peer_email: string | null;
+	peer_avatar: string | null;
+	peer_avatar_key: string | null;
 	sender_name: string | null;
 	sender_email: string | null;
+	sender_avatar: string | null;
+	sender_avatar_key: string | null;
 }
 
 export interface ImSearchSection<T> {
@@ -80,8 +84,8 @@ async function searchChat(env: Env, userId: string, params: ImSearchParams, orig
 		env.DB.prepare(
 			`SELECT x.id, x.room_id, x.from_uid, x.type, x.body, x.reply_msg_id, x.recalled_by, x.recalled_at, x.created_at,
 				r.type AS room_type, r.name AS room_name, r.avatar AS room_avatar,
-				peer.id AS peer_id, peer.name AS peer_name, peer.email AS peer_email,
-				u.name AS sender_name, u.email AS sender_email
+				peer.id AS peer_id, COALESCE(peer.im_display_name, peer.name) AS peer_name, peer.email AS peer_email, peer.im_avatar AS peer_avatar, peer.avatar_key AS peer_avatar_key,
+				COALESCE(u.im_display_name, u.name) AS sender_name, u.email AS sender_email, u.im_avatar AS sender_avatar, u.avatar_key AS sender_avatar_key
 			${from}
 			JOIN im_rooms r ON r.id = x.room_id
 			LEFT JOIN im_room_members pm ON r.type = ${IM_ROOM_TYPE.SINGLE} AND pm.room_id = r.id AND pm.user_id <> m.user_id
@@ -96,7 +100,7 @@ async function searchChat(env: Env, userId: string, params: ImSearchParams, orig
 
 	const list = rows.map((row) => {
 		const isGroup = row.room_type === IM_ROOM_TYPE.GROUP;
-		const peer = row.peer_id ? { id: row.peer_id, name: row.peer_name ?? "", email: row.peer_email ?? "" } : null;
+		const peer = row.peer_id ? { id: row.peer_id, name: row.peer_name ?? "", email: row.peer_email ?? "", imAvatar: row.peer_avatar, avatarKey: row.peer_avatar_key } : null;
 		const sender = row.sender_email === null ? null : { name: row.sender_name ?? "", email: row.sender_email };
 		return {
 			msgId: String(row.id),
@@ -108,7 +112,7 @@ async function searchChat(env: Env, userId: string, params: ImSearchParams, orig
 			roomAvatar: isGroup ? imRoomAvatarUrl({ id: row.room_id, avatar: row.room_avatar }, origin) : peer ? imAvatarUrl(peer, origin) : "",
 			fromUid: row.from_uid,
 			fromName: imUserName(sender),
-			fromAvatar: sender ? imAvatarUrl({ id: row.from_uid }, origin) : "",
+			fromAvatar: sender ? imAvatarUrl({ id: row.from_uid, imAvatar: row.sender_avatar, avatarKey: row.sender_avatar_key }, origin) : "",
 			type: row.type,
 			text: searchExcerpt(messageText(row), query.highlights),
 			sendTime: row.created_at,

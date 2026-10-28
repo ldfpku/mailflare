@@ -12,7 +12,8 @@ import { defaultAvatarResponse, defaultGroupAvatarSvg, defaultPersonAvatarSvg } 
 import { IM_CODE, IM_MFA_REQUIRED_MESSAGE, imFail, imOk } from "./response";
 import { issueImTokens, resolveImAccessToken, resolveImSocketToken, revokeImPair, rotateImRefreshToken, type ImUser } from "./tokens";
 import { IM_WS_TICKET_TTL_MS, formatImWsTicket } from "./ws-ticket-utils";
-import { IM_USER_STATES, toImUserInfo } from "./users-utils";
+import { IM_USER_STATES, imAvatarUrl, toImUserInfo } from "./users-utils";
+import { imFileIdFromUrl, randomHex } from "./files-utils";
 import { findImRoute, imApiPath, type ImRouteTable } from "./handler-utils";
 import {
 	createGroup,
@@ -50,6 +51,7 @@ import {
 	completeImMultipartUpload,
 	createImUpload,
 	deleteUnsentImFiles,
+	findUploadedImFile,
 	listUnsentImFiles,
 	preflightImFile,
 	receiveImUpload,
@@ -129,6 +131,64 @@ const userRoutes: ImRouteTable<ImContext> = {
 	"GET im/mail/sso": async ({ env, user, url, origin }) => imOk(await createMailSsoLink(env, user.id, origin, url.searchParams.get("next"))),
 	"GET im/mail/unread": async ({ env, user }) => imOk({ count: await countUnreadMail(env, user.id) }),
 	"GET im/user/userInfo": ({ user, origin }) => imOk(toImUserInfo(user, origin)),
+	"PUT im/user/info": async ({ request, env, user }) => {
+		const body = await readBody(request);
+		if (Object.keys(body).some((key) => key !== "name")) throw new ImChatError(400, "目前仅支持修改聊天昵称");
+		if (typeof body.name !== "string") throw new ImChatError(400, "昵称不能为空");
+		const name = body.name.trim();
+		if (!name || name.length > 200 || [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(name)].length > 8) {
+			throw new ImChatError(400, "昵称须为 1 至 8 个字符");
+		}
+		const recipients = await profileRecipients(env, user.id);
+		const updated = await env.DB.prepare("UPDATE users SET im_display_name = ? WHERE id = ? AND disabled = 0 AND deleted_at IS NULL")
+			.bind(name, user.id).run();
+		if (!updated.meta?.changes) throw new ImChatError(403, "账号已停用或不存在");
+		await notifyProfileChange(env, recipients, user.id, { name });
+		return imOk(true);
+	},
+	"POST im/user/avatar": async ({ request, env, user, origin }) => {
+		const { avatar } = await readBody(request);
+		if (typeof avatar !== "string") throw new ImChatError(400, "头像地址无效");
+		const recipients = await profileRecipients(env, user.id);
+		let storedAvatar: string;
+		let copiedKey: string | null = null;
+		if (/^(00[1-9]|01[0-9]|02[0-2])$/.test(avatar)) {
+			storedAvatar = `preset:${avatar}`;
+		} else {
+			const id = imFileIdFromUrl(avatar, origin);
+			const file = id ? await findUploadedImFile(env, id) : null;
+			if (!file || file.uploaderId !== user.id) throw new ImChatError(400, "头像文件不存在或不属于当前用户");
+			if (!["image/jpeg", "image/png", "image/webp"].includes(file.contentType) || file.size <= 0 || file.size > 1024 * 1024) {
+				throw new ImChatError(400, "头像须为不超过 1 MB 的 JPG、PNG 或 WebP 图片");
+			}
+			const object = await env.BUCKET.get(file.objectKey);
+			if (!object || object.size !== file.size) throw new ImChatError(400, "头像文件不存在或不完整");
+			const bytes = new Uint8Array(await object.arrayBuffer());
+			if (bytes.byteLength !== file.size || !hasAvatarImageSignature(bytes, file.contentType)) {
+				throw new ImChatError(400, "头像图片格式无效");
+			}
+			copiedKey = `im-avatars/${randomHex(16)}`;
+			try {
+				const copied = await env.BUCKET.put(copiedKey, bytes, { httpMetadata: { contentType: file.contentType } });
+				if (!copied || copied.size !== file.size) throw new ImChatError(400, "头像文件复制不完整");
+			} catch (error) {
+				await cleanupUncommittedAvatar(env, copiedKey);
+				throw error;
+			}
+			storedAvatar = copiedKey;
+		}
+		try {
+			const updated = await env.DB.prepare("UPDATE users SET im_avatar = ? WHERE id = ? AND disabled = 0 AND deleted_at IS NULL")
+				.bind(storedAvatar, user.id).run();
+			if (!updated.meta?.changes) throw new ImChatError(403, "账号已停用或不存在");
+		} catch (error) {
+			if (copiedKey) await cleanupUncommittedAvatar(env, copiedKey);
+			throw error;
+		}
+		const savedAvatar = imAvatarUrl({ id: user.id, imAvatar: storedAvatar }, origin);
+		await notifyProfileChange(env, recipients, user.id, { avatar: savedAvatar });
+		return imOk({ avatar: savedAvatar });
+	},
 	"GET im/user/state/list": () => imOk(IM_USER_STATES),
 	"GET im/user/emoji/list": () => imOk([]),
 	"GET im/user/badges": () => imOk([]),
@@ -477,12 +537,59 @@ async function initConfig({ env }: PublicContext): Promise<Response> {
 	});
 }
 
+async function profileRecipients(env: CloudflareEnv, userId: string): Promise<string[]> {
+	const result = await env.DB.prepare(
+		"SELECT DISTINCT other.user_id FROM im_room_members mine JOIN im_room_members other ON other.room_id = mine.room_id WHERE mine.user_id = ?",
+	).bind(userId).all<{ user_id: string }>();
+	return [userId, ...result.results.map((row) => row.user_id)];
+}
+
+function hasAvatarImageSignature(bytes: Uint8Array, contentType: string): boolean {
+	if (contentType === "image/png") {
+		return [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte);
+	}
+	if (contentType === "image/jpeg") {
+		return bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+	}
+	return contentType === "image/webp" && bytes.length >= 12 &&
+		[82, 73, 70, 70, 87, 69, 66, 80].every((byte, index) => bytes[index < 4 ? index : index + 4] === byte);
+}
+
+async function notifyProfileChange(env: CloudflareEnv, recipients: string[], uid: string, change: { name?: string; avatar?: string }): Promise<void> {
+	await notifyImUsers(env, recipients, { type: "userProfileChange", data: { uid, ...change } });
+}
+
+async function cleanupUncommittedAvatar(env: CloudflareEnv, key: string): Promise<void> {
+	try {
+		await env.BUCKET.delete(key);
+	} catch (error) {
+		console.error("Failed to clean up an uncommitted chat avatar:", error);
+	}
+}
+
 async function avatar({ request, env }: PublicContext, params: Record<string, string>): Promise<Response> {
 	const [user] = await getDb(env)
-		.select({ avatarKey: users.avatarKey, disabled: users.disabled })
+		.select({ avatarKey: users.avatarKey, imAvatar: users.imAvatar, disabled: users.disabled })
 		.from(users)
 		.where(eq(users.id, params.uid))
 		.limit(1);
+	if (user && !user.disabled) {
+		const url = imAvatarUrl({ id: params.uid, imAvatar: user.imAvatar, avatarKey: user.avatarKey }, new URL(request.url).origin);
+		if (/^(00[1-9]|01[0-9]|02[0-2])$/.test(url)) {
+			return new Response(null, { status: 302, headers: {
+				Location: new URL(`/im/avatar/${url}.webp`, request.url).toString(),
+				"Cache-Control": "private, no-cache",
+			} });
+		}
+		if (user.imAvatar) {
+			const requestedVersion = new URL(request.url).searchParams.get("v");
+			const version = user.imAvatar.slice("im-avatars/".length);
+			if (requestedVersion !== null && requestedVersion !== version) {
+				return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+			}
+			return getAvatarImageResponse(request, env.BUCKET, user.imAvatar);
+		}
+	}
 	if (user?.avatarKey && !user.disabled) return getAvatarImageResponse(request, env.BUCKET, user.avatarKey);
 	return defaultAvatarResponse(request, defaultPersonAvatarSvg(params.uid), params.uid);
 }

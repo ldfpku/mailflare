@@ -3,7 +3,7 @@ import * as notionists from "@dicebear/notionists";
 import * as shapes from "@dicebear/shapes";
 
 /**
- * Accounts and groups without an uploaded picture get a generated one from
+ * Unknown accounts and groups without an uploaded picture get a generated one from
  * DiceBear's open avatar sets, drawn here rather than fetched from its API:
  * Notionists (by Zoish, CC0 1.0) for people and Shapes (CC0 1.0) in the SMJ
  * blues for groups. The seed is the account or room id, so a person looks the

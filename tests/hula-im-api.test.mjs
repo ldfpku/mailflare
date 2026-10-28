@@ -22,6 +22,8 @@ await build({
 			export { listShareTargets, shareMailToChats, postRoomMailCard } from "./src/lib/im/mail-share.ts";
 			export { countUnreadMail } from "./src/lib/im/mail.ts";
 			export { listDriveGroupFolders, listDriveGroupFiles, serveRoomFileForDrive } from "./src/lib/im/room-files.ts";
+			export { exportDatabaseRecords, restoreDatabaseRecords } from "./src/lib/backups/export.ts";
+			export { defaultImAvatarForUser } from "./src/lib/im/users-utils.ts";
 		`,
 		resolveDir: root,
 		sourcefile: "hula-im-test-entry.ts",
@@ -40,6 +42,8 @@ const {
 	SqliteDatabase, applyMigrations, hashPassword, createSession, deleteUserSessions, handleImRequest,
 	resolveImSocketToken, findImRoute, imApiPath, parseImPairId, imPairSessionIds, listShareTargets, shareMailToChats,
 	postRoomMailCard, countUnreadMail, listDriveGroupFolders, listDriveGroupFiles, serveRoomFileForDrive,
+	exportDatabaseRecords, restoreDatabaseRecords,
+	defaultImAvatarForUser,
 } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 
 async function fixture(t) {
@@ -69,7 +73,14 @@ async function fixture(t) {
 			const stored = objects.get(key);
 			if (!stored) return null;
 			const { offset = 0, length = stored.bytes.byteLength - offset } = options?.range ?? {};
-			return { body: new Response(stored.bytes.slice(offset, offset + length)).body, size: stored.bytes.byteLength };
+			const bytes = stored.bytes.slice(offset, offset + length);
+			return {
+				body: new Response(bytes).body,
+				arrayBuffer: async () => bytes.buffer,
+				size: stored.bytes.byteLength,
+				httpMetadata: { contentType: stored.contentType },
+				httpEtag: `"${key}"`,
+			};
 		},
 		delete: async (key) => void objects.delete(key),
 		createMultipartUpload: async (key, options) => {
@@ -137,8 +148,197 @@ test("signs in with the mailflare email and password and answers in HuLa's envel
 	assert.equal(me.code, 200);
 	assert.deepEqual(
 		{ uid: me.data.uid, account: me.data.account, name: me.data.name, avatar: me.data.avatar, userStateId: me.data.userStateId },
-		{ uid: "u1", account: "sam@one.test", name: "Sam", avatar: "https://mail.one.test/api/im/avatar/u1", userStateId: "1" },
+		{ uid: "u1", account: "sam@one.test", name: "Sam", avatar: "006", userStateId: "1" },
 	);
+});
+
+test("chat nickname can be changed repeatedly without changing the mailbox profile", async (t) => {
+	const { database, call, login, addUser, pushes } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	const { token } = (await login()).data;
+	const other = (await login("kim@one.test")).data.token;
+	await call("GET", "im/chat/contact/list", { token });
+	pushes.length = 0;
+	assert.equal((await call("GET", "im/user/userInfo", { token })).data.modifyNameChance, null);
+	assert.equal((await call("PUT", "im/user/info", { token, body: { name: "刘老师" } })).code, 200);
+	assert.equal((await call("PUT", "im/user/info", { token, body: { name: "张老师" } })).code, 200);
+	assert.deepEqual(
+		pushes.filter((push) => push.type === "userProfileChange" && push.data.name === "张老师").map((push) => push.userId).sort(),
+		["u1", "u2"],
+	);
+	assert.equal((await call("GET", "im/user/userInfo", { token })).data.name, "张老师");
+	assert.deepEqual(database.db.prepare("SELECT name, im_display_name FROM users WHERE id = 'u1'").get(), {
+		name: "Sam", im_display_name: "张老师",
+	});
+	assert.equal((await call("POST", "im/user/getUserByIds", { token: other, body: { uidList: ["u1"] } })).data[0].name, "张老师");
+	assert.equal((await call("GET", "im/user/friend/search", { token: other, query: { key: "张老师" } })).data[0].uid, "u1");
+	const room = (await call("GET", "im/chat/contact/detail/friend", { token: other, query: { id: "u1", roomType: "2" } })).data;
+	assert.equal(room.name, "张老师");
+	const sent = await call("POST", "im/chat/msg", { token, body: { id: "name-check", roomId: room.roomId, msgType: 1, body: { content: "你好" } } });
+	assert.equal(sent.data.fromUser.username, "张老师");
+	const sync = (await call("POST", "im/chat/msg/list", { token: other })).data;
+	assert.equal(sync[0].fromUser.username, "张老师");
+	assert.equal((await call("PUT", "im/user/info", { token, body: { name: " " } })).code, 400);
+	assert.equal((await call("PUT", "im/user/info", { token, body: { name: "123456789" } })).code, 400);
+	assert.equal((await call("PUT", "im/user/info", { token, body: { name: "Changed", uid: "u2" } })).code, 400);
+	assert.equal((await call("PUT", "im/user/info", { body: { name: "Changed" } })).code, 401);
+	assert.equal((await call("GET", "im/user/userInfo", { token: other })).data.name, "Kim");
+});
+
+test("backups from before and after the chat nickname migration remain restorable", async (t) => {
+	const { database, env } = await fixture(t);
+	database.db.exec("ALTER TABLE users DROP COLUMN im_display_name");
+	database.db.exec("ALTER TABLE users DROP COLUMN im_avatar");
+	const oldBackup = await exportDatabaseRecords(env.DB);
+	database.db.exec("ALTER TABLE users ADD COLUMN im_display_name TEXT");
+	database.db.exec("ALTER TABLE users ADD COLUMN im_avatar TEXT");
+	await restoreDatabaseRecords(env.DB, oldBackup.buffer);
+	assert.deepEqual(database.db.prepare("SELECT name, im_display_name FROM users WHERE id = 'u1'").get(), {
+		name: "Sam", im_display_name: null,
+	});
+	database.db.prepare("UPDATE users SET im_display_name = '小山', im_avatar = 'preset:022' WHERE id = 'u1'").run();
+	const newBackup = await exportDatabaseRecords(env.DB);
+	database.db.prepare("UPDATE users SET im_display_name = 'changed', im_avatar = NULL WHERE id = 'u1'").run();
+	await restoreDatabaseRecords(env.DB, newBackup.buffer);
+	assert.deepEqual(database.db.prepare("SELECT im_display_name, im_avatar FROM users WHERE id = 'u1'").get(), {
+		im_display_name: "小山", im_avatar: "preset:022",
+	});
+});
+
+test("chat avatars persist presets and owned uploads without replacing the mail avatar", async (t) => {
+	const { database, env, call, raw, login, addUser, pushes, objects } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	database.db.prepare("UPDATE users SET avatar_key = 'mail-avatar/existing' WHERE id = 'u1'").run();
+	objects.set("mail-avatar/existing", { bytes: new Uint8Array([7, 8, 9]), contentType: "image/png" });
+	const sam = (await login()).data.token;
+	const kim = (await login("kim@one.test")).data.token;
+	await call("GET", "im/chat/contact/list", { token: sam });
+	pushes.length = 0;
+	for (let index = 1; index <= 22; index++) {
+		const code = String(index).padStart(3, "0");
+		const preset = await call("POST", "im/user/avatar", { token: sam, body: { avatar: code } });
+		assert.equal(preset.code, 200);
+		assert.equal(preset.data.avatar, code);
+	}
+	assert.equal((await call("GET", "im/user/userInfo", { token: sam })).data.avatar, "022");
+	assert.equal((await call("POST", "im/user/getUserByIds", { token: kim, body: { uidList: ["u1"] } })).data[0].avatar, "022");
+	const groupMembers = (await call("GET", "im/room/group/listMember", { token: kim, query: { roomId: "1" } })).data;
+	assert.equal(groupMembers.find((member) => member.uid === "u1").avatar, "022");
+	const room = (await call("GET", "im/chat/contact/detail/friend", { token: kim, query: { id: "u1", roomType: "2" } })).data;
+	assert.equal(room.avatar, "022");
+	const sent = await call("POST", "im/chat/msg", { token: sam, body: { id: "avatar-test", roomId: room.roomId, msgType: 1, body: { content: "头像验证消息" } } });
+	assert.equal(sent.data.fromUser.avatar, "022");
+	const search = (await call("GET", "im/search", { token: kim, query: { keyword: "头像验证", scope: "chat" } })).data.chat.list[0];
+	assert.equal(search.fromAvatar, "022");
+	assert.equal(search.roomAvatar, "022");
+	assert.equal((await raw("GET", "https://mail.one.test/api/im/avatar/u1")).headers.get("Location"), "https://mail.one.test/im/avatar/022.webp");
+	assert.deepEqual(
+		pushes.filter((push) => push.type === "userProfileChange" && push.data.avatar === "022").map((push) => push.userId).sort(),
+		["u1", "u2"],
+	);
+	assert.equal(database.db.prepare("SELECT avatar_key FROM users WHERE id = 'u1'").get().avatar_key, "mail-avatar/existing");
+	assert.equal((await call("POST", "im/user/avatar", { token: sam, body: { avatar: "023" } })).code, 400);
+	assert.equal((await call("POST", "im/user/avatar", { token: sam, body: { avatar: "https://evil.test/image.png" } })).code, 400);
+	assert.equal((await call("POST", "im/user/avatar", { body: { avatar: "001" } })).code, 401);
+
+	const png = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZsAAAAASUVORK5CYII=", "base64"));
+	const upload = (await call("GET", "system/anyTenant/ossToken", { token: sam, query: { fileName: "avatar.png" } })).data;
+	assert.equal((await call("POST", "im/user/avatar", { token: sam, body: { avatar: upload.downloadUrl } })).code, 400, "an unfinished upload is refused");
+	assert.equal((await raw("PUT", upload.uploadUrl, { body: png, headers: { "Content-Length": String(png.length) } })).status, 200);
+	assert.equal((await call("POST", "im/user/avatar", { token: kim, body: { avatar: upload.downloadUrl } })).code, 400, "another user's file is refused");
+	const saved = await call("POST", "im/user/avatar", { token: sam, body: { avatar: upload.downloadUrl } });
+	assert.equal(saved.code, 200);
+	assert.match(saved.data.avatar, /^https:\/\/mail\.one\.test\/api\/im\/avatar\/u1\?v=[a-f0-9]{32}$/);
+	assert.equal((await call("GET", "im/user/userInfo", { token: sam })).data.avatar, saved.data.avatar);
+	assert.equal((await call("POST", "im/user/getUserByIds", { token: kim, body: { uidList: ["u1"] } })).data[0].avatar, saved.data.avatar);
+	const updatedSearch = (await call("GET", "im/search", { token: kim, query: { keyword: "头像验证", scope: "chat" } })).data.chat.list[0];
+	assert.equal(updatedSearch.fromAvatar, saved.data.avatar);
+	assert.equal(updatedSearch.roomAvatar, saved.data.avatar);
+	const image = await raw("GET", saved.data.avatar);
+	assert.equal(image.headers.get("Content-Type"), "image/png");
+	assert.deepEqual(new Uint8Array(await image.arrayBuffer()), png);
+	const stale = await raw("GET", "https://mail.one.test/api/im/avatar/u1?v=stale");
+	assert.equal(stale.status, 404);
+	assert.equal(stale.headers.get("Cache-Control"), "no-store");
+
+	database.db.prepare("UPDATE im_files SET created_at = 1").run();
+	const unsent = (await call("GET", "im/chat/files/unsent", { token: sam })).data;
+	assert.equal(unsent.length, 1);
+	await call("POST", "im/chat/files/unsent/delete", { token: sam, body: { ids: [unsent[0].id] } });
+	assert.equal(objects.size, 2, "cleanup keeps both the mail and independent chat avatar objects");
+	assert.ok(objects.has("mail-avatar/existing"));
+	assert.deepEqual(new Uint8Array(await (await raw("GET", saved.data.avatar)).arrayBuffer()), png);
+	assert.equal((await login()).data.uid, "u1");
+	assert.equal((await call("GET", "im/user/userInfo", { token: (await login()).data.token })).data.avatar, saved.data.avatar);
+	const backup = await exportDatabaseRecords(env.DB);
+	await call("POST", "im/user/avatar", { token: sam, body: { avatar: "001" } });
+	await restoreDatabaseRecords(env.DB, backup.buffer);
+	assert.deepEqual(new Uint8Array(await (await raw("GET", saved.data.avatar)).arrayBuffer()), png, "restored avatar still references its retained object");
+});
+
+test("chat avatars reject invalid content and failed storage without changing the saved avatar", async (t) => {
+	const { env, call, raw, login, objects } = await fixture(t);
+	const token = (await login()).data.token;
+	await call("POST", "im/user/avatar", { token, body: { avatar: "001" } });
+	const invalid = (await call("GET", "system/anyTenant/ossToken", { token, query: { fileName: "avatar.png" } })).data;
+	await raw("PUT", invalid.uploadUrl, { body: new Uint8Array([1, 2, 3]), headers: { "Content-Length": "3" } });
+	assert.equal((await call("POST", "im/user/avatar", { token, body: { avatar: invalid.downloadUrl } })).code, 400);
+	assert.equal((await call("GET", "im/user/userInfo", { token })).data.avatar, "001");
+	const valid = (await call("GET", "system/anyTenant/ossToken", { token, query: { fileName: "avatar.png" } })).data;
+	const png = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZsAAAAASUVORK5CYII=", "base64"));
+	await raw("PUT", valid.uploadUrl, { body: png, headers: { "Content-Length": String(png.length) } });
+	const put = env.BUCKET.put;
+	env.BUCKET.put = async (key, ...args) => {
+		if (key.startsWith("im-avatars/")) throw new Error("storage unavailable");
+		return put(key, ...args);
+	};
+	await assert.rejects(() => call("POST", "im/user/avatar", { token, body: { avatar: valid.downloadUrl } }), /storage unavailable/);
+	assert.equal((await call("GET", "im/user/userInfo", { token })).data.avatar, "001");
+	assert.equal([...objects.keys()].filter((key) => key.startsWith("im-avatars/")).length, 0);
+	env.BUCKET.put = put;
+	const prepare = env.DB.prepare.bind(env.DB);
+	env.DB.prepare = (sql) => sql.startsWith("UPDATE users SET im_avatar")
+		? { bind: () => ({ run: async () => { throw new Error("database unavailable"); } }) }
+		: prepare(sql);
+	try {
+		await assert.rejects(() => call("POST", "im/user/avatar", { token, body: { avatar: valid.downloadUrl } }), /database unavailable/);
+	} finally {
+		env.DB.prepare = prepare;
+	}
+	assert.equal((await call("GET", "im/user/userInfo", { token })).data.avatar, "001");
+	assert.equal([...objects.keys()].filter((key) => key.startsWith("im-avatars/")).length, 0, "failed writes clean up the new object");
+});
+
+test("chat avatar size limit accepts 1 MB and rejects one byte more", async (t) => {
+	const { call, raw, login } = await fixture(t);
+	const token = (await login()).data.token;
+	const base = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZsAAAAASUVORK5CYII=", "base64");
+	const pngOfSize = (size) => {
+		const length = size - base.length - 12;
+		const chunk = Buffer.alloc(length + 12, 0x78);
+		chunk.writeUInt32BE(length, 0);
+		chunk.write("tEXt", 4);
+		chunk.write("p\0", 8);
+		let crc = 0xffffffff;
+		for (const byte of chunk.subarray(4, 8 + length)) {
+			crc ^= byte;
+			for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+		}
+		chunk.writeUInt32BE((crc ^ 0xffffffff) >>> 0, 8 + length);
+		return Buffer.concat([base.subarray(0, -12), chunk, base.subarray(-12)]);
+	};
+	const upload = async (size) => {
+		const file = (await call("GET", "system/anyTenant/ossToken", { token, query: { fileName: "avatar.png" } })).data;
+		const bytes = pngOfSize(size);
+		assert.equal(bytes.length, size);
+		assert.equal((await raw("PUT", file.uploadUrl, { body: bytes, headers: { "Content-Length": String(size) } })).status, 200);
+		return call("POST", "im/user/avatar", { token, body: { avatar: file.downloadUrl } });
+	};
+	const maximum = await upload(1024 * 1024);
+	assert.equal(maximum.code, 200);
+	const tooLarge = await upload(1024 * 1024 + 1);
+	assert.equal(tooLarge.code, 400);
+	assert.equal((await call("GET", "im/user/userInfo", { token })).data.avatar, maximum.data.avatar);
 });
 
 test("trades the access token for a one-time socket ticket, like the socket used to accept it", async (t) => {
@@ -155,19 +355,26 @@ test("trades the access token for a one-time socket ticket, like the socket used
 	assert.equal((await call("POST", "ws/ticket")).code, 401);
 });
 
-test("people and groups without a picture get a generated avatar, the same one every time", async (t) => {
-	const { raw } = await fixture(t);
+test("people without a picture get a stable preset and groups keep their generated avatar", async (t) => {
+	const { raw, addUser, call, login, database } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	database.db.prepare("UPDATE users SET avatar_key = '' WHERE id = 'u2'").run();
+	assert.deepEqual(
+		["u1", "u2", "user-123", "用户😀"].map(defaultImAvatarForUser),
+		["006", "007", "022", "002"],
+	);
+	assert.equal(new Set(Array.from({ length: 1000 }, (_, index) => defaultImAvatarForUser(`user-${index}`))).size, 22);
+	const token = (await login()).data.token;
+	const people = (await call("POST", "im/user/getUserByIds", { token, body: { uidList: ["u1", "u2"] } })).data;
+	assert.deepEqual(people.map(({ uid, avatar }) => [uid, avatar]).sort(), [["u1", "006"], ["u2", "007"]]);
 	const first = await raw("GET", "https://mail.one.test/api/im/avatar/u1");
-	assert.equal(first.status, 200);
-	assert.equal(first.headers.get("Content-Type"), "image/svg+xml");
-	const svg = await first.text();
-	assert.match(svg, /^<svg[\s\S]*<\/svg>$/);
-	assert.doesNotMatch(svg, /(?:href|src)\s*=\s*["']https?:|url\(\s*["']?https?:/, "nothing to load from elsewhere");
-	assert.match(svg, /CC0 1\.0/, "keeps the set's license attribution");
-	assert.equal(await (await raw("GET", "https://mail.one.test/api/im/avatar/u1")).text(), svg);
-	assert.notEqual(await (await raw("GET", "https://mail.one.test/api/im/avatar/u2")).text(), svg, "seeded by the account id");
-	const cached = await raw("GET", "https://mail.one.test/api/im/avatar/u1", { headers: { "If-None-Match": first.headers.get("ETag") } });
-	assert.equal(cached.status, 304);
+	assert.equal(first.status, 302);
+	assert.equal(first.headers.get("Location"), "https://mail.one.test/im/avatar/006.webp");
+	assert.equal((await raw("GET", "https://mail.one.test/api/im/avatar/u1")).headers.get("Location"), first.headers.get("Location"));
+	assert.equal((await raw("GET", "https://mail.one.test/api/im/avatar/u2")).headers.get("Location"), "https://mail.one.test/im/avatar/007.webp");
+	const unknown = await raw("GET", "https://mail.one.test/api/im/avatar/unknown");
+	assert.equal(unknown.status, 200);
+	assert.match(await unknown.text(), /^<svg/);
 	const group = await raw("GET", "https://mail.one.test/api/im/room-avatar/1");
 	assert.equal(group.status, 200);
 	assert.match(await group.text(), /^<svg/);
@@ -232,7 +439,7 @@ test("the socket accepts an expired access token only while its refresh token is
 });
 
 test("startup endpoints: the all-staff room is the only session and unknown endpoints answer 501", async (t) => {
-	const { call, login } = await fixture(t);
+	const { database, call, login } = await fixture(t);
 	const { token } = (await login()).data;
 	const sessions = (await call("GET", "im/chat/contact/list", { token })).data;
 	assert.equal(sessions.length, 1);
@@ -242,6 +449,17 @@ test("startup endpoints: the all-staff room is the only session and unknown endp
 	);
 	assert.deepEqual((await call("POST", "im/chat/msg/list", { token, body: { async: true } })).data, []);
 	assert.deepEqual((await call("GET", "im/room/group/list", { token })).data.map((group) => group.roomId), ["1"]);
+	const group = (await call("GET", "im/room/group/list", { token })).data[0];
+	assert.equal(group.memberNum, 1);
+	assert.equal(group.onlineNum, 0);
+	assert.equal(group.groupName, "全员群");
+	const detail = (await call("GET", "im/room/group/detail", { token, query: { id: "1" } })).data;
+	assert.equal(group.memberNum, detail.memberNum);
+	assert.equal(group.onlineNum, detail.onlineNum);
+	database.db.prepare("INSERT INTO im_presence (user_id, online, last_opt_time) VALUES ('u1', 1, 1)").run();
+	const onlineGroup = (await call("GET", "im/room/group/list", { token })).data[0];
+	assert.equal(onlineGroup.onlineNum, 1);
+	assert.equal(onlineGroup.memberNum, 1);
 	assert.deepEqual((await call("GET", "im/room/group/list", { token, query: { current: "1", size: "50" } })).data.total, "1");
 	assert.deepEqual((await call("GET", "im/user/friend/page", { token, query: { pageSize: "100", cursor: "" } })).data, { list: [], cursor: "", isLast: true });
 	assert.deepEqual((await call("GET", "im/room/notice/page", { token, query: { pageNo: "1", pageSize: "30" } })).data, { list: [], cursor: "", isLast: true });
@@ -746,6 +964,8 @@ test("mail: one-time web sign-in link, inbox unread count", async (t) => {
 	const again = await raw("GET", link);
 	assert.equal(again.headers.get("Location"), "https://mail.one.test/login", "the link works once");
 	assert.equal(again.headers.get("Set-Cookie"), null);
+	const desktop = (await call("GET", "im/mail/sso", { token: sam, query: { next: "/inbox?folder=sent&smj_desktop=1" } })).data.url;
+	assert.equal((await raw("GET", desktop)).headers.get("Location"), "https://mail.one.test/inbox?folder=sent&smj_desktop=1");
 
 	const offsite = (await call("GET", "im/mail/sso", { token: sam, query: { next: "//evil.test/x" } })).data.url;
 	assert.ok(!offsite.includes("next="), "only same-origin paths survive");
@@ -911,7 +1131,7 @@ test("search: chat in the user's rooms and mail in their mailboxes, Chinese word
 	assert.deepEqual(two.chat.list.map((hit) => hit.msgId), [meeting], "a two-character word inside a sentence; Lee's room stays hidden");
 	assert.deepEqual(
 		{ ...two.chat.list[0], sendTime: 0 },
-		{ msgId: meeting, roomId: samKim, roomType: 2, detailId: "u2", roomName: "Kim", roomAvatar: "https://mail.one.test/api/im/avatar/u2", fromUid: "u1", fromName: "Sam", fromAvatar: "https://mail.one.test/api/im/avatar/u1", type: 1, text: "明天下午三点开会讨论预算", sendTime: 0 },
+		{ msgId: meeting, roomId: samKim, roomType: 2, detailId: "u2", roomName: "Kim", roomAvatar: "007", fromUid: "u1", fromName: "Sam", fromAvatar: "006", type: 1, text: "明天下午三点开会讨论预算", sendTime: 0 },
 	);
 	assert.deepEqual((await search(lee, { keyword: "开会", scope: "chat" })).chat.list.map((hit) => hit.roomId), [leeKim]);
 	assert.deepEqual((await search(sam, { keyword: "开会讨论", scope: "chat" })).chat.list.map((hit) => hit.msgId), [meeting], "longer terms go through the trigram index");

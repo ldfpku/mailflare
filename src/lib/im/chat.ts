@@ -88,12 +88,16 @@ interface SessionRow {
 	peer_id: string | null;
 	peer_name: string | null;
 	peer_email: string | null;
+	peer_avatar: string | null;
+	peer_avatar_key: string | null;
 }
 
 interface PersonRow {
 	user_id: string;
 	email: string;
 	name: string;
+	imAvatar?: string | null;
+	avatarKey?: string | null;
 	last_sign_in_at: number | null;
 	online: number | null;
 	last_opt_time: number | null;
@@ -193,8 +197,10 @@ const SESSION_SELECT = `
 		(SELECT COUNT(*) FROM im_room_members c WHERE c.room_id = r.id) AS member_count,
 		(SELECT COUNT(*) FROM im_messages x WHERE x.room_id = r.id AND x.id > m.last_read_msg_id AND x.from_uid <> m.user_id) AS unread_count,
 		lm.type AS lm_type, lm.body AS lm_body, lm.from_uid AS lm_from_uid, lm.recalled_by AS lm_recalled_by,
-		lu.name AS lm_sender_name, lu.email AS lm_sender_email, ru.name AS lm_recaller_name, ru.email AS lm_recaller_email,
-		peer.id AS peer_id, peer.name AS peer_name, peer.email AS peer_email
+		COALESCE(lu.im_display_name, lu.name) AS lm_sender_name, lu.email AS lm_sender_email,
+		COALESCE(ru.im_display_name, ru.name) AS lm_recaller_name, ru.email AS lm_recaller_email,
+		peer.id AS peer_id, COALESCE(peer.im_display_name, peer.name) AS peer_name, peer.email AS peer_email,
+		peer.im_avatar AS peer_avatar, peer.avatar_key AS peer_avatar_key
 	FROM im_room_members m
 	JOIN im_rooms r ON r.id = m.room_id
 	LEFT JOIN im_messages lm ON lm.id = r.last_msg_id
@@ -206,7 +212,7 @@ const SESSION_SELECT = `
 
 function toSession(row: SessionRow, viewerUid: string, origin: string) {
 	const isGroup = row.type === IM_ROOM_TYPE.GROUP;
-	const peer = row.peer_id ? { id: row.peer_id, name: row.peer_name ?? "", email: row.peer_email ?? "" } : null;
+	const peer = row.peer_id ? { id: row.peer_id, name: row.peer_name ?? "", email: row.peer_email ?? "", imAvatar: row.peer_avatar, avatarKey: row.peer_avatar_key } : null;
 	const text = sessionPreview({
 		row:
 			row.lm_type === null || row.lm_body === null || row.lm_from_uid === null
@@ -309,14 +315,15 @@ export async function updateMemberFlags(env: Env, userId: string, roomId: unknow
 
 // People ---------------------------------------------------------------------
 
-const PERSON_COLUMNS = "u.id AS user_id, u.email, u.name, u.last_sign_in_at, p.online, p.last_opt_time";
+const PERSON_COLUMNS = "u.id AS user_id, u.email, COALESCE(u.im_display_name, u.name) AS name, u.im_avatar AS imAvatar, u.avatar_key AS avatarKey, u.last_sign_in_at, p.online, p.last_opt_time";
+const MAIL_DIRECTORY_COLUMNS = "u.id AS user_id, u.email, u.name, u.last_sign_in_at, p.online, p.last_opt_time";
 
 function toPerson(row: PersonRow, origin: string) {
 	return {
 		uid: row.user_id,
 		account: row.email,
 		name: imUserName({ name: row.name, email: row.email }),
-		avatar: imAvatarUrl({ id: row.user_id }, origin),
+		avatar: imAvatarUrl({ id: row.user_id, imAvatar: row.imAvatar, avatarKey: row.avatarKey }, origin),
 		activeStatus: row.online ? IM_ONLINE : IM_OFFLINE,
 		lastOptTime: row.last_opt_time ?? (row.last_sign_in_at ? row.last_sign_in_at * 1000 : 0),
 		locPlace: "",
@@ -376,15 +383,16 @@ interface DirectoryRow extends PersonRow {
  * is the name in pinyin, e.g. gaozq), the whole address once the term has an @, and the business card's department
  * and title. Exact and leading name matches come first. Used by HuLa's search box and the mail composer.
  */
-export async function searchDirectory(env: Env, key: unknown, options: { excludeUserId?: string; limit?: number } = {}) {
+export async function searchDirectory(env: Env, key: unknown, options: { excludeUserId?: string; limit?: number; chatNames?: boolean } = {}) {
 	const term = normalizeDirectoryKey(key);
 	if (!term) return [];
 	const limit = Math.min(Math.max(Math.trunc(options.limit ?? DIRECTORY_SEARCH_LIMIT), 1), DIRECTORY_SEARCH_LIMIT);
 	const localPart = "lower(substr(u.email, 1, instr(u.email, '@') - 1))";
-	const name = "lower(u.name)";
+	const displayName = options.chatNames ? "COALESCE(u.im_display_name, u.name)" : "u.name";
+	const name = `lower(${displayName})`;
 	const result = await db(env)
 		.prepare(
-			`SELECT ${PERSON_COLUMNS}, c.department, c.title
+			`SELECT ${options.chatNames ? PERSON_COLUMNS : MAIL_DIRECTORY_COLUMNS}, c.department, c.title
 			FROM users u LEFT JOIN im_presence p ON p.user_id = u.id LEFT JOIN business_cards c ON c.user_id = u.id
 			WHERE ${ACTIVE_USER} AND u.id <> ? AND (
 				instr(${name}, ?) > 0
@@ -398,7 +406,7 @@ export async function searchDirectory(env: Env, key: unknown, options: { exclude
 				WHEN instr(${name}, ?) = 1 OR instr(${localPart}, ?) = 1 THEN 1
 				WHEN instr(${name}, ?) > 0 OR instr(${localPart}, ?) > 0 THEN 2
 				ELSE 3
-			END, u.name, u.email
+			END, ${displayName}, u.email
 			LIMIT ?`,
 		)
 		.bind(options.excludeUserId ?? "", ...Array<string>(12).fill(term), limit)
@@ -408,7 +416,7 @@ export async function searchDirectory(env: Env, key: unknown, options: { exclude
 
 /** HuLa's people search: a person as `getUserByIds` returns one, plus the card's department and title. */
 export async function searchImDirectory(env: Env, userId: string, key: unknown, origin: string) {
-	const rows = await searchDirectory(env, key, { excludeUserId: userId });
+	const rows = await searchDirectory(env, key, { excludeUserId: userId, chatNames: true });
 	return rows.map((row) => ({ ...toPerson(row, origin), department: row.department ?? "", title: row.title ?? "" }));
 }
 
@@ -446,7 +454,7 @@ async function renderMessages(env: Env, viewerUid: string, rows: ImMessageRow[],
 		userIds.add(row.from_uid);
 		if (row.recalled_by) userIds.add(row.recalled_by);
 	}
-	const userRows = await selectIn<ImUserRow>(env, (placeholders) => `SELECT id, email, name FROM users WHERE id IN (${placeholders})`, [...userIds]);
+	const userRows = await selectIn<ImUserRow>(env, (placeholders) => `SELECT id, email, COALESCE(im_display_name, name) AS name, im_avatar AS imAvatar, avatar_key AS avatarKey FROM users WHERE id IN (${placeholders})`, [...userIds]);
 	const users = new Map(userRows.map((row) => [row.id, row]));
 	const roomIds = [...new Set(rows.map((row) => row.room_id))];
 	const roomRows = await selectIn<{ id: string; type: number }>(env, (placeholders) => `SELECT id, type FROM im_rooms WHERE id IN (${placeholders})`, roomIds);
@@ -741,7 +749,7 @@ async function storeSentMessage(
 		withMe(
 			`, t AS (SELECT from_uid, recalled_by, reply_msg_id FROM im_messages WHERE from_uid = ${ownRow}),
 			q AS (SELECT from_uid, recalled_by FROM im_messages WHERE id = (SELECT reply_msg_id FROM t))
-			SELECT id, email, name FROM users WHERE id IN (SELECT from_uid FROM t UNION SELECT recalled_by FROM t UNION SELECT from_uid FROM q UNION SELECT recalled_by FROM q)`,
+			SELECT id, email, COALESCE(im_display_name, name) AS name, im_avatar AS imAvatar, avatar_key AS avatarKey FROM users WHERE id IN (SELECT from_uid FROM t UNION SELECT recalled_by FROM t UNION SELECT from_uid FROM q UNION SELECT recalled_by FROM q)`,
 			key,
 		),
 	);
@@ -906,11 +914,11 @@ export async function deleteMessageFile(env: Env, user: ImUserRow, input: { msgI
 async function activeUsers(env: Env, uids: unknown, excluding: string): Promise<ImUserRow[]> {
 	const ids = Array.isArray(uids) ? [...new Set(uids.filter((uid): uid is string => typeof uid === "string" && uid !== excluding))] : [];
 	if (ids.length > IM_GROUP_MEMBER_LIMIT) throw new ImChatError(400, `群成员不能超过${IM_GROUP_MEMBER_LIMIT}人`);
-	return selectIn<ImUserRow>(env, (placeholders) => `SELECT u.id, u.email, u.name FROM users u WHERE ${ACTIVE_USER} AND u.id IN (${placeholders})`, ids);
+	return selectIn<ImUserRow>(env, (placeholders) => `SELECT u.id, u.email, COALESCE(u.im_display_name, u.name) AS name, u.im_avatar AS imAvatar, u.avatar_key AS avatarKey FROM users u WHERE ${ACTIVE_USER} AND u.id IN (${placeholders})`, ids);
 }
 
 async function userName(env: Env, userId: string): Promise<string> {
-	return imUserName(await db(env).prepare("SELECT name, email FROM users WHERE id = ?").bind(userId).first<{ name: string; email: string }>());
+	return imUserName(await db(env).prepare("SELECT COALESCE(im_display_name, name) AS name, email FROM users WHERE id = ?").bind(userId).first<{ name: string; email: string }>());
 }
 
 function namesOf(users: ImUserRow[]): string {
@@ -1173,10 +1181,17 @@ export async function listGroups(env: Env, userId: string, origin: string) {
 	await ensureAllStaffRoom(env);
 	const result = await db(env)
 		.prepare(
-			`SELECT r.id, r.name, r.avatar, m.remark FROM im_room_members m JOIN im_rooms r ON r.id = m.room_id
+			`SELECT r.id, r.name, r.avatar, m.remark, m.my_name, m.role,
+				(SELECT COUNT(*) FROM im_room_members c WHERE c.room_id = r.id) AS member_count,
+				(SELECT COUNT(*) FROM im_room_members c JOIN im_presence p ON p.user_id = c.user_id AND p.online = 1 WHERE c.room_id = r.id) AS online_count
+			FROM im_room_members m JOIN im_rooms r ON r.id = m.room_id
 			WHERE m.user_id = ? AND r.type = ? ORDER BY r.active_time DESC`,
 		)
 		.bind(userId, IM_ROOM_TYPE.GROUP)
-		.all<{ id: string; name: string; avatar: string; remark: string }>();
-	return result.results.map((row) => ({ id: row.id, roomId: row.id, groupId: row.id, roomName: row.name, avatar: imRoomAvatarUrl(row, origin), remark: row.remark }));
+		.all<{ id: string; name: string; avatar: string; remark: string; my_name: string; role: number; member_count: number; online_count: number }>();
+	return result.results.map((row) => ({
+		id: row.id, roomId: row.id, groupId: row.id, roomName: row.name, groupName: row.name,
+		avatar: imRoomAvatarUrl(row, origin), account: row.id, remark: row.remark, myName: row.my_name,
+		roleId: row.role, memberNum: Number(row.member_count), onlineNum: Number(row.online_count), allowScanEnter: false,
+	}));
 }
