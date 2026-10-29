@@ -163,9 +163,9 @@ Mailbox authorization is separate from user role and goes through `src/lib/mailb
 
 Pro/Team keys are validated against Paymug (`src/lib/licenses/`); only a one-way key hash is stored. Without an active license the app falls back to the default name, icon, and favicon, and custom branding is unavailable. `getLicenseEntitlements` is the gate.
 
-### Self-update
+### Independent updates
 
-The admin overview dispatches `deploy-update.yml` (constant in `src/app/api/admin/update/utils.ts`) in the installation repo, which merges the upstream default branch and pushes it. It does not migrate, build, or deploy; the connected Cloudflare Git integration deploys the push. The admin update card separately reports and applies pending D1 migrations through the Worker binding.
+This repository retains its GitHub fork identity but is maintained independently of upstream. Do not restore automatic upstream synchronization or the `deploy-update.yml` workflow. There is no application code-update endpoint or button; code changes are reviewed and deployed from this repository. The admin update card only reports and applies pending D1 migrations through the Worker binding.
 
 ## Conventions
 

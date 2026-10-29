@@ -35,7 +35,7 @@ Paste only the token secret into the `CF_TOKEN` field in step 2. Do not include 
 
 1. Click **Deploy to Cloudflare** and sign in to Cloudflare if prompted.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/hieunc229/mailflare)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ldfpku/mailflare)
 
 2. Choose the Cloudflare account that owns the domain you want to use.
 3. Set the app name to exactly `mailflare`. Do not rename it. 
@@ -143,35 +143,11 @@ The assistant panel no longer exposes MCP key management. External MCP clients c
 
 ## Updating Mailflare
 
-The **Update Mailflare** button in the admin dashboard dispatches `.github/workflows/deploy-update.yml` in the installation repository. The workflow replaces the installation branch's complete tracked tree with the latest upstream source, commits that replacement, and pushes it. This avoids merge conflicts between independently created installation and upstream histories. Target-only committed files and code changes are intentionally removed; repository variables, secrets, and other GitHub or Cloudflare configuration remain unchanged. A connected Cloudflare Git integration then builds and deploys the change.
+This repository is maintained independently of upstream because its implementation has diverged substantially. Its GitHub fork identity is retained, but upstream synchronization is disabled: the local `upstream` remote is removed, the GitHub **Dashboard Update** workflow is disabled, and the application has no upstream code-update endpoint or button. Do not re-enable or copy the upstream `deploy-update.yml` workflow into this repository.
 
-### Auto update
+Review code changes in this repository and deploy its own code using the existing deployment process. Do not replace the tracked tree with upstream source. The old `GITHUB_UPDATE_TOKEN`, `GITHUB_UPDATE_REPO`, `GITHUB_UPDATE_REF`, `MAILFLARE_UPDATE_TOKEN` and `UPDATE_SOURCE_REPOSITORY` settings are no longer used and can be removed from existing installations.
 
-Create a fine-grained personal access token for the installation repository with these repository permissions:
-
-| Permission | Access | Used for |
-| --- | --- | --- |
-| Actions | Read and write | Dispatching `deploy-update.yml` from the Mailflare admin dashboard |
-| Contents | Read and write | Committing and pushing the upstream source into the installation repository |
-| Workflows | Read and write | Replacing files inside `.github/workflows` during an update |
-
-Configure the token and repository details in both Cloudflare and GitHub:
-
-| Location | Name | Type | Value |
-| --- | --- | --- | --- |
-| Cloudflare Worker | `GITHUB_UPDATE_TOKEN` | Secret | The fine-grained personal access token |
-| Cloudflare Worker | `GITHUB_UPDATE_REPO` | Variable | The installation repository in `owner/repository` format |
-| Cloudflare Worker | `GITHUB_UPDATE_REF` | Optional variable | The installation branch to update; omit it to use the repository's default branch |
-| GitHub repository → Actions | `MAILFLARE_UPDATE_TOKEN` | Repository secret | The same fine-grained personal access token |
-| GitHub repository → Actions | `UPDATE_SOURCE_REPOSITORY` | Optional repository variable | The upstream repository; defaults to `hieunc229/mailflare` |
-
-The same token can be used for `GITHUB_UPDATE_TOKEN` and `MAILFLARE_UPDATE_TOKEN` when it has all three permissions above. Keep both values secret and limit the token's repository access to the installation repository.
-
-Make sure `.github/workflows/deploy-update.yml` exists on the installation branch. If it is missing, create the file and copy its contents from the [canonical Mailflare update workflow](https://github.com/hieunc229/mailflare/blob/main/.github/workflows/deploy-update.yml). If an older installation has a different updater, replace it with the latest canonical workflow once. A running workflow cannot create or replace itself until the current workflow has been installed manually.
-
-After the GitHub Action completes successfully, wait for the connected Cloudflare deployment to finish before refreshing Mailflare or applying pending database migrations. The workflow updates the repository first; the new application version is not live until Cloudflare completes its deployment.
-
-Deployment and database migration are separate. After Cloudflare deploys a repository push or an admin-triggered update, open or refresh **Admin settings**. The application update card shows any pending database migrations. Select **Update database** to apply them through the Worker's D1 binding. The same runner initializes a new database during setup.
+Deployment and database migration are separate. After deploying this repository's code, open or refresh **Admin settings**. The **Database updates** card shows any pending database migrations. Select **Update database** to apply them through the Worker's D1 binding. The same runner initializes a new database during setup.
 
 If the Cloudflare dashboard has a custom deploy command containing `wrangler d1 migrations apply DB --remote`, remove that part and use `npm run deploy`.
 
