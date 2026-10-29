@@ -12,7 +12,7 @@ import { defaultAvatarResponse, defaultGroupAvatarSvg, defaultPersonAvatarSvg } 
 import { IM_CODE, IM_MFA_REQUIRED_MESSAGE, imFail, imOk } from "./response";
 import { issueImTokens, resolveImAccessToken, resolveImSocketToken, revokeImPair, rotateImRefreshToken, type ImUser } from "./tokens";
 import { IM_WS_TICKET_TTL_MS, formatImWsTicket } from "./ws-ticket-utils";
-import { IM_USER_STATES, imAvatarUrl, toImUserInfo } from "./users-utils";
+import { IM_DEFAULT_USER_STATE_ID, IM_INVISIBLE_USER_STATE_ID, IM_USER_STATES, imAvatarUrl, parseImUserStateId, toImUserInfo } from "./users-utils";
 import { imFileIdFromUrl, randomHex } from "./files-utils";
 import { findImRoute, imApiPath, type ImRouteTable } from "./handler-utils";
 import {
@@ -33,6 +33,8 @@ import {
 	markRead,
 	openSingleRoom,
 	pageMessages,
+	profileRecipients,
+	reconcileVisiblePresence,
 	readCounts,
 	recallMessage,
 	removeMembers,
@@ -194,8 +196,21 @@ const userRoutes: ImRouteTable<ImContext> = {
 	"GET im/user/badges": () => imOk([]),
 	"POST im/user/badges/batch": () => imOk([]),
 	"GET im/room/notice/unread": () => imOk({ unReadCount4Friend: 0, unReadCount4Group: 0 }),
-	// HuLa-Server kept a status per user; presence here comes from open connections, so the choice is accepted and dropped.
-	"POST im/user/state/changeState": () => imOk(true),
+	"POST im/user/state/changeState": async ({ request, env, user }) => {
+		const stateId = parseImUserStateId((await readBody(request)).id);
+		if (!stateId) throw new ImChatError(400, "状态无效");
+		const updated = await env.DB.prepare("UPDATE users SET im_state_id = ? WHERE id = ? AND disabled = 0 AND deleted_at IS NULL")
+			.bind(stateId, user.id).run();
+		if (!updated.meta?.changes) throw new ImChatError(403, "账号已停用或不存在");
+		const recipients = await profileRecipients(env, user.id);
+		await notifyImUsers(env, [user.id], { type: "userStateChange", data: { uid: user.id, userStateId: stateId } });
+		await notifyImUsers(env, recipients.filter((id) => id !== user.id), {
+			type: "userStateChange",
+			data: { uid: user.id, userStateId: stateId === IM_INVISIBLE_USER_STATE_ID ? IM_DEFAULT_USER_STATE_ID : stateId },
+		});
+		await reconcileVisiblePresence(env, user.id);
+		return imOk(true);
+	},
 	// Contacts come from the organisation directory and there are no friend requests.
 	"GET im/user/friend/page": async ({ env, user }) => imOk({ list: await listDirectory(env, user.id), cursor: "", isLast: true }),
 	// HuLa's people search (its search box and add-contact window) covers the whole directory, not only open chats.
@@ -543,13 +558,6 @@ async function initConfig({ env }: PublicContext): Promise<Response> {
 		roomGroupId: IM_ALL_STAFF_ROOM_ID,
 		loginDomain: await getLoginDomain(env),
 	});
-}
-
-async function profileRecipients(env: CloudflareEnv, userId: string): Promise<string[]> {
-	const result = await env.DB.prepare(
-		"SELECT DISTINCT other.user_id FROM im_room_members mine JOIN im_room_members other ON other.room_id = mine.room_id WHERE mine.user_id = ?",
-	).bind(userId).all<{ user_id: string }>();
-	return [userId, ...result.results.map((row) => row.user_id)];
 }
 
 function hasAvatarImageSignature(bytes: Uint8Array, contentType: string): boolean {

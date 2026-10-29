@@ -11,6 +11,7 @@ export const users = sqliteTable("users", {
 	name: text("name").notNull(),
 	imDisplayName: text("im_display_name"),
 	imAvatar: text("im_avatar"),
+	imStateId: text("im_state_id", { enum: ["1", "2", "3", "4", "5"] }).notNull().default("1"),
 	bookingUsername: text("booking_username"),
 	timeZone: text("time_zone"),
 	avatarKey: text("avatar_key"),
@@ -1107,6 +1108,7 @@ export const imPresence = sqliteTable("im_presence", {
 		.primaryKey()
 		.references(() => users.id, { onDelete: "cascade" }),
 	online: integer("online", { mode: "boolean" }).notNull().default(false),
+	visibleOnline: integer("visible_online", { mode: "boolean" }).notNull().default(false),
 	lastOptTime: integer("last_opt_time").notNull(),
 });
 

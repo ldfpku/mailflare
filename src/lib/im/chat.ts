@@ -39,7 +39,7 @@ import { buildHistoryWhere, type ImHistoryParams } from "./history-utils";
 import { imSearchTextOverride } from "./search-utils";
 import { notifyImUsers } from "./notify";
 import { fileRoomMessage, unfileRoomMessage } from "./room-files";
-import { IM_DEFAULT_USER_STATE_ID, imAvatarUrl, imRoomAvatarUrl } from "./users-utils";
+import { IM_DEFAULT_USER_STATE_ID, IM_INVISIBLE_USER_STATE_ID, imAvatarUrl, imRoomAvatarUrl } from "./users-utils";
 
 /**
  * Rooms, members and messages for the HuLa API, in D1 through raw SQL (the
@@ -101,6 +101,7 @@ interface PersonRow {
 	last_sign_in_at: number | null;
 	online: number | null;
 	last_opt_time: number | null;
+	imStateId?: string | null;
 	role?: number;
 	my_name?: string;
 	created_at?: number;
@@ -315,7 +316,7 @@ export async function updateMemberFlags(env: Env, userId: string, roomId: unknow
 
 // People ---------------------------------------------------------------------
 
-const PERSON_COLUMNS = "u.id AS user_id, u.email, COALESCE(u.im_display_name, u.name) AS name, u.im_avatar AS imAvatar, u.avatar_key AS avatarKey, u.last_sign_in_at, p.online, p.last_opt_time";
+const PERSON_COLUMNS = "u.id AS user_id, u.email, COALESCE(u.im_display_name, u.name) AS name, u.im_avatar AS imAvatar, u.avatar_key AS avatarKey, u.last_sign_in_at, p.online, p.last_opt_time, u.im_state_id AS imStateId";
 const MAIL_DIRECTORY_COLUMNS = "u.id AS user_id, u.email, u.name, u.last_sign_in_at, p.online, p.last_opt_time";
 
 function toPerson(row: PersonRow, origin: string) {
@@ -324,10 +325,10 @@ function toPerson(row: PersonRow, origin: string) {
 		account: row.email,
 		name: imUserName({ name: row.name, email: row.email }),
 		avatar: imAvatarUrl({ id: row.user_id, imAvatar: row.imAvatar, avatarKey: row.avatarKey }, origin),
-		activeStatus: row.online ? IM_ONLINE : IM_OFFLINE,
+		activeStatus: row.online && row.imStateId !== IM_INVISIBLE_USER_STATE_ID ? IM_ONLINE : IM_OFFLINE,
 		lastOptTime: row.last_opt_time ?? (row.last_sign_in_at ? row.last_sign_in_at * 1000 : 0),
 		locPlace: "",
-		userStateId: IM_DEFAULT_USER_STATE_ID,
+		userStateId: row.imStateId === IM_INVISIBLE_USER_STATE_ID ? IM_DEFAULT_USER_STATE_ID : row.imStateId ?? IM_DEFAULT_USER_STATE_ID,
 		wearingItemId: null,
 		itemIds: [] as string[],
 		linkedGitee: false,
@@ -366,7 +367,7 @@ export async function listDirectory(env: Env, userId: string) {
 	return result.results.map((row) => ({
 		uid: row.user_id,
 		remark: "",
-		activeStatus: row.online ? IM_ONLINE : IM_OFFLINE,
+		activeStatus: row.online && row.imStateId !== IM_INVISIBLE_USER_STATE_ID ? IM_ONLINE : IM_OFFLINE,
 		lastOptTime: row.last_opt_time ?? (row.last_sign_in_at ? row.last_sign_in_at * 1000 : 0),
 		hideMyPosts: false,
 		hideTheirPosts: false,
@@ -430,13 +431,70 @@ export async function getPeople(env: Env, uids: unknown, origin: string) {
 	return rows.map((row) => toPerson(row, origin));
 }
 
+export async function profileRecipients(env: Env, userId: string): Promise<string[]> {
+	const result = await db(env).prepare(
+		`SELECT DISTINCT other.user_id FROM im_room_members mine
+		JOIN im_room_members other ON other.room_id = mine.room_id
+		JOIN users u ON u.id = other.user_id WHERE mine.user_id = ? AND ${ACTIVE_USER}`,
+	).bind(userId).all<{ user_id: string }>();
+	return [userId, ...result.results.map((row) => row.user_id)];
+}
+
+async function broadcastVisiblePresence(env: Env, userId: string, online: boolean, lastOptTime: number): Promise<void> {
+	const status = await db(env).prepare(
+		`SELECT p.visible_online, p.last_opt_time
+		FROM users u LEFT JOIN im_presence p ON p.user_id = u.id WHERE u.id = ? AND ${ACTIVE_USER}`,
+	).bind(userId).first<{ visible_online: number | null; last_opt_time: number | null }>();
+	if (!status || Boolean(status.visible_online) !== online || status.last_opt_time !== lastOptTime) return;
+	await notifyImUsers(env, await profileRecipients(env, userId), {
+		type: "presenceChanged",
+		data: { uid: userId, activeStatus: online ? IM_ONLINE : IM_OFFLINE, lastOptTime },
+	});
+
+	const rooms = await db(env).prepare(
+		"SELECT r.id FROM im_rooms r JOIN im_room_members m ON m.room_id = r.id WHERE m.user_id = ? AND r.type = ?",
+	).bind(userId, IM_ROOM_TYPE.GROUP).all<{ id: string }>();
+	for (const room of rooms.results) {
+		const count = await db(env).prepare(
+			`SELECT COUNT(*) AS count FROM im_room_members m
+			JOIN users u ON u.id = m.user_id JOIN im_presence p ON p.user_id = m.user_id
+			WHERE m.room_id = ? AND p.online = 1 AND u.im_state_id != '5' AND ${ACTIVE_USER}`,
+		).bind(room.id).first<{ count: number }>();
+		const members = await db(env).prepare(
+			`SELECT m.user_id FROM im_room_members m JOIN users u ON u.id = m.user_id
+			WHERE m.room_id = ? AND ${ACTIVE_USER}`,
+		).bind(room.id).all<{ user_id: string }>();
+		await notifyImUsers(env, members.results.map((member) => member.user_id), {
+			type: online ? "online" : "offline",
+			data: { uid: userId, type: 1, roomId: room.id, onlineNum: Number(count?.count ?? 0), lastOptTime },
+		});
+	}
+}
+
+export async function reconcileVisiblePresence(env: Env, userId: string): Promise<void> {
+	const transition = await db(env).prepare(
+		`UPDATE im_presence SET
+			visible_online = CASE WHEN online = 1 AND EXISTS (
+				SELECT 1 FROM users u WHERE u.id = im_presence.user_id AND u.im_state_id != '5' AND ${ACTIVE_USER}
+			) THEN 1 ELSE 0 END,
+			last_opt_time = MAX(last_opt_time + 1, ?)
+		WHERE user_id = ? AND visible_online != CASE WHEN online = 1 AND EXISTS (
+			SELECT 1 FROM users u WHERE u.id = im_presence.user_id AND u.im_state_id != '5' AND ${ACTIVE_USER}
+		) THEN 1 ELSE 0 END
+		RETURNING visible_online, last_opt_time`,
+	).bind(Date.now(), userId).first<{ visible_online: number; last_opt_time: number }>();
+	if (transition) await broadcastVisiblePresence(env, userId, Boolean(transition.visible_online), transition.last_opt_time);
+}
+
 export async function setPresence(env: Env, userId: string, online: boolean): Promise<void> {
 	await db(env)
 		.prepare(
-			"INSERT INTO im_presence (user_id, online, last_opt_time) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET online = excluded.online, last_opt_time = excluded.last_opt_time",
+			`INSERT INTO im_presence (user_id, online, visible_online, last_opt_time) VALUES (?, ?, 0, ?)
+			ON CONFLICT(user_id) DO UPDATE SET online = excluded.online`,
 		)
 		.bind(userId, Number(online), Date.now())
 		.run();
+	await reconcileVisiblePresence(env, userId);
 }
 
 // Messages -------------------------------------------------------------------
@@ -959,7 +1017,7 @@ async function pushMemberChange(env: Env, roomId: string, changeType: number, ch
 	);
 	const counts = await db(env)
 		.prepare(
-			`SELECT COUNT(*) AS total, SUM(CASE WHEN p.online = 1 THEN 1 ELSE 0 END) AS online
+			`SELECT COUNT(*) AS total, SUM(CASE WHEN p.online = 1 AND u.im_state_id != '5' THEN 1 ELSE 0 END) AS online
 			FROM im_room_members m JOIN users u ON u.id = m.user_id LEFT JOIN im_presence p ON p.user_id = m.user_id
 			WHERE m.room_id = ? AND ${ACTIVE_USER}`,
 		)
@@ -1157,7 +1215,7 @@ export async function groupDetail(env: Env, userId: string, roomId: unknown, ori
 		.prepare(
 			`SELECT r.id, r.name, r.avatar, m.my_name, m.remark,
 				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id WHERE c.room_id = r.id AND ${ACTIVE_USER}) AS member_count,
-				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id JOIN im_presence p ON p.user_id = c.user_id AND p.online = 1 WHERE c.room_id = r.id AND ${ACTIVE_USER}) AS online_count
+				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id JOIN im_presence p ON p.user_id = c.user_id AND p.online = 1 WHERE c.room_id = r.id AND u.im_state_id != '5' AND ${ACTIVE_USER}) AS online_count
 			FROM im_rooms r JOIN im_room_members m ON m.room_id = r.id AND m.user_id = ? WHERE r.id = ?`,
 		)
 		.bind(userId, member.room_id)
@@ -1184,7 +1242,7 @@ export async function listGroups(env: Env, userId: string, origin: string) {
 		.prepare(
 			`SELECT r.id, r.name, r.avatar, m.remark, m.my_name, m.role,
 				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id WHERE c.room_id = r.id AND ${ACTIVE_USER}) AS member_count,
-				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id JOIN im_presence p ON p.user_id = c.user_id AND p.online = 1 WHERE c.room_id = r.id AND ${ACTIVE_USER}) AS online_count
+				(SELECT COUNT(*) FROM im_room_members c JOIN users u ON u.id = c.user_id JOIN im_presence p ON p.user_id = c.user_id AND p.online = 1 WHERE c.room_id = r.id AND u.im_state_id != '5' AND ${ACTIVE_USER}) AS online_count
 			FROM im_room_members m JOIN im_rooms r ON r.id = m.room_id
 			WHERE m.user_id = ? AND r.type = ? ORDER BY r.active_time DESC`,
 		)

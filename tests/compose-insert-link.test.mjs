@@ -119,3 +119,34 @@ test("Escape cancels link insertion", async (t) => {
 	await popup.apply("Escape");
 	assert.deepEqual(popup.commands, []);
 });
+
+test("the editable body fills the available compose area without shrinking quoted content", async (t) => {
+	const container = document.createElement("div");
+	document.body.appendChild(container);
+	const reactRoot = createRoot(container);
+	t.after(async () => {
+		await act(async () => reactRoot.unmount());
+		container.remove();
+	});
+
+	await act(async () => {
+		reactRoot.render(createElement(RichTextEditor, {
+			id: "compose-body",
+			value: "",
+			onChange() {},
+			quotedHtml: "<p>Quoted test content</p>",
+		}));
+	});
+
+	const editor = container.querySelector('[role="textbox"]');
+	assert.ok(editor);
+	const scrollArea = editor.parentElement;
+	assert.ok(scrollArea.classList.contains("flex"));
+	assert.ok(scrollArea.classList.contains("flex-col"));
+	assert.ok(scrollArea.classList.contains("overflow-y-auto"));
+	assert.ok(editor.classList.contains("grow"));
+	assert.ok(editor.classList.contains("shrink-0"));
+	const quote = editor.nextElementSibling;
+	assert.ok(quote?.classList.contains("shrink-0"));
+	assert.equal(quote.querySelector("button")?.getAttribute("aria-expanded"), "false");
+});

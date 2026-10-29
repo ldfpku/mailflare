@@ -24,6 +24,7 @@ await build({
 			export { listDriveGroupFolders, listDriveGroupFiles, serveRoomFileForDrive } from "./src/lib/im/room-files.ts";
 			export { exportDatabaseRecords, restoreDatabaseRecords } from "./src/lib/backups/export.ts";
 			export { defaultImAvatarForUser } from "./src/lib/im/users-utils.ts";
+			export { setPresence } from "./src/lib/im/chat.ts";
 		`,
 		resolveDir: root,
 		sourcefile: "hula-im-test-entry.ts",
@@ -43,7 +44,7 @@ const {
 	resolveImSocketToken, findImRoute, imApiPath, parseImPairId, imPairSessionIds, listShareTargets, shareMailToChats,
 	postRoomMailCard, countUnreadMail, listDriveGroupFolders, listDriveGroupFiles, serveRoomFileForDrive,
 	exportDatabaseRecords, restoreDatabaseRecords,
-	defaultImAvatarForUser,
+	defaultImAvatarForUser, setPresence,
 } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 
 async function fixture(t) {
@@ -520,6 +521,58 @@ test("group counts use the same active users and presence as the member list", a
 	assert.equal(detail.memberNum, members.length);
 	assert.equal(detail.onlineNum, members.filter((member) => member.activeStatus === 1).length);
 	assert.deepEqual({ memberNum: group.memberNum, onlineNum: group.onlineNum }, { memberNum: 2, onlineNum: 1 });
+});
+
+test("user-selected availability persists and invisibility is respected by other users", async (t) => {
+	const { database, call, login, addUser, pushes } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	const owner = (await login()).data.token;
+	const peer = (await login("kim@one.test")).data.token;
+	await call("GET", "im/room/group/list", { token: owner });
+	database.db.prepare("INSERT INTO im_presence (user_id, online, last_opt_time) VALUES ('u1', 1, 1), ('u2', 1, 1)").run();
+
+	assert.equal((await call("POST", "im/user/state/changeState", { token: owner, body: { id: "2" } })).code, 200);
+	assert.equal((await call("GET", "im/user/userInfo", { token: owner })).data.userStateId, "2");
+	let person = (await call("POST", "im/user/getUserByIds", { token: peer, body: { uidList: ["u1"] } })).data[0];
+	assert.equal(person.activeStatus, 1);
+	assert.equal(person.userStateId, "2");
+	assert.ok(pushes.some((event) => event.userId === "u2" && event.type === "userStateChange" && event.data.uid === "u1"));
+
+	assert.equal((await call("POST", "im/user/state/changeState", { token: owner, body: { id: "5" } })).code, 200);
+	assert.equal((await call("GET", "im/user/userInfo", { token: owner })).data.userStateId, "5");
+	person = (await call("POST", "im/user/getUserByIds", { token: peer, body: { uidList: ["u1"] } })).data[0];
+	assert.equal(person.activeStatus, 2);
+	assert.equal(person.userStateId, "1", "other users cannot distinguish invisible from offline");
+	assert.ok(pushes.some((event) => event.userId === "u2" && event.type === "presenceChanged" && event.data.uid === "u1" && event.data.activeStatus === 2));
+	assert.ok(!pushes.some((event) => event.userId === "u2" && event.data?.userStateId === "5"));
+	const members = (await call("GET", "im/room/group/listMember", { token: peer, query: { roomId: "1" } })).data;
+	const group = (await call("GET", "im/room/group/list", { token: peer })).data[0];
+	assert.equal(group.onlineNum, members.filter((member) => member.activeStatus === 1).length);
+	assert.equal(group.onlineNum, 1);
+
+	assert.equal((await call("POST", "im/user/state/changeState", { token: owner, body: { id: "unknown" } })).code, 400);
+	assert.equal((await call("GET", "im/user/userInfo", { token: owner })).data.userStateId, "5");
+	assert.equal((await call("POST", "im/user/state/changeState", { token: owner, body: { id: "0" } })).code, 200);
+	assert.equal((await call("GET", "im/user/userInfo", { token: owner })).data.userStateId, "1");
+	assert.equal((await call("GET", "im/room/group/list", { token: peer })).data[0].onlineNum, 2);
+});
+
+test("connection presence changes notify authorized peers without duplicate transitions", async (t) => {
+	const { env, call, login, addUser, pushes } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	const owner = (await login()).data.token;
+	await call("GET", "im/room/group/list", { token: owner });
+
+	await setPresence(env, "u1", true);
+	await setPresence(env, "u1", true);
+	await setPresence(env, "u1", false);
+
+	const transitions = pushes.filter((event) => event.userId === "u2" && event.type === "presenceChanged");
+	assert.deepEqual(transitions.map((event) => ({ uid: event.data.uid, activeStatus: event.data.activeStatus })), [
+		{ uid: "u1", activeStatus: 1 },
+		{ uid: "u1", activeStatus: 2 },
+	]);
+	assert.ok(transitions[1].data.lastOptTime > transitions[0].data.lastOptTime);
 });
 
 test("the directory search finds anyone by name, pinyin mailbox, department or title", async (t) => {

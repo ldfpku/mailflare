@@ -4,9 +4,16 @@ export const IM_USER_STATES = [
 	{ id: "2", title: "忙碌", url: "", bgColor: "#d5304f" },
 	{ id: "3", title: "离开", url: "", bgColor: "#f0a020" },
 	{ id: "4", title: "请勿打扰", url: "", bgColor: "#909090" },
+	{ id: "5", title: "隐身", url: "", bgColor: "#909090" },
 ] as const;
 
 export const IM_DEFAULT_USER_STATE_ID = "1";
+export const IM_INVISIBLE_USER_STATE_ID = "5";
+
+export function parseImUserStateId(value: unknown): string | null {
+	if (value === "0") return IM_DEFAULT_USER_STATE_ID;
+	return typeof value === "string" && IM_USER_STATES.some((state) => state.id === value) ? value : null;
+}
 
 export interface ImUserSource {
 	id: string;
@@ -14,6 +21,7 @@ export interface ImUserSource {
 	name: string;
 	imDisplayName?: string | null;
 	imAvatar?: string | null;
+	imStateId?: string | null;
 	role: "admin" | "user";
 	avatarKey: string | null;
 }
@@ -30,7 +38,7 @@ export function toImUserInfo(user: ImUserSource, origin: string) {
 		sex: 1,
 		power: user.role === "admin" ? 1 : 0,
 		itemIds: [] as string[],
-		userStateId: IM_DEFAULT_USER_STATE_ID,
+		userStateId: user.imStateId ?? IM_DEFAULT_USER_STATE_ID,
 		avatarUpdateTime: 0,
 		resume: "",
 		oauthProviders: [] as string[],

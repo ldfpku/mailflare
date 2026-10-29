@@ -113,6 +113,7 @@ test("presence writes stay ordered when a user reconnects during the last discon
 						writes[0].finished = true;
 					} else writes.push({ uid, online, finished: true });
 				},
+				first: async () => null,
 			}),
 		}),
 	};
@@ -139,7 +140,7 @@ test("presence writes stay ordered when a user reconnects during the last discon
 
 test("closing one of multiple devices does not mark the user offline", async () => {
 	const writes = [];
-	const DB = { prepare: () => ({ bind: (_uid, online) => ({ run: async () => void writes.push(online) }) }) };
+	const DB = { prepare: () => ({ bind: (_uid, online) => ({ run: async () => void writes.push(online), first: async () => null }) }) };
 	const socket = () => ({ readyState: WebSocket.OPEN, deserializeAttachment: () => ({ userId: "u1" }) });
 	const first = socket();
 	const second = socket();
