@@ -52,6 +52,9 @@ export const INTERNAL_TABLES = [
 	// Web-push subscriptions are saved again by each client whenever it resolves
 	// its push state, and they reference sessions whose rows a restore replaces.
 	"push_subscriptions",
+	// Incomplete multipart uploads are transient and cannot be restored as completed attachments.
+	"mail_attachment_uploads",
+	"mail_attachment_upload_parts",
 ];
 
 /**
@@ -127,6 +130,11 @@ export async function restoreDatabaseRecords(db: D1Database, content: ArrayBuffe
 	).results.map((row) => row.name);
 	const unmigrated = LATER_MIGRATION_TABLES.filter((table) => document.tables[table]?.length && !laterTableNames.includes(table));
 	if (unmigrated.length) throw new Error(`Apply pending database migrations before restoring ${unmigrated.join(", ")}.`);
+	const uploadTable = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mail_attachment_uploads'").first<{ name: string }>();
+	if (uploadTable) {
+		const pending = await db.prepare("SELECT COUNT(*) AS count FROM mail_attachment_uploads").first<{ count: number }>();
+		if (pending && pending.count > 0) throw new Error("Cannot restore while attachment uploads are unfinished. Complete or cancel them first.");
+	}
 	const restoreTables = BACKUP_TABLES.filter((table) => (table !== "shared_attachment_links" || sharedLinksTable) && (table !== "booking_events" || bookingTable) && (!table.startsWith("drive_") || driveTableNames.includes(table)) && (!LATER_MIGRATION_TABLES.includes(table) || laterTableNames.includes(table)));
 	const userColumns = new Set((await db.prepare("PRAGMA table_info(users)").all<{ name: string }>()).results.map((column) => column.name));
 	const bookingColumns = bookingTable ? new Set((await db.prepare("PRAGMA table_info(booking_events)").all<{ name: string }>()).results.map((column) => column.name)) : null;

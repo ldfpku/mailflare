@@ -43,5 +43,7 @@ export function formatDriveSize(bytes: number): string {
 
 export function driveContentDisposition(filename: string, inline: boolean): string {
 	const ascii = filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
-	return `${inline ? "inline" : "attachment"}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+	const normalized = new TextDecoder().decode(new TextEncoder().encode(filename));
+	const encoded = encodeURIComponent(normalized).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+	return `${inline ? "inline" : "attachment"}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }

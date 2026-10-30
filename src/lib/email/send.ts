@@ -9,8 +9,8 @@ import { getAuthorizedSenderAddress } from "@/lib/email/sender";
 import { getEmailAddressList, joinEmailAddressList, splitEmailAddressList } from "@/lib/email/address";
 import { formatMessageIdHeader, normalizeMessageId, parseMessageIdList } from "@/lib/email/threading";
 import { createAuditLog } from "@/lib/mailboxes/audit";
-import { loadMessageAttachmentContents, storeMessageAttachments, validateAttachments } from "@/lib/email/attachments";
-import type { AttachmentContent } from "@/lib/email/attachment-types";
+import { copyMessageAttachments, deleteMessageAttachmentObjects, loadMessageAttachmentReferences, MAX_ATTACHMENT_COUNT, storeMessageAttachments, validateAttachments } from "@/lib/email/attachments";
+import type { AttachmentContent, AttachmentReference } from "@/lib/email/attachment-types";
 import { getOutboundAttachmentMaxMb } from "@/lib/email/attachment-policy";
 import { getOutboundProviderConfig, sendThroughProvider } from "@/lib/email/outbound-provider";
 import { prepareCloudflareAttachments } from "@/lib/email/cloud-attachment-utils";
@@ -37,6 +37,8 @@ export type SendEmailInput = {
 	threadId?: string | null;
 	mailboxId: string;
 	attachments?: AttachmentContent[];
+	/** Server-side draft whose attachments should be copied to the sent message. */
+	sourceDraftId?: string;
 	/** Future delivery time. Values at or before the current time send immediately. */
 	scheduledAt?: string | Date;
 	/** Hold the send for UNDO_SEND_SECONDS (via the scheduled queue) so the user can cancel it. */
@@ -61,7 +63,6 @@ type PreparedDelivery = {
 	cc: string[];
 	bcc: string[];
 	headers: Record<string, string>;
-	attachments: AttachmentContent[];
 };
 
 function toRecipientList(value: string | string[] | undefined): string[] {
@@ -85,13 +86,21 @@ export async function sendEmail(
 	const sender = await getAuthorizedSenderAddress(env, input);
 	const attachments = input.attachments ?? [];
 	validateAttachments(attachments);
+	let draftAttachments: AttachmentReference[] = [];
+	if (input.sourceDraftId) {
+		const [draft] = await db.select({ userId: messages.userId, status: messages.status }).from(messages).where(eq(messages.id, input.sourceDraftId)).limit(1);
+		if (!draft || draft.userId !== input.userId || draft.status !== "draft") throw new Error("Draft not found");
+		draftAttachments = await loadMessageAttachmentReferences(env, input.sourceDraftId);
+	}
 	const maxAttachmentMb = await getOutboundAttachmentMaxMb(env);
 	const maxAttachmentBytes = maxAttachmentMb * 1_000_000;
-	if (attachments.some((attachment) => attachment.content.byteLength > maxAttachmentBytes) ||
-		attachments.reduce((total, attachment) => total + attachment.content.byteLength, 0) > maxAttachmentBytes) {
+	if (attachments.length + draftAttachments.length > MAX_ATTACHMENT_COUNT ||
+		attachments.some((attachment) => attachment.content.byteLength > maxAttachmentBytes) ||
+		draftAttachments.some((attachment) => attachment.size > maxAttachmentBytes) ||
+		attachments.reduce((total, attachment) => total + attachment.content.byteLength, 0) + draftAttachments.reduce((total, attachment) => total + attachment.size, 0) > maxAttachmentBytes) {
 		throw new Error(`Attachments exceed the administrator's ${maxAttachmentMb} MB outgoing limit`);
 	}
-	if (input.subject.length > 998) throw new Error("Subject exceeds Cloudflare's 998-character limit");
+	if (input.subject.length > 998) throw new Error("Subject is too long");
 
 	const to = toRecipientList(input.to);
 	const cc = toRecipientList(input.cc);
@@ -112,7 +121,7 @@ export async function sendEmail(
 	if (inReplyTo) headers["In-Reply-To"] = `<${inReplyTo}>`;
 	if (references.length > 0) headers.References = formatMessageIdHeader(references);
 	if (new TextEncoder().encode(Object.entries(headers).map(([name, value]) => `${name}: ${value}\r\n`).join("")).byteLength > 16 * 1024) {
-		throw new Error("Headers exceed Cloudflare's 16 KB limit");
+		throw new Error("Email headers are too large");
 	}
 
 	const messageId = newId("msg");
@@ -143,13 +152,19 @@ export async function sendEmail(
 		references: references.length ? references.join(" ") : null,
 	});
 	try {
-		const stored = await storeMessageAttachments(env, messageId, attachments);
-		stored.forEach((attachment, index) => { attachments[index].storageId = attachment.id; });
+		await storeMessageAttachments(env, messageId, attachments);
+		if (input.sourceDraftId) await copyMessageAttachments(env, input.sourceDraftId, messageId);
+		const stored = await loadMessageAttachmentReferences(env, messageId);
+		if (stored.length > MAX_ATTACHMENT_COUNT || stored.reduce((total, attachment) => total + attachment.size, 0) > maxAttachmentBytes) {
+			throw new Error(`Attachments exceed the administrator's ${maxAttachmentMb} MB outgoing limit`);
+		}
 	} catch (error) {
+		console.error("Could not prepare message attachments", error);
+		await deleteMessageAttachmentObjects(env, messageId);
 		await db.delete(messages).where(eq(messages.id, messageId));
-		throw error;
+		if (error instanceof Error && error.message.startsWith("Attachments exceed")) throw error;
+		throw new Error("Could not prepare attachments for sending");
 	}
-
 	const jobId = newId("job");
 	await db.insert(outboundJobs).values({
 		id: jobId,
@@ -163,13 +178,14 @@ export async function sendEmail(
 			cc,
 			bcc,
 			mailboxId: sender.mailboxId,
-			attachments: attachments.map(({ content: _content, ...attachment }) => attachment),
+			attachments: undefined,
+			sourceDraftId: undefined,
 		}),
 		scheduledAt,
 	});
 
 	const delivery: PreparedDelivery = {
-		input: { ...input, attachments: undefined },
+		input: { ...input, attachments: undefined, sourceDraftId: undefined },
 		messageId,
 		jobId,
 		from: sender.fromAddr,
@@ -178,7 +194,6 @@ export async function sendEmail(
 		cc,
 		bcc,
 		headers,
-		attachments,
 	};
 	if (scheduledAt) {
 		await enqueueScheduledDelivery(env, delivery, scheduledAt);
@@ -190,22 +205,19 @@ export async function sendEmail(
 }
 
 async function deliverEmail(env: CloudflareEnv, delivery: PreparedDelivery): Promise<void> {
-	const { input, messageId, jobId, from, mailboxId, to, cc, bcc, headers, attachments } = delivery;
+	const { input, messageId, jobId, from, mailboxId, to, cc, bcc, headers } = delivery;
 	const db = getDb(env);
 	const toAddr = joinEmailAddressList(to);
 	try {
+		const attachments = await loadMessageAttachmentReferences(env, messageId);
 		const provider = await getOutboundProviderConfig(env, from);
-		// Cloudflare's 5 MiB cap forces big files into download links; Resend takes
-		// the attachments directly (the admin's outgoing limit still applies).
-		const prepared = provider.provider === "cloudflare"
-			? await prepareCloudflareAttachments(env, attachments, {
+		const prepared = await prepareCloudflareAttachments(env, attachments, {
 				subject: input.subject,
 				html: input.html,
 				text: input.text,
 				headers,
 				publicOrigin: input.publicOrigin,
-			})
-			: { attachments, html: input.html, text: input.text };
+			});
 		if (prepared.text !== input.text || prepared.html !== input.html) {
 			await db.update(messages).set({ textBody: prepared.text ?? null, htmlBody: prepared.html ?? null }).where(eq(messages.id, messageId));
 		}
@@ -221,7 +233,7 @@ async function deliverEmail(env: CloudflareEnv, delivery: PreparedDelivery): Pro
 				subject: input.subject,
 				headers,
 				html,
-				text: prepared.text,
+				text: !prepared.text && !prepared.html ? " " : prepared.text,
 				attachments: prepared.attachments.map((attachment) => ({
 					filename: attachment.filename,
 					type: attachment.type,
@@ -351,7 +363,6 @@ export async function processOutboundQueue(
 		cc,
 		bcc,
 		headers,
-		attachments: [],
 	};
 	if (scheduledAt.getTime() > Date.now()) {
 		await enqueueScheduledDelivery(env, delivery, scheduledAt);
@@ -365,6 +376,5 @@ export async function processOutboundQueue(
 		.where(and(eq(outboundJobs.id, payload.jobId), eq(outboundJobs.status, "queued")))
 		.returning({ id: outboundJobs.id });
 	if (!claimed.length) return;
-	delivery.attachments = await loadMessageAttachmentContents(env, payload.messageId);
 	await deliverEmail(env, delivery);
 }

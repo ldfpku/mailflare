@@ -10,6 +10,7 @@ import { removeMailboxDomainRouting } from "@/lib/mailboxes/domain-addresses";
 import { purgeImUser, suspendImUsers } from "@/lib/im/account-cleanup";
 import { avatarKeyFor } from "@/app/api/profile/avatar/utils";
 import { getAccountPurgeCutoff } from "./deletion-utils";
+import { abortUserAttachmentUploads } from "@/lib/email/attachment-uploads";
 import type { DeleteAccountsInput, DeleteAccountsResult } from "./deletion-types";
 
 const CHUNK = 50;
@@ -105,6 +106,7 @@ export async function restoreAccount(env: CloudflareEnv, actor: SessionUser, id:
 
 async function purgeAccount(env: CloudflareEnv, account: typeof users.$inferSelect): Promise<void> {
 	const db = getDb(env);
+	await abortUserAttachmentUploads(env, account.id);
 	await purgeImUser(env, account.id);
 	const owned = await db.select().from(mailboxes).where(eq(mailboxes.userId, account.id));
 	for (const mailbox of owned) {

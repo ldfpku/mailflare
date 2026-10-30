@@ -1,4 +1,5 @@
+import { driveContentDisposition } from "@/lib/drive/utils";
+
 export function getAttachmentContentDisposition(filename: string, inline: boolean): string {
-	const safeFilename = filename.replace(/["\\\r\n]/g, "_");
-	return `${inline ? "inline" : "attachment"}; filename="${safeFilename}"`;
+	return driveContentDisposition(filename, inline);
 }

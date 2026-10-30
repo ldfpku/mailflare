@@ -7,6 +7,16 @@ export interface AttachmentContent {
 	type: string;
 }
 
+export interface AttachmentReference {
+	storageId: string;
+	objectKey: string;
+	size: number;
+	contentId?: string | null;
+	disposition?: "attachment" | "inline";
+	filename: string;
+	type: string;
+}
+
 export interface AttachmentMetadata {
 	contentId: string | null;
 	disposition: "attachment" | "inline";

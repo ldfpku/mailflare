@@ -1,10 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { agentDraftMetadata, agentSendApprovals, messageAttachments, messages } from "@/db/schema";
 import { getAuthorizedSenderAddress } from "@/lib/email/sender";
-import { loadMessageAttachmentContents } from "@/lib/email/attachments";
 import { sendEmail } from "@/lib/email/send";
 import { newId } from "@/lib/ids";
+import { sha256Stream } from "@/lib/email/stream-hash";
 import type { SessionUser } from "@/lib/auth/types";
 import type { AgentSendSnapshot } from "./types";
 
@@ -25,12 +25,12 @@ async function currentDraft(env: CloudflareEnv, user: SessionUser, draftId: stri
 
 async function snapshot(env: CloudflareEnv, draft: typeof messages.$inferSelect, scheduledAt: Date | null): Promise<{ payload: AgentSendSnapshot; hash: string }> {
 	const db = getDb(env);
-	const rows = await db.select().from(messageAttachments).where(eq(messageAttachments.messageId, draft.id));
+	const rows = await db.select().from(messageAttachments).where(and(eq(messageAttachments.messageId, draft.id), isNull(messageAttachments.trashedAt)));
 	const attachments: AgentSendSnapshot["attachments"] = [];
 	for (const row of rows) {
 		const object = await env.BUCKET.get(row.r2Key);
-		if (!object) throw new Error("Draft attachment missing");
-		attachments.push({ id: row.id, filename: row.filename, size: row.size, digest: await sha256(await object.arrayBuffer()) });
+		if (!object || object.size !== row.size) throw new Error("Draft attachment missing");
+		attachments.push({ id: row.id, filename: row.filename, size: row.size, digest: await sha256Stream(object.body, row.size) });
 	}
 	attachments.sort((a, b) => a.id.localeCompare(b.id));
 	const payload: AgentSendSnapshot = {
@@ -39,7 +39,7 @@ async function snapshot(env: CloudflareEnv, draft: typeof messages.$inferSelect,
 		inReplyTo: draft.inReplyTo, references: draft.references, threadId: draft.threadId,
 		mailboxId: draft.mailboxId!, scheduledAt: scheduledAt?.toISOString() ?? null, attachments,
 	};
-	if (!payload.to.trim() || !payload.subject.trim() || !(payload.text?.trim() || payload.html?.trim())) throw new Error("Draft is incomplete");
+	if (!payload.to.trim() || !payload.subject.trim() || !(payload.text?.trim() || payload.html?.trim() || attachments.length)) throw new Error("Draft is incomplete");
 	return { payload, hash: await sha256(JSON.stringify(payload)) };
 }
 
@@ -93,7 +93,7 @@ export async function confirmAgentSend(env: CloudflareEnv, user: SessionUser, ap
 			cc: draft.ccAddr || undefined, bcc: draft.bccAddr || undefined,
 			subject: draft.subject || "", text: draft.textBody || undefined, html: draft.htmlBody || undefined,
 		inReplyTo: draft.inReplyTo, references: draft.references, threadId: draft.threadId,
-			attachments: await loadMessageAttachmentContents(env, draft.id),
+			sourceDraftId: draft.id,
 			scheduledAt: metadata.scheduledAt ?? undefined,
 			publicOrigin,
 		});

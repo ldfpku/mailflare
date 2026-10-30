@@ -1,7 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { messages } from "@/db/schema";
 import { sendEmail } from "@/lib/email/send";
-import { loadMessageAttachmentContents } from "@/lib/email/attachments";
 import { deleteMessageWithObjects } from "@/lib/email/message-cleanup";
 import { decodeIdentityId, identityId } from "./ids";
 import { listJmapMailboxes, listSendableAddresses } from "./access";
@@ -78,7 +77,6 @@ export const emailSubmissionSet: JmapMethodHandler = async (ctx, args) => {
 			continue;
 		}
 		try {
-			const attachments = await loadMessageAttachmentContents(ctx.env, draft.id);
 			const result = await sendEmail(ctx.env, {
 				userId: ctx.auth.userId,
 				from: identity.address,
@@ -92,7 +90,7 @@ export const emailSubmissionSet: JmapMethodHandler = async (ctx, args) => {
 				references: draft.references,
 				threadId: draft.threadId,
 				mailboxId: identity.mailboxId,
-				attachments,
+				sourceDraftId: draft.id,
 				publicOrigin: ctx.origin,
 			});
 			try {

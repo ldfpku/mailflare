@@ -126,6 +126,19 @@ export class B2Bucket {
 		return new B2Object(key, new Response(null, { headers: response.headers }), body.byteLength);
 	}
 
+	async copyObject(sourceKey: string, targetKey: string, options?: PutOptions): Promise<void> {
+		const response = await this.request(targetKey, {
+			method: "PUT",
+			headers: {
+				...this.metadataHeaders(options),
+				"x-amz-copy-source": `/${encodeURIComponent(this.config.bucket)}${encodePath(sourceKey)}`,
+				"x-amz-metadata-directive": "REPLACE",
+			},
+		});
+		const result = await response.text();
+		if (/<Error>/.test(result)) throw new Error(xmlTag(result, "Message") ?? "Object copy failed");
+	}
+
 	async delete(keys: string | string[]): Promise<void> {
 		const list = Array.isArray(keys) ? keys : [keys];
 		for (let index = 0; index < list.length; index += 10) {

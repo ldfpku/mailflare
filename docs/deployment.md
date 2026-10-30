@@ -163,6 +163,10 @@ Each migration and its `d1_migrations` history entry run in one D1 batch. If a m
 
 New application releases must remain compatible with the previous schema until an administrator applies their migrations. Prefer additive changes, keep old columns during the transition, and avoid making authentication or the admin settings page depend immediately on a newly added column. Plan a maintenance window for an incompatible schema change.
 
+For the 500 MB attachment release, apply `0095_mail_attachment_uploads.sql` **before** deploying the new Worker. It creates the upload-session tables and raises the former 25 MB default to 500 MB while leaving other configured limits unchanged. Capture a database recovery point before applying it, verify that this is the only pending migration, then deploy promptly; the preceding release cannot actually send files larger than 25 MB even if the new limit is visible. The new release needs these tables for attachment uploads and cleanup.
+
+Incomplete attachment uploads are temporary and are not included in database backups. Restoring a backup is blocked while any remain; finish or cancel them first, or allow the scheduled cleanup to remove expired sessions.
+
 When adding a schema change, create a new uniquely named SQL file in `drizzle/migrations` and do not edit an applied migration. Build and development commands generate the Worker migration bundle from those files. `npm run db:bundle` can generate it explicitly.
 
 ## Branding license

@@ -1,12 +1,12 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { agentDraftMetadata, messageAttachments, messages } from "@/db/schema";
 import { buildSnippet } from "@/lib/email/parse";
 import { getAuthorizedSenderAddress } from "@/lib/email/sender";
 import { getEmailAddress, splitEmailAddressList } from "@/lib/email/address";
 import { getMailboxAccessLevel } from "@/lib/mailboxes/access";
-import { deleteMessageAttachment, getAttachmentForUser, MAX_ATTACHMENT_COUNT, MAX_TOTAL_ATTACHMENT_SIZE, storeMessageAttachments } from "@/lib/email/attachments";
-import type { AttachmentContent } from "@/lib/email/attachment-types";
+import { copyMessageAttachments, deleteMessageAttachment, getAttachmentMetadataForUser, MAX_ATTACHMENT_COUNT } from "@/lib/email/attachments";
+import { getOutboundAttachmentMaxMb } from "@/lib/email/attachment-policy";
 import type { AgentDraftEditInput, AgentToolContext } from "./types";
 import { formatAgentDraftBody } from "./draft-format";
 import { parseAgentScheduledAt } from "./schedule";
@@ -35,22 +35,36 @@ export async function editAgentDraft(context: AgentToolContext, input: AgentDraf
 	const bccAddr = input.bcc === undefined ? draft.bccAddr : input.bcc === null ? null : recipientHeader(input.bcc, "Bcc", false) || null;
 	const formattedBody = input.body === undefined ? null : formatAgentDraftBody(input.body);
 	const scheduledAt = input.scheduledAt === undefined ? undefined : parseAgentScheduledAt(input.scheduledAt);
-	const existing = await db.select().from(messageAttachments).where(eq(messageAttachments.messageId, draft.id));
+	const existing = await db.select().from(messageAttachments).where(and(eq(messageAttachments.messageId, draft.id), isNull(messageAttachments.trashedAt)));
 	const removeIds = new Set(input.removeAttachmentIds ?? []);
 	if ([...removeIds].some((id) => !existing.some((attachment) => attachment.id === id))) throw new Error("Attachment to remove was not found on this draft");
 	const remaining = existing.filter((attachment) => !removeIds.has(attachment.id));
-	const additions: AttachmentContent[] = [];
+	const additions: { sourceId: string; attachmentId: string; size: number }[] = [];
 	for (const attachment of input.addAttachments ?? []) {
 		const [source] = await db.select({ id: messages.id, userId: messages.userId, status: messages.status }).from(messages).where(and(eq(messages.id, attachment.sourceEmailId), eq(messages.mailboxId, context.mailboxId))).limit(1);
 		if (!source || (source.status === "draft" && source.userId !== context.user.id)) throw new Error("Attachment source email not found in the selected mailbox");
-		const found = await getAttachmentForUser(context.env, context.user, source.id, attachment.attachmentId);
-		if (!found || found.attachment.disposition !== "attachment") throw new Error("Attachment not found on the source email");
-		additions.push({ filename: found.attachment.filename, type: found.attachment.contentType, content: await found.object.arrayBuffer() });
+		const found = await getAttachmentMetadataForUser(context.env, context.user, source.id, attachment.attachmentId);
+		if (!found || found.disposition !== "attachment") throw new Error("Attachment not found on the source email");
+		additions.push({ sourceId: source.id, attachmentId: found.id, size: found.size });
 	}
-	if (remaining.length + additions.length > MAX_ATTACHMENT_COUNT || remaining.reduce((total, attachment) => total + attachment.size, 0) + additions.reduce((total, attachment) => total + attachment.content.byteLength, 0) > MAX_TOTAL_ATTACHMENT_SIZE) throw new Error("Draft attachments exceed the allowed count or total size");
+	const maxBytes = (await getOutboundAttachmentMaxMb(context.env)) * 1_000_000;
+	if (remaining.length + additions.length > MAX_ATTACHMENT_COUNT || remaining.reduce((total, attachment) => total + attachment.size, 0) + additions.reduce((total, attachment) => total + attachment.size, 0) > maxBytes) throw new Error("Draft attachments exceed the allowed count or total size");
 	const [updated] = await db.update(agentDraftMetadata).set({ revision: sql`${agentDraftMetadata.revision} + 1`, ...(scheduledAt !== undefined ? { scheduledAt } : {}) }).where(and(eq(agentDraftMetadata.draftId, draft.id), eq(agentDraftMetadata.revision, input.expectedRevision))).returning({ revision: agentDraftMetadata.revision, scheduledAt: agentDraftMetadata.scheduledAt });
 	if (!updated) throw new Error("Draft changed; read it again before editing");
-	if (additions.length) await storeMessageAttachments(context.env, draft.id, additions);
+	const copied: string[] = [];
+	try {
+		for (const addition of additions) {
+			const rows = await copyMessageAttachments(context.env, addition.sourceId, draft.id, [addition.attachmentId]);
+			copied.push(...rows.map((row) => row.id));
+		}
+	} catch (error) {
+		try {
+			for (const id of copied) await deleteMessageAttachment(context.env, draft.id, id);
+		} catch (cleanupError) {
+			throw new AggregateError([error, cleanupError], "Attachment copy and cleanup failed");
+		}
+		throw error;
+	}
 	for (const attachmentId of removeIds) await deleteMessageAttachment(context.env, draft.id, attachmentId);
 	await db.update(messages).set({
 		fromAddr, toAddr, ccAddr, bccAddr,

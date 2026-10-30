@@ -9,7 +9,6 @@ import { getSendErrorStatus } from "./error-utils";
 import { getDb } from "@/db";
 import { agentDraftMetadata, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { loadMessageAttachmentContents } from "@/lib/email/attachments";
 import { userOwnsDraft } from "@/app/api/drafts/utils";
 
 export async function POST(request: Request) {
@@ -42,7 +41,6 @@ export async function POST(request: Request) {
 		}
 		const [agent] = await db.select({ draftId: agentDraftMetadata.draftId }).from(agentDraftMetadata).where(eq(agentDraftMetadata.draftId, draftId)).limit(1);
 		if (agent) return NextResponse.json({ error: "Review and confirm this AI draft before sending" }, { status: 409 });
-		attachments.push(...(await loadMessageAttachmentContents(env, draftId)));
 	}
 
 	try {
@@ -50,11 +48,15 @@ export async function POST(request: Request) {
 			userId: user.id,
 			...parsed.data,
 			attachments,
+			sourceDraftId: draftId,
 			publicOrigin: new URL(request.url).origin,
 		});
 		return NextResponse.json(result);
 	} catch (err) {
 		const message = err instanceof Error ? err.message : "Send failed";
-		return NextResponse.json({ error: message }, { status: getSendErrorStatus(message) });
+		const status = getSendErrorStatus(message);
+		if (status >= 500) console.error("Email send failed", err);
+		const visible = status < 500 || message.startsWith("Sending is not set up") ? message : "Could not send message. Please try again.";
+		return NextResponse.json({ error: visible }, { status });
 	}
 }

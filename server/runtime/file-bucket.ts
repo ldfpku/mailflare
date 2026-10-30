@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -150,6 +150,22 @@ export class FileBucket {
 		await writeFile(path, buffer);
 		await writeFile(`${path}.meta.json`, JSON.stringify(meta));
 		return new FileObject(key, path, meta);
+	}
+
+	async copyObject(sourceKey: string, targetKey: string, options?: { httpMetadata?: StoredMeta["httpMetadata"]; customMetadata?: Record<string, string> }) {
+		const source = await this.readMeta(sourceKey);
+		if (!source) throw new Error("Source object not found");
+		const path = this.pathFor(targetKey);
+		await mkdir(dirname(path), { recursive: true });
+		await copyFile(this.pathFor(sourceKey), path);
+		const meta: StoredMeta = {
+			httpMetadata: options?.httpMetadata,
+			customMetadata: options?.customMetadata,
+			size: source.size,
+			uploaded: new Date().toISOString(),
+			etag: `${Date.now().toString(16)}-${source.size.toString(16)}`,
+		};
+		await writeFile(`${path}.meta.json`, JSON.stringify(meta));
 	}
 
 	private multipartDirectory(uploadId: string) {

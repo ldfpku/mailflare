@@ -3,6 +3,7 @@ import { runAgentMaintenance } from "@/lib/agent/maintenance";
 import { runTrashRetention } from "@/lib/email/trash-retention";
 import { runDriveTrashRetention } from "@/lib/drive/retention";
 import { runAccountRetention } from "@/lib/accounts/deletion";
+import { cleanExpiredAttachmentUploads } from "@/lib/email/attachment-uploads";
 import { runJmapChangeRetention } from "@/lib/jmap/changes";
 import { runFollowUpReminders } from "@/lib/follow-ups/service";
 import { runTodoReminders } from "@/lib/im/todo-reminders";
@@ -22,6 +23,7 @@ export function startScheduler(env: CloudflareEnv) {
 		runScheduledDatabaseBackup(env, now).catch((error) => console.error("Scheduled backup failed", error));
 		runDriveTrashRetention(env, now).catch((error) => console.error("Drive trash retention failed", error));
 		runAccountRetention(env, now).catch((error) => console.error("Account retention failed", error));
+		cleanExpiredAttachmentUploads(env, now).catch((error) => console.error("Attachment upload cleanup failed", error));
 		runJmapChangeRetention(env, now).catch((error) => console.error("JMAP change retention failed", error));
 	}, 60_000);
 	return () => clearInterval(timer);

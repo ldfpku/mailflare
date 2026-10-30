@@ -36,7 +36,7 @@ export async function PUT(request: Request) {
 	if (!isPrimaryAdmin(auth.user)) return Response.json({ error: "Forbidden" }, { status: 403 });
 	if (!hasValidSessionMutationOrigin(request)) return Response.json({ error: "Invalid origin" }, { status: 403 });
 	const parsed = schema.safeParse(await request.json().catch(() => null));
-	if (!parsed.success || (parsed.data.outboundAttachmentMaxMb === undefined && parsed.data.driveStorageLimitGb === undefined)) return Response.json({ error: "Enter a valid attachment limit (1 to 25 MB) or Drive storage limit" }, { status: 400 });
+	if (!parsed.success || (parsed.data.outboundAttachmentMaxMb === undefined && parsed.data.driveStorageLimitGb === undefined)) return Response.json({ error: `Enter a valid attachment limit (1 to ${MAX_OUTBOUND_ATTACHMENT_MAX_MB} MB) or Drive storage limit` }, { status: 400 });
 	const values: Partial<typeof appSettings.$inferInsert> = { updatedAt: new Date() };
 	if (parsed.data.outboundAttachmentMaxMb !== undefined) values.outboundAttachmentMaxMb = parsed.data.outboundAttachmentMaxMb;
 	if (parsed.data.driveStorageLimitGb !== undefined) values.driveStorageLimitBytes = parsed.data.driveStorageLimitGb === null ? null : Math.round(parsed.data.driveStorageLimitGb * GIB);

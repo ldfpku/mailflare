@@ -1,6 +1,6 @@
 export function getSendErrorStatus(message: string): number {
 	if (message === "Mailbox is required") return 400;
-	if (message.startsWith("Attachments exceed") || message.startsWith("Subject exceeds") || message.startsWith("Headers exceed") || message.startsWith("Message exceeds Cloudflare") || message.startsWith("A message can include at most") || message.includes("exceeds the 25 MB attachment limit")) return 400;
+	if (message.startsWith("Attachments exceed") || message.startsWith("Subject exceeds") || message.startsWith("Subject is too long") || message.startsWith("Headers exceed") || message.startsWith("Email headers are too large") || message.startsWith("Message exceeds Cloudflare") || message.startsWith("Message is too large") || message.startsWith("A message can include at most") || message.includes("exceeds the 25 MB attachment limit")) return 400;
 	if (
 		message === "Mailbox not found" ||
 		message === "Sender account not found" ||

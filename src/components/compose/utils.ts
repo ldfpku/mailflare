@@ -57,9 +57,9 @@ export function buildSendFormData(input: {
 }
 
 export function formatAttachmentSize(size: number): string {
-	if (size < 1024) return `${size} B`;
-	if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`;
-	return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+	if (size < 1_000) return `${size} B`;
+	if (size < 1_000_000) return `${Math.ceil(size / 1_000)} KB`;
+	return `${(size / 1_000_000).toFixed(1)} MB`;
 }
 
 export function applyMailboxSignature(

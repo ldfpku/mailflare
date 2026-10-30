@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { BellRing, ChevronUp, Eye, EyeOff, FileText, Forward, Maximize2, Minimize2, Minus, Paperclip, Reply, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -28,6 +28,7 @@ import { RichTextEditor } from "./rich-text-editor";
 import { ScheduleSendMenu } from "./schedule-send-menu";
 import { isPastSchedule } from "./schedule-send-utils";
 import { DraftSaveQueue } from "./draft-save-queue";
+import { cancelLargeDraftAttachment, uploadLargeDraftAttachment, type AttachmentUploadSessions } from "./attachment-upload";
 import { registerMailNavigationGuard } from "./mail-navigation-guard";
 import {
 	applyMailboxSignatureHtml,
@@ -79,6 +80,8 @@ export function ComposeForm({
 	const [html, setHtml] = useState("");
 	const [quotedHtml, setQuotedHtml] = useState<string | null>(null);
 	const [attachments, setAttachments] = useState<ComposeAttachment[]>([]);
+	const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+	const [uploadErrors, setUploadErrors] = useState<Record<string, boolean>>({});
 	// Attachments the draft already holds server-side (a forwarded message's files).
 	const [storedAttachments, setStoredAttachments] = useState<ComposeStoredAttachment[]>([]);
 	const [attachmentPolicy, setAttachmentPolicy] = useState<ComposeAttachmentPolicy>({ maxMb: 25, cloudThresholdBytes: 3_000_000 });
@@ -87,18 +90,18 @@ export function ComposeForm({
 	const [minimized, setMinimized] = useState(false);
 	const [toast, setToast] = useState<Toast>(null);
 	const [loading, setLoadingState] = useState(false);
-	const [loadingDraft, setLoadingDraftState] = useState(false);
+	const [settledDraftId, setSettledDraftId] = useState<string | null>(null);
+	const loadingDraft = Boolean(draftIdToLoad && settledDraftId !== draftIdToLoad);
 	const [deletingDraft, setDeletingDraftState] = useState(false);
-	const operations = useRef({ loading: false, loadingDraft: false, deletingDraft: false });
+	const operations = useRef({ loading: false, loadingDraft: Boolean(draftIdToLoad), deletingDraft: false });
 	const setLoading = (value: boolean) => { operations.current.loading = value; setLoadingState(value); };
-	const setLoadingDraft = (value: boolean) => { operations.current.loadingDraft = value; setLoadingDraftState(value); };
 	const setDeletingDraft = (value: boolean) => { operations.current.deletingDraft = value; setDeletingDraftState(value); };
 	const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
 	const [trackOpens, setTrackOpens] = useTrackOpens();
 	const [followUpDays, setFollowUpDays] = useState<number | null>(null);
 	const [loadedDraftMailboxId, setLoadedDraftMailboxId] = useState<string | null>(null);
 	const [loadedDraftFrom, setLoadedDraftFrom] = useState<string | null>(null);
-	const [selectedFrom, setSelectedFrom] = useState("");
+	const [senderChoice, setSenderChoice] = useState<{ draftId: string | null; mailboxId: string; address: string } | null>(null);
 	const formRef = useRef<HTMLFormElement>(null);
 	useSheetViewport(formRef, mode === "popup");
 	const isPhone = useIsMobile();
@@ -131,7 +134,7 @@ export function ComposeForm({
 	const draftGeneration = useRef(0);
 	const draftIdRef = useRef<string | null>(null);
 	const uploadedFiles = useRef(new WeakSet<File>());
-	const rejectedFiles = useRef(new WeakSet<File>());
+	const uploadSessions = useRef<AttachmentUploadSessions>(new Map());
 	const reportSaveError = useRef<(error: unknown) => void>(() => {});
 	const [draftSaveQueue] = useState(() => new DraftSaveQueue());
 	const unsafeToLeave = useRef(false);
@@ -139,6 +142,7 @@ export function ComposeForm({
 	const savedRevision = useRef(0);
 	const attachmentInput = useRef<HTMLInputElement | null>(null);
 	const fileDragDepth = useRef(0);
+	const windowFileDragDepth = useRef(0);
 	const previousSignature = useRef("");
 
 	useEffect(() => {
@@ -148,8 +152,14 @@ export function ComposeForm({
 	useEffect(() => {
 		let active = true;
 		void authFetch("/api/attachment-policy", { cache: "no-store" }).then(async (response) => {
-			if (response.ok && active) setAttachmentPolicy((await response.json()) as ComposeAttachmentPolicy);
-		}).catch(() => {});
+			if (!response.ok) throw new Error(`Attachment policy request failed (${response.status})`);
+			const policy = await response.json() as ComposeAttachmentPolicy;
+			if (!Number.isInteger(policy.maxMb) || policy.maxMb < 1 || policy.maxMb > 500) throw new Error("Invalid attachment policy");
+			if (active) setAttachmentPolicy(policy);
+		}).catch((error) => {
+			console.error("Could not load attachment policy", error);
+			if (active) setToast({ type: "error", message: translate.current("compose.error.attachmentPolicy") });
+		});
 		return () => { active = false; };
 	}, []);
 
@@ -168,6 +178,14 @@ export function ComposeForm({
 		}),
 		[mailboxes],
 	);
+	const choiceMatchesMailbox = senderChoice?.draftId === (draftIdToLoad ?? null)
+		&& senderChoice.mailboxId === selectedMailbox?.id
+		&& senderAddresses.includes(senderChoice.address);
+	const selectedFrom = choiceMatchesMailbox
+		? senderChoice.address
+		: loadedDraftMailboxId === selectedMailbox?.id && loadedDraftFrom && senderAddresses.includes(loadedDraftFrom)
+			? loadedDraftFrom
+			: senderAddresses[0] ?? "";
 	const fromAddr = selectedMailbox && selectedFrom
 		? formatEmailAddress(selectedFrom, selectedMailbox.displayName)
 		: "";
@@ -217,24 +235,19 @@ export function ComposeForm({
 	}
 
 	useEffect(() => {
-		if (!senderAddresses.length) {
-			setSelectedFrom("");
-			return;
-		}
-		if (!senderAddresses.includes(selectedFrom)) setSelectedFrom(senderAddresses[0]);
-	}, [selectedFrom, senderAddresses]);
-
-	useEffect(() => {
 		if (!toast) return;
 		const timer = setTimeout(() => setToast(null), 3200);
 		return () => clearTimeout(timer);
 	}, [toast]);
 
 	useEffect(() => {
-		if (!draftIdToLoad) return;
+		if (!draftIdToLoad) {
+			operations.current.loadingDraft = false;
+			return;
+		}
 
 		let cancelled = false;
-		setLoadingDraft(true);
+		operations.current.loadingDraft = true;
 		fetchDraft(draftIdToLoad)
 			.then((draft) => {
 				if (cancelled) return;
@@ -270,11 +283,14 @@ export function ComposeForm({
 			})
 			.catch((err) => {
 				if (cancelled) return;
-				const message = err instanceof Error ? err.message : t("compose.error.loadDraft");
+				const message = err instanceof Error ? err.message : translate.current("compose.error.loadDraft");
 				setToast({ type: "error", message });
 			})
 			.finally(() => {
-				if (!cancelled) setLoadingDraft(false);
+				if (!cancelled) {
+					operations.current.loadingDraft = false;
+					setSettledDraftId(draftIdToLoad);
+				}
 			});
 
 		return () => {
@@ -289,11 +305,6 @@ export function ComposeForm({
 		const draftMailbox = mailboxes.find((mailbox) => mailbox.id === loadedDraftMailboxId);
 		if (draftMailbox) setSelectedMailbox(draftMailbox);
 	}, [loadedDraftMailboxId, mailboxes, selectedMailbox?.id, setSelectedMailbox]);
-
-	useEffect(() => {
-		if (!loadedDraftFrom || !senderAddresses.includes(loadedDraftFrom)) return;
-		setSelectedFrom(loadedDraftFrom);
-	}, [loadedDraftFrom, senderAddresses]);
 
 	useEffect(() => {
 		if (loadingDraft) return;
@@ -333,6 +344,32 @@ export function ComposeForm({
 			void draftSaveQueue.flush().catch((error) => reportSaveError.current(error));
 		};
 	}, [draftSaveQueue]);
+
+	const uploadAttachment = useCallback(async (targetDraftId: string, attachment: ComposeAttachment, generation: number) => {
+		const active = () => generation === draftGeneration.current && !sessionInvalidated.current;
+		setUploadProgress((current) => ({ ...current, [attachment.id]: 0 }));
+		setUploadErrors((current) => {
+			const next = { ...current };
+			delete next[attachment.id];
+			return next;
+		});
+		try {
+			const stored = await uploadLargeDraftAttachment(targetDraftId, attachment.file, attachment.id, uploadSessions.current,
+				(percentage) => setUploadProgress((current) => ({ ...current, [attachment.id]: percentage })), active);
+			uploadedFiles.current.add(attachment.file);
+			setStoredAttachments((current) => current.some((item) => item.id === stored.id) ? current : [...current, stored]);
+			setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+		} catch (error) {
+			setUploadErrors((current) => ({ ...current, [attachment.id]: true }));
+			throw error;
+		} finally {
+			setUploadProgress((current) => {
+				const next = { ...current };
+				delete next[attachment.id];
+				return next;
+			});
+		}
+	}, []);
 
 	useEffect(() => {
 		const wasSaving = draftSaveQueue.isSaving;
@@ -386,32 +423,22 @@ export function ComposeForm({
 				draftIdRef.current = data.draft.id;
 				setDraftId(data.draft.id);
 				if (isAgentDraft) agentSavedPayload.current = payloadKey;
-				if (attachments.some((attachment) => rejectedFiles.current.has(attachment.file))) throw new DraftAttachmentError();
 				const pending = attachments.filter((attachment) => !uploadedFiles.current.has(attachment.file));
 				if (isAgentDraft || pending.length === 0) {
 					savedRevision.current = revision;
 					return;
 				}
-				const form = new FormData();
-				for (const attachment of pending) form.append("attachments", attachment.file);
-				let result: { attachments?: ComposeStoredAttachment[] };
 				try {
-					const uploaded = await authFetch(`/api/drafts/${data.draft.id}/attachments`, { method: "POST", body: form });
-					result = (await uploaded.json()) as { attachments?: ComposeStoredAttachment[] };
-					if (!uploaded.ok || !Array.isArray(result.attachments) || result.attachments.length !== pending.length) throw new Error("Draft attachment upload failed");
+					for (const attachment of pending) await uploadAttachment(data.draft.id, attachment, generation);
 				} catch (error) {
-					for (const attachment of pending) rejectedFiles.current.add(attachment.file);
 					throw new DraftAttachmentError("Draft attachment upload failed", { cause: error });
 				}
 				if (generation !== draftGeneration.current) return;
-				for (const attachment of pending) uploadedFiles.current.add(attachment.file);
-				setStoredAttachments((current) => [...current, ...(result.attachments ?? [])]);
-				setAttachments((current) => current.filter((attachment) => !uploadedFiles.current.has(attachment.file)));
 				savedRevision.current = revision;
 		});
 	// Depend on whether this is an AI draft, not its revision: refreshing the revision when review opens
 	// must not schedule an autosave, which would bump the revision and invalidate the pending approval.
-	}, [draftSaveQueue, hasContent, isAgentDraft, attachments, bcc, cc, fromAddr, html, loadingDraft, quotedHtml, selectedMailbox?.id, subject, threading, to]);
+	}, [draftSaveQueue, hasContent, isAgentDraft, attachments, bcc, cc, fromAddr, html, loadingDraft, quotedHtml, selectedMailbox?.id, subject, threading, to, uploadAttachment]);
 
 	useEffect(() => {
 		if (!draftIdToLoad || loadingDraft) return;
@@ -433,7 +460,7 @@ export function ComposeForm({
 			setToast({ type: "error", message: t("compose.error.invalidAddress", { address: invalid }) });
 			return;
 		}
-		if (!hasMeaningfulHtml(html) && !quotedHtml) {
+		if (!hasMeaningfulHtml(html) && !quotedHtml && attachments.length === 0 && storedAttachments.length === 0) {
 			setToast({ type: "error", message: t("compose.error.emptyBody") });
 			return;
 		}
@@ -458,14 +485,9 @@ export function ComposeForm({
 			holdAutosave.current = true;
 			try {
 				if (attachments.length > 0) {
-					const form = new FormData();
-					for (const attachment of attachments) form.append("attachments", attachment.file);
-					const uploaded = await authFetch(`/api/drafts/${draftId}/attachments`, { method: "POST", body: form });
-					const result = await uploaded.json() as { attachments?: ComposeStoredAttachment[]; error?: string };
+					const generation = draftGeneration.current;
+					for (const attachment of attachments) await uploadAttachment(draftId, attachment, generation);
 					if (sessionInvalidated.current) throw new Error(t("compose.error.sessionChanged"));
-					if (!uploaded.ok) throw new Error(result.error || t("compose.error.draftAttachments"));
-					setStoredAttachments((current) => [...current, ...(result.attachments ?? [])]);
-					setAttachments([]);
 				}
 				const updated = await authFetch(`/api/drafts/${draftId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mailboxId: selectedMailbox?.id, from: fromAddr, to: recipientsToHeader(to), cc: recipientsToHeader(cc), bcc: recipientsToHeader(bcc), subject, html: fullHtml, text: htmlToPlainText(fullHtml), inReplyTo: threading?.inReplyTo ?? null, references: threading?.references ?? null, threadId: threading?.threadId ?? null, scheduledAt: scheduledAt?.toISOString() ?? null }) });
 				if (sessionInvalidated.current) throw new Error(t("compose.error.sessionChanged"));
@@ -633,9 +655,38 @@ export function ComposeForm({
 		setStoredAttachments((current) => current.filter((item) => item.id !== attachmentId));
 	}
 
-	function addAttachments(files: FileList | null) {
+	async function removePendingAttachment(attachment: ComposeAttachment) {
+		if (sessionInvalidated.current) {
+			setToast({ type: "error", message: t("compose.error.sessionChanged") });
+			return;
+		}
+		try {
+			if (draftIdRef.current) await cancelLargeDraftAttachment(draftIdRef.current, attachment.id, uploadSessions.current);
+			changeRevision.current += 1;
+			setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+			setUploadErrors((current) => {
+				const next = { ...current };
+				delete next[attachment.id];
+				return next;
+			});
+		} catch (error) {
+			console.error("Could not remove attachment", error);
+			setToast({ type: "error", message: t("compose.error.removeAttachment") });
+		}
+	}
+
+	const addAttachments = useCallback((files: FileList | null) => {
 		if (!files) return;
+		if (sessionInvalidated.current) {
+			setToast({ type: "error", message: t("compose.error.sessionChanged") });
+			return;
+		}
 		const nextFiles = Array.from(files);
+		if (!nextFiles.length) return;
+		if (nextFiles.some((file) => file.size === 0)) {
+			setToast({ type: "error", message: t("compose.error.emptyAttachment") });
+			return;
+		}
 		const nextCount = storedAttachments.length + attachments.length + nextFiles.length;
 		const totalSize =
 			storedAttachments.reduce((total, item) => total + item.size, 0) +
@@ -657,12 +708,52 @@ export function ComposeForm({
 			return;
 		}
 
+		changeRevision.current += 1;
 		setAttachments((current) => [
 			...current,
 			...nextFiles.map((file) => ({ id: crypto.randomUUID(), file })),
 		]);
 		if (attachmentInput.current) attachmentInput.current.value = "";
-	}
+	}, [attachmentPolicy.maxMb, attachments, storedAttachments, t]);
+
+	useEffect(() => {
+		if (minimized) return;
+		const isFileDrag = (event: globalThis.DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files");
+		const inComposer = (event: globalThis.DragEvent) => event.target instanceof Node && formRef.current?.contains(event.target);
+		const onDragEnter = (event: globalThis.DragEvent) => {
+			if (event.defaultPrevented || inComposer(event) || !isFileDrag(event)) return;
+			windowFileDragDepth.current += 1;
+			if (!loading && !loadingDraft && !savingBeforeClose) setDraggingFiles(true);
+		};
+		const onDragOver = (event: globalThis.DragEvent) => {
+			if (event.defaultPrevented || inComposer(event) || !isFileDrag(event)) return;
+			event.preventDefault();
+			if (event.dataTransfer) event.dataTransfer.dropEffect = loading || loadingDraft || savingBeforeClose ? "none" : "copy";
+		};
+		const onDragLeave = (event: globalThis.DragEvent) => {
+			if (inComposer(event) || !isFileDrag(event)) return;
+			windowFileDragDepth.current = Math.max(0, windowFileDragDepth.current - 1);
+			if (windowFileDragDepth.current === 0 && fileDragDepth.current === 0) setDraggingFiles(false);
+		};
+		const onDrop = (event: globalThis.DragEvent) => {
+			if (event.defaultPrevented || inComposer(event) || !isFileDrag(event)) return;
+			event.preventDefault();
+			windowFileDragDepth.current = 0;
+			setDraggingFiles(false);
+			if (!loading && !loadingDraft && !savingBeforeClose) addAttachments(event.dataTransfer?.files ?? null);
+		};
+		window.addEventListener("dragenter", onDragEnter);
+		window.addEventListener("dragover", onDragOver);
+		window.addEventListener("dragleave", onDragLeave);
+		window.addEventListener("drop", onDrop);
+		return () => {
+			window.removeEventListener("dragenter", onDragEnter);
+			window.removeEventListener("dragover", onDragOver);
+			window.removeEventListener("dragleave", onDragLeave);
+			window.removeEventListener("drop", onDrop);
+			windowFileDragDepth.current = 0;
+		};
+	}, [addAttachments, loading, loadingDraft, minimized, savingBeforeClose]);
 
 	function onFileDragEnter(event: DragEvent<HTMLFormElement>) {
 		if (!event.dataTransfer.types.includes("Files")) return;
@@ -702,7 +793,7 @@ export function ComposeForm({
 	function selectSender(value: string) {
 		const option = senderOptions.find((item) => `${item.mailbox.id}|${item.address}` === value);
 		if (!option) return;
-		setSelectedFrom(option.address);
+		setSenderChoice({ draftId: draftIdToLoad ?? null, mailboxId: option.mailbox.id, address: option.address });
 		if (selectedMailbox?.id !== option.mailbox.id) setSelectedMailbox(option.mailbox);
 	}
 
@@ -738,14 +829,20 @@ export function ComposeForm({
 					<span className="max-w-48 truncate font-medium">{attachment.file.name}</span>
 					<span className="text-xs text-neutral-500">
 						{formatAttachmentSize(attachment.file.size)}
+						{uploadProgress[attachment.id] !== undefined && ` · ${t("compose.uploading")} ${uploadProgress[attachment.id]}%`}
 					</span>
+					{uploadErrors[attachment.id] && (
+						<button type="button" className="text-blue-700 underline" onClick={() => {
+							if (isAgentDraft) formRef.current?.requestSubmit();
+							else void draftSaveQueue.flush().catch((error) => reportSaveError.current(error));
+						}}>
+							{t("compose.retryUpload")}
+						</button>
+					)}
 					<button
 						type="button"
-						onClick={() =>
-							setAttachments((current) =>
-								current.filter((item) => item.id !== attachment.id),
-							)
-						}
+						disabled={uploadProgress[attachment.id] !== undefined}
+						onClick={() => void removePendingAttachment(attachment)}
 						className="rounded-full p-1 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-700"
 						title={t("compose.removeAttachment")}
 					>
@@ -755,7 +852,7 @@ export function ComposeForm({
 				</div>
 			))}
 		</div>
-		<p className="px-3 pb-2 text-xs text-amber-700">{[...attachments.map((item) => item.file.size), ...storedAttachments.map((item) => item.size)].some((size) => size > attachmentPolicy.cloudThresholdBytes) ? t("compose.cloudWarning.will") : t("compose.cloudWarning.may")}</p>
+		<p className="px-3 pb-2 text-xs text-neutral-500">{t("compose.attachmentDeliveryNotice")}</p>
 		</div>
 	);
 
@@ -943,7 +1040,7 @@ export function ComposeForm({
 								className="hidden"
 								onChange={(event) => addAttachments(event.target.files)}
 							/>
-							<Tooltip label={t("compose.attachTooltip", { max: attachmentPolicy.maxMb })}>
+							<Tooltip label={t("compose.attachFiles")}>
 								<button
 									type="button"
 									aria-label={t("compose.attachFiles")}

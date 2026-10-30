@@ -23,6 +23,7 @@ await build({
 			export { ComposeProvider, useCompose } from "./src/components/compose/compose-context";
 			export { FloatingComposer } from "./src/components/compose/floating-composer";
 			export { installMailNavigationGuard, registerMailNavigationGuard, canLeaveMailEditor } from "./src/components/compose/mail-navigation-guard";
+			export { formatAttachmentSize } from "./src/components/compose/utils";
 		`,
 		resolveDir: root,
 		loader: "ts",
@@ -40,9 +41,10 @@ await build({
 				"next/navigation": 'export function useRouter() { return { push(path) { globalThis.composeRouterPush?.(path); }, replace() {} }; } export function usePathname() { return globalThis.composePath ?? "/inbox"; }',
 				"@/lib/auth/client": 'export const AUTH_SESSION_CHANGED_EVENT = "compose-auth-changed"; export function authFetch(...args) { return globalThis.composeFetch(...args); }',
 				"@/components/language-provider": 'export function useLanguage() { return { t: (key) => key }; }',
-				"@/components/mailbox-provider": `export function useSelectedMailbox() {
-					const selectedMailbox = { id: "m1", localPart: "test", hostname: "example.test", senderAddresses: ["test@example.test"] };
-					return { selectedMailbox, mailboxes: [selectedMailbox], setSelectedMailbox() {} };
+				"@/components/mailbox-provider": `import { useState } from "react"; export function useSelectedMailbox() {
+					const mailboxes = globalThis.composeMailboxes ?? [{ id: "m1", localPart: "test", hostname: "example.test", senderAddresses: ["test@example.test"] }];
+					const [selectedMailbox, setSelectedMailbox] = useState(mailboxes[0] ?? null);
+					return { selectedMailbox, mailboxes, setSelectedMailbox };
 				}`,
 				"@/components/sidebar-state": 'export function useSidebar() { return { mobileOpen: false }; }',
 				"@/components/sidebar-mobile-utils": "export function useIsMobile() { return false; }",
@@ -53,6 +55,10 @@ await build({
 					return React.createElement("input", { id: props.id, value: props.value.join(","), onChange: (event) => props.onChange([event.target.value]) });
 				}`,
 				"./schedule-send-menu": "export function ScheduleSendMenu() { return null; }",
+				"./attachment-upload": `export async function uploadLargeDraftAttachment(draftId, file, id, sessions, progress, active) {
+					if (!active()) throw new Error("session changed");
+					progress(100); return { id, filename: file.name, size: file.size, type: file.type, disposition: "attachment" };
+				} export async function cancelLargeDraftAttachment() {}`,
 				"@/components/follow-ups/follow-up-menu": "export function FollowUpMenu() { return null; }",
 				"@/components/agent/send-review": "export function SendReview() { return null; }",
 			};
@@ -64,11 +70,11 @@ await build({
 });
 const { createElement, act } = await import("react");
 const { createRoot } = await import("react-dom/client");
-const { ComposeForm, ComposeProvider, FloatingComposer, useCompose, installMailNavigationGuard, registerMailNavigationGuard, canLeaveMailEditor } = await import(pathToFileURL(join(directory, "compose.mjs")).href);
+const { ComposeForm, ComposeProvider, FloatingComposer, useCompose, installMailNavigationGuard, registerMailNavigationGuard, canLeaveMailEditor, formatAttachmentSize } = await import(pathToFileURL(join(directory, "compose.mjs")).href);
 
-async function fixture(t, fetchDraft) {
+async function fixture(t, fetchDraft, maxMb = 25, draftIdToLoad = null) {
 	globalThis.composeFetch = async (url, init) => {
-		if (url === "/api/attachment-policy") return Response.json({ maxMb: 25, cloudThresholdBytes: 3_000_000 });
+		if (url === "/api/attachment-policy") return Response.json({ maxMb, cloudThresholdBytes: 3_000_000 });
 		return fetchDraft(url, init);
 	};
 	const container = document.createElement("div");
@@ -76,8 +82,8 @@ async function fixture(t, fetchDraft) {
 	const releaseGuard = installMailNavigationGuard();
 	const root = createRoot(container);
 	let closed = 0;
-	await act(async () => root.render(createElement(ComposeProvider, null, createElement(ComposeForm, { mode: "popup", onClose: () => { closed++; } }))));
-	t.after(async () => { await act(async () => root.unmount()); releaseGuard(); container.remove(); });
+	await act(async () => root.render(createElement(ComposeProvider, null, createElement(ComposeForm, { mode: "popup", draftIdToLoad, onClose: () => { closed++; } }))));
+	t.after(async () => { await act(async () => root.unmount()); releaseGuard(); container.remove(); delete globalThis.composeMailboxes; });
 	async function input(selector, value) {
 		const element = container.querySelector(selector);
 		assert.ok(element, selector);
@@ -107,6 +113,34 @@ async function fixture(t, fetchDraft) {
 	};
 }
 
+test("loading a draft restores its sender and preserves a later explicit sender choice", async (t) => {
+	globalThis.composeMailboxes = [{ id: "m1", localPart: "test", hostname: "example.test", senderAddresses: ["test@example.test", "alias@example.test"] }];
+	let finish;
+	const composer = await fixture(t, async (url, init) => {
+		if (url === "/api/drafts/draft-1" && !init?.method) {
+			await new Promise((resolve) => { finish = resolve; });
+			return Response.json({ draft: {
+				id: "draft-1", mailboxId: "m1", fromAddr: "alias@example.test", toAddr: "other@example.test",
+				subject: "Saved draft", textBody: "Body", htmlBody: "", attachments: [],
+			} });
+		}
+		return Response.json({ draft: { id: "draft-1" } });
+	}, 25, "draft-1");
+	const sender = composer.container.querySelector("#popup-from");
+	assert.equal(sender.disabled, true);
+	assert.equal(composer.beforeUnload(), true);
+	await act(async () => { finish(); });
+	assert.equal(sender.disabled, false);
+	assert.equal(sender.value, "m1|alias@example.test");
+	await act(async () => {
+		sender.value = "m1|test@example.test";
+		sender.dispatchEvent(new Event("change", { bubbles: true }));
+	});
+	assert.equal(sender.value, "m1|test@example.test");
+	await composer.setSubject("Revised subject");
+	assert.equal(sender.value, "m1|test@example.test");
+});
+
 test("closing waits for the current draft and blocks unload until it is saved", async (t) => {
 	let finish;
 	const requests = [];
@@ -128,6 +162,84 @@ test("closing waits for the current draft and blocks unload until it is saved", 
 	assert.equal(document.documentElement.inert, true);
 	window.__smjMailNavigation.release();
 	assert.equal(document.documentElement.inert, false);
+});
+
+test("dropping a file outside the composer adds it once and protects the draft", async (t) => {
+	const composer = await fixture(t, async (url) => {
+		if (url.endsWith("/attachments")) return Response.json({ attachments: [{ id: "a1", filename: "example.txt", size: 3, disposition: "attachment" }] });
+		return Response.json({ draft: { id: "d1" } });
+	});
+	const file = new File(["abc"], "example.txt", { type: "text/plain" });
+	const dataTransfer = { types: ["Files"], files: [file], dropEffect: "none" };
+	const dragover = new Event("dragover", { bubbles: true, cancelable: true });
+	Object.defineProperty(dragover, "dataTransfer", { value: dataTransfer });
+	await act(async () => document.body.dispatchEvent(dragover));
+	assert.equal(dragover.defaultPrevented, true);
+	assert.equal(dataTransfer.dropEffect, "copy");
+	const drop = new Event("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(drop, "dataTransfer", { value: dataTransfer });
+	await act(async () => document.body.dispatchEvent(drop));
+	assert.equal(drop.defaultPrevented, true);
+	assert.equal(composer.container.textContent.match(/example\.txt/g)?.length, 1);
+	assert.equal(composer.beforeUnload(), true);
+});
+
+test("the composer does not steal a file drop already handled by another surface", async (t) => {
+	const composer = await fixture(t, async () => Response.json({ draft: { id: "d1" } }));
+	const target = document.createElement("div");
+	document.body.appendChild(target);
+	t.after(() => target.remove());
+	target.addEventListener("drop", (event) => event.preventDefault());
+	const drop = new Event("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(drop, "dataTransfer", { value: { types: ["Files"], files: [new File(["x"], "other.txt")] } });
+	await act(async () => target.dispatchEvent(drop));
+	assert.doesNotMatch(composer.container.textContent, /other\.txt/);
+});
+
+test("dropping directly on the composer adds one file, not two", async (t) => {
+	const composer = await fixture(t, async (url) => {
+		if (url.endsWith("/attachments")) return Response.json({ attachments: [{ id: "a1", filename: "direct.txt", size: 1, disposition: "attachment" }] });
+		return Response.json({ draft: { id: "d1" } });
+	});
+	const drop = new Event("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(drop, "dataTransfer", { value: { types: ["Files"], files: [new File(["x"], "direct.txt")] } });
+	await act(async () => composer.container.querySelector("form").dispatchEvent(drop));
+	assert.equal(drop.defaultPrevented, true);
+	assert.equal(composer.container.textContent.match(/direct\.txt/g)?.length, 1);
+});
+
+test("the composer accepts exactly 500 MB and rejects one byte more", async (t) => {
+	const composer = await fixture(t, async () => Response.json({ draft: { id: "d1" } }), 500);
+	const file = new File(["x"], "maximum.bin");
+	Object.defineProperty(file, "size", { value: 500_000_000 });
+	const drop = new Event("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(drop, "dataTransfer", { value: { types: ["Files"], files: [file] } });
+	await act(async () => document.body.dispatchEvent(drop));
+	assert.match(composer.container.textContent, /maximum\.bin/);
+	const tooLarge = new File(["x"], "too-large.bin");
+	Object.defineProperty(tooLarge, "size", { value: 500_000_001 });
+	const rejected = new Event("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(rejected, "dataTransfer", { value: { types: ["Files"], files: [tooLarge] } });
+	await act(async () => document.body.dispatchEvent(rejected));
+	assert.doesNotMatch(composer.container.textContent, /too-large\.bin/);
+	assert.match(composer.container.textContent, /compose\.error\.attachmentSize/);
+	assert.equal(formatAttachmentSize(500_000_000), "500.0 MB");
+});
+
+test("a message containing an attachment can be sent without body text", async (t) => {
+	let sent = 0;
+	const composer = await fixture(t, async (url) => {
+		if (url === "/api/send") { sent++; return Response.json({ messageId: "sent-1" }); }
+		if (url.startsWith("/api/drafts/") && !url.endsWith("/attachments")) return Response.json({ draft: { id: "d1" } });
+		return Response.json({ draft: { id: "d1" } });
+	});
+	await composer.setRecipient("recipient@example.test");
+	await composer.setSubject("File");
+	const drop = new Event("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(drop, "dataTransfer", { value: { types: ["Files"], files: [new File(["x"], "file.txt")] } });
+	await act(async () => document.body.dispatchEvent(drop));
+	await composer.submit();
+	assert.equal(sent, 1);
 });
 
 test("the navigation bridge fails closed while any registered editor is dirty", () => {

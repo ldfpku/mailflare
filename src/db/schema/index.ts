@@ -413,6 +413,28 @@ export const messageAttachments = sqliteTable(
 	(t) => [index("message_attachments_message_idx").on(t.messageId)],
 );
 
+export const mailAttachmentUploads = sqliteTable("mail_attachment_uploads", {
+	id: text("id").primaryKey(),
+	draftId: text("draft_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+	userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+	objectKey: text("object_key").notNull(),
+	uploadId: text("upload_id").notNull(),
+	filename: text("filename").notNull(),
+	contentType: text("content_type").notNull(),
+	size: integer("size").notNull(),
+	partSize: integer("part_size").notNull(),
+	fingerprint: text("fingerprint").notNull(),
+	state: text("state", { enum: ["pending", "completing", "canceling"] }).notNull().default("pending"),
+	leaseId: text("lease_id"),
+	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, (t) => [index("mail_attachment_uploads_draft_idx").on(t.draftId, t.userId)]);
+
+export const mailAttachmentUploadParts = sqliteTable("mail_attachment_upload_parts", {
+	uploadId: text("upload_id").notNull().references(() => mailAttachmentUploads.id, { onDelete: "cascade" }),
+	partNumber: integer("part_number").notNull(),
+	etag: text("etag").notNull(),
+}, (t) => [uniqueIndex("mail_attachment_upload_parts_idx").on(t.uploadId, t.partNumber)]);
+
 export const sharedAttachmentLinks = sqliteTable("shared_attachment_links", {
 	id: text("id").primaryKey(),
 	attachmentId: text("attachment_id").notNull().references(() => messageAttachments.id, { onDelete: "cascade" }).unique(),
@@ -808,7 +830,7 @@ export const backupSettings = sqliteTable("backup_settings", {
 export const appSettings = sqliteTable("app_settings", {
 	id: text("id").primaryKey(),
 	appName: text("app_name").notNull().default("斯米伽邮箱"),
-	outboundAttachmentMaxMb: integer("outbound_attachment_max_mb").notNull().default(25),
+	outboundAttachmentMaxMb: integer("outbound_attachment_max_mb").notNull().default(500),
 	/** Per-user Drive storage cap in bytes; null means unlimited. */
 	driveStorageLimitBytes: integer("drive_storage_limit_bytes"),
 	resendApiKey: text("resend_api_key"),
@@ -1456,6 +1478,8 @@ export const schema = {
 	spamReputation,
 	spamFeedback,
 	messageAttachments,
+	mailAttachmentUploads,
+	mailAttachmentUploadParts,
 	sharedAttachmentLinks,
 	outboundJobs,
 	emailTemplates,
