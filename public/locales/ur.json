@@ -177,6 +177,7 @@
 	"error.emptyFolder": "فولڈر خالی نہیں ہو سکا",
 	"list.resize": "پیغامات کی فہرست کا سائز تبدیل کریں",
 	"compose.error.loadDraft": "مسودہ لوڈ نہیں ہو سکا",
+	"compose.error.saveDraft": "مسودہ محفوظ نہیں ہو سکا۔ کنکشن چیک کریں اور دوبارہ کوشش کریں۔",
 	"compose.error.noRecipient": "کم از کم ایک وصول کنندہ شامل کریں",
 	"compose.error.invalidAddress": "\"{address}\" درست ای میل ایڈریس نہیں ہے",
 	"compose.error.emptyBody": "بھیجنے سے پہلے پیغام لکھیں",

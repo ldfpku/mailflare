@@ -177,6 +177,7 @@
 	"error.emptyFolder": "ফোল্ডার খালি করা যায়নি",
 	"list.resize": "বার্তা তালিকার আকার পরিবর্তন করুন",
 	"compose.error.loadDraft": "ড্রাফট লোড করা যায়নি",
+	"compose.error.saveDraft": "ড্রাফট সংরক্ষণ করা যায়নি। সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।",
 	"compose.error.noRecipient": "কমপক্ষে একজন প্রাপক যোগ করুন",
 	"compose.error.invalidAddress": "\"{address}\" একটি বৈধ ইমেইল ঠিকানা নয়",
 	"compose.error.emptyBody": "পাঠানোর আগে একটি বার্তা লিখুন",

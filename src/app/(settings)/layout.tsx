@@ -4,11 +4,8 @@ import { SkipToContent } from "@/components/skip-to-content";
 import Link from "next/link";
 import { HelpCircle } from "lucide-react";
 import { AuthGuard } from "@/components/auth/auth-guard";
-import { ComposeProvider } from "@/components/compose/compose-context";
-import { FloatingComposer } from "@/components/compose/floating-composer";
 import { MailSearchInput } from "@/components/mail-search/mail-search-input";
 import { MailSearchProvider } from "@/components/mail-search/mail-search-context";
-import { MailboxProvider } from "@/components/mailbox-provider";
 import { MailboxSelector } from "@/components/mailbox-selector";
 import { DashboardNav } from "@/components/dashboard-nav";
 import { SidebarProvider } from "@/components/sidebar-state";
@@ -24,8 +21,6 @@ export default function DashboardLayout({
   return (
     <AuthGuard>
       <SidebarProvider mobileOverlay>
-        <MailboxProvider>
-          <ComposeProvider>
             <MailSearchProvider>
               <ShortcutsProvider>
                 <RouteTitle />
@@ -50,12 +45,9 @@ export default function DashboardLayout({
                       {children}
                     </main>
                   </div>
-                  <FloatingComposer />
                 </div>
               </ShortcutsProvider>
             </MailSearchProvider>
-          </ComposeProvider>
-        </MailboxProvider>
       </SidebarProvider>
     </AuthGuard>
   );

@@ -177,6 +177,7 @@
 	"error.emptyFolder": "خالی کردن پوشه ممکن نشد",
 	"list.resize": "تغییر اندازه فهرست پیام‌ها",
 	"compose.error.loadDraft": "بارگذاری پیش‌نویس ناموفق بود",
+	"compose.error.saveDraft": "ذخیره پیش‌نویس ممکن نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید.",
 	"compose.error.noRecipient": "حداقل یک گیرنده اضافه کنید",
 	"compose.error.invalidAddress": "\"{address}\" یک نشانی ایمیل معتبر نیست",
 	"compose.error.emptyBody": "پیش از ارسال، پیامی بنویسید",

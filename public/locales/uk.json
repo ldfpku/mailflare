@@ -185,6 +185,7 @@
 	"error.emptyFolder": "Не вдалося очистити папку",
 	"list.resize": "Змінити розмір списку повідомлень",
 	"compose.error.loadDraft": "Не вдалося завантажити чернетку",
+	"compose.error.saveDraft": "Не вдалося зберегти чернетку. Перевірте з’єднання та повторіть спробу.",
 	"compose.error.noRecipient": "Додайте принаймні одного одержувача",
 	"compose.error.invalidAddress": "«{address}» не є дійсною адресою електронної пошти",
 	"compose.error.emptyBody": "Напишіть повідомлення перед надсиланням",

@@ -18,8 +18,8 @@ import { SESSION_COOKIE } from "@/lib/auth/session";
  * in its bearer header, exactly as it does after a normal login.
  */
 export async function POST(request: Request) {
-	if (!isSameOrigin(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 	const env = getEnv();
+	if (!isSameOrigin(request, env.APP_URL)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 	const body = (await request.json().catch(() => null)) as { userId?: unknown } | null;
 	const userId = typeof body?.userId === "string" ? body.userId : "";
 	const jar = await cookies();

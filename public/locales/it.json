@@ -181,6 +181,7 @@
 	"error.emptyFolder": "Impossibile svuotare la cartella",
 	"list.resize": "Ridimensiona elenco messaggi",
 	"compose.error.loadDraft": "Impossibile caricare la bozza",
+	"compose.error.saveDraft": "Impossibile salvare la bozza. Controlla la connessione e riprova.",
 	"compose.error.noRecipient": "Aggiungi almeno un destinatario",
 	"compose.error.invalidAddress": "\"{address}\" non è un indirizzo email valido",
 	"compose.error.emptyBody": "Scrivi un messaggio prima di inviare",

@@ -10,9 +10,11 @@ export const IM_CODE = {
 	FORBIDDEN: 403,
 	NOT_FOUND: 404,
 	TOKEN_EXPIRED: 406,
+	CONFLICT: 409,
 	MFA_REQUIRED: 428,
 	TOO_MANY_REQUESTS: 429,
 	NOT_IMPLEMENTED: 501,
+	SERVICE_UNAVAILABLE: 503,
 } as const;
 
 export type ImCode = (typeof IM_CODE)[keyof typeof IM_CODE];

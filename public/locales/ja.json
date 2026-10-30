@@ -173,6 +173,7 @@
 	"error.emptyFolder": "フォルダを空にできません",
 	"list.resize": "メール一覧のサイズを変更",
 	"compose.error.loadDraft": "下書きを読み込めませんでした",
+	"compose.error.saveDraft": "下書きを保存できませんでした。接続を確認して再試行してください。",
 	"compose.error.noRecipient": "宛先を少なくとも 1 件追加してください",
 	"compose.error.invalidAddress": "「{address}」は有効なメールアドレスではありません",
 	"compose.error.emptyBody": "送信する前にメッセージを入力してください",

@@ -5,11 +5,9 @@ import { useEffect } from "react";
 import {  Sparkles } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { AuthGuard } from "@/components/auth/auth-guard";
-import { ComposeProvider } from "@/components/compose/compose-context";
-import { FloatingComposer } from "@/components/compose/floating-composer";
+import { FloatingComposeButton } from "@/components/compose/floating-composer";
 import { MailSearchInput } from "@/components/mail-search/mail-search-input";
 import { MailSearchProvider } from "@/components/mail-search/mail-search-context";
-import { MailboxProvider } from "@/components/mailbox-provider";
 import { MailboxSelector } from "@/components/mailbox-selector";
 import { AgentPanel } from "@/components/agent/agent-panel";
 import { AssistantOpenContext } from "@/components/agent/assistant-open-state";
@@ -44,8 +42,6 @@ export default function DashboardLayout({
   return (
     <AuthGuard>
       <SidebarProvider mobileOverlay>
-        <MailboxProvider>
-          <ComposeProvider>
             <MailSearchProvider>
               <ShortcutsProvider>
                 <RouteTitle />
@@ -82,12 +78,10 @@ export default function DashboardLayout({
                       </aside>
                     </div>
                   </div>
-                  <FloatingComposer showButton />
+                  <FloatingComposeButton />
                 </div>
               </ShortcutsProvider>
             </MailSearchProvider>
-          </ComposeProvider>
-        </MailboxProvider>
       </SidebarProvider>
     </AuthGuard>
   );

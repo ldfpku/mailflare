@@ -11,15 +11,27 @@ import type {
 
 const SESSION_STORAGE_KEY = "mailflare-session-token";
 export const AUTH_SESSION_CHANGED_EVENT = "mailflare:auth-session-changed";
+let sessionGeneration = 0;
+let unauthenticated = false;
 
 function dispatchAuthSessionChanged(authenticated: boolean): void {
 	if (typeof window === "undefined") return;
+	sessionGeneration += 1;
+	unauthenticated = !authenticated;
 	clearCachedGets();
 	window.dispatchEvent(
 		new CustomEvent<AuthSessionChangedDetail>(AUTH_SESSION_CHANGED_EVENT, {
 			detail: { authenticated },
 		}),
 	);
+}
+
+if (typeof window !== "undefined") {
+	window.addEventListener("storage", (event) => {
+		if (event.key === SESSION_STORAGE_KEY && event.oldValue !== event.newValue) {
+			dispatchAuthSessionChanged(event.newValue !== null);
+		}
+	});
 }
 
 export function getClientSessionToken(): string | null {
@@ -54,6 +66,8 @@ export function getAuthHeaders(headers?: HeadersInit): Headers {
 
 export async function authFetch(input: RequestInfo | URL, init: AuthFetchOptions = {}): Promise<Response> {
 	const { redirectOnUnauthorized = true, headers, ...requestInit } = init;
+	const requestSession = getClientSessionToken();
+	const requestGeneration = sessionGeneration;
 	const cacheKey = cachedGetKey(input, requestInit.method);
 	const isWrite = (requestInit.method ?? "GET").toUpperCase() !== "GET";
 	if (isWrite) clearCachedGets();
@@ -67,7 +81,8 @@ export async function authFetch(input: RequestInfo | URL, init: AuthFetchOptions
 	// Again once the write is done, in case a read started while it was in flight.
 	if (isWrite) clearCachedGets();
 
-	if (response.status === 401 && redirectOnUnauthorized && typeof window !== "undefined") {
+	if (response.status === 401 && redirectOnUnauthorized && typeof window !== "undefined" &&
+		!unauthenticated && requestGeneration === sessionGeneration && requestSession === getClientSessionToken()) {
 		clearClientSessionToken();
 		window.location.assign("/login");
 	}

@@ -173,6 +173,7 @@
 	"error.emptyFolder": "Không thể dọn sạch thư mục",
 	"list.resize": "Đổi kích thước danh sách thư",
 	"compose.error.loadDraft": "Không thể tải thư nháp",
+	"compose.error.saveDraft": "Không thể lưu thư nháp. Hãy kiểm tra kết nối và thử lại.",
 	"compose.error.noRecipient": "Thêm ít nhất một người nhận",
 	"compose.error.invalidAddress": "\"{address}\" không phải địa chỉ email hợp lệ",
 	"compose.error.emptyBody": "Hãy viết nội dung thư trước khi gửi",

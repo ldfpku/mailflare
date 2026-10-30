@@ -177,6 +177,7 @@
 	"error.emptyFolder": "Imeshindwa kufuta folda",
 	"list.resize": "Badilisha ukubwa wa orodha ya jumbe",
 	"compose.error.loadDraft": "Imeshindwa kupakia rasimu",
+	"compose.error.saveDraft": "Haikuwezekana kuhifadhi rasimu. Angalia muunganisho wako na ujaribu tena.",
 	"compose.error.noRecipient": "Ongeza angalau mpokeaji mmoja",
 	"compose.error.invalidAddress": "\"{address}\" si anwani halali ya barua pepe",
 	"compose.error.emptyBody": "Andika ujumbe kabla ya kutuma",

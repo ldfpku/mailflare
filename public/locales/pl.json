@@ -185,6 +185,7 @@
 	"error.emptyFolder": "Nie można opróżnić folderu",
 	"list.resize": "Zmień rozmiar listy wiadomości",
 	"compose.error.loadDraft": "Nie udało się wczytać wersji roboczej",
+	"compose.error.saveDraft": "Nie udało się zapisać wersji roboczej. Sprawdź połączenie i spróbuj ponownie.",
 	"compose.error.noRecipient": "Dodaj co najmniej jednego odbiorcę",
 	"compose.error.invalidAddress": "„{address}” nie jest prawidłowym adresem e-mail",
 	"compose.error.emptyBody": "Przed wysłaniem napisz wiadomość",

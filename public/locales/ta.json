@@ -177,6 +177,7 @@
 	"error.emptyFolder": "கோப்புறையைக் காலி செய்ய இயலவில்லை",
 	"list.resize": "செய்தி பட்டியலின் அளவை மாற்று",
 	"compose.error.loadDraft": "வரைவை ஏற்ற இயலவில்லை",
+	"compose.error.saveDraft": "வரைவைச் சேமிக்க முடியவில்லை. இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
 	"compose.error.noRecipient": "குறைந்தது ஒரு பெறுநரைச் சேர்க்கவும்",
 	"compose.error.invalidAddress": "\"{address}\" சரியான மின்னஞ்சல் முகவரி அல்ல",
 	"compose.error.emptyBody": "அனுப்புவதற்கு முன் ஒரு செய்தியை எழுதவும்",

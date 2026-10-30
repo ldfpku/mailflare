@@ -49,6 +49,12 @@ export const users = sqliteTable("users", {
 		.$defaultFn(() => new Date()),
 }, (t) => [uniqueIndex("users_booking_username_idx").on(t.bookingUsername)]);
 
+export const imStateOutbox = sqliteTable("im_state_outbox", {
+	userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+	revision: integer("revision").notNull(),
+	updatedAt: integer("updated_at").notNull(),
+}, (t) => [index("im_state_outbox_updated_idx").on(t.updatedAt, t.userId)]);
+
 export const domains = sqliteTable(
 	"domains",
 	{
@@ -1240,8 +1246,21 @@ export const businessCards = sqliteTable(
 	(table) => [uniqueIndex("business_cards_token_unique").on(table.token)],
 );
 
+export const imTodoLists = sqliteTable(
+	"im_todo_lists",
+	{
+		id: text("id").primaryKey(),
+		userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		position: integer("position").notNull(),
+		createdAt: integer("created_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [index("im_todo_lists_user_position_idx").on(table.userId, table.position, table.id)],
+);
+
 /**
- * "我的待办" in chat: one person's to-dos, typed in or drafted by Workers AI from a mail. `source_id` is the mail's
+ * "我的待办" in chat: a person's to-dos, typed in or drafted by Workers AI from a mail. `source_id` is the mail's
  * `messages.id` for a mail to-do; the title is kept so the item still reads well after the mail is deleted.
  */
 export const imTodos = sqliteTable(
@@ -1255,15 +1274,105 @@ export const imTodos = sqliteTable(
 		notes: text("notes").notNull().default(""),
 		/** Epoch milliseconds, or null for no deadline. */
 		dueAt: integer("due_at"),
+		dueDate: text("due_date"),
+		dueTimezone: text("due_timezone"),
 		done: integer("done", { mode: "boolean" }).notNull().default(false),
 		doneAt: integer("done_at"),
 		sourceType: text("source_type", { enum: ["manual", "mail"] }).notNull().default("manual"),
 		sourceId: text("source_id"),
 		sourceTitle: text("source_title").notNull().default(""),
+		sourceShareId: text("source_share_id"),
+		listId: text("list_id").references(() => imTodoLists.id, { onDelete: "set null" }),
+		assigneeId: text("assignee_id").references(() => users.id, { onDelete: "set null" }),
+		important: integer("important", { mode: "boolean" }).notNull().default(false),
+		version: integer("version").notNull().default(1),
+		remindAt: integer("remind_at"),
+		reminderRevision: integer("reminder_revision").notNull().default(1),
+		repeatKind: text("repeat_kind", { enum: ["daily", "weekly", "monthly", "yearly"] }),
+		repeatTimezone: text("repeat_timezone"),
+		repeatTime: text("repeat_time"),
+		repeatAnchorDay: integer("repeat_anchor_day"),
+		repeatAnchorMonth: integer("repeat_anchor_month"),
+		nextOccurrenceId: text("next_occurrence_id"),
 		createdAt: integer("created_at").notNull(),
 		updatedAt: integer("updated_at").notNull(),
 	},
-	(table) => [index("im_todos_user_idx").on(table.userId, table.done, table.dueAt)],
+	(table) => [
+		index("im_todos_user_idx").on(table.userId, table.done, table.dueAt),
+		index("im_todos_user_created_idx").on(table.userId, table.createdAt, table.id),
+		index("im_todos_user_done_created_idx").on(table.userId, table.done, table.createdAt, table.id),
+		index("im_todos_user_list_created_idx").on(table.userId, table.listId, table.createdAt, table.id),
+		index("im_todos_assignee_created_idx").on(table.assigneeId, table.createdAt, table.id),
+		index("im_todos_due_reminder_idx").on(table.remindAt, table.id).where(sql`${table.done} = 0 AND ${table.remindAt} IS NOT NULL`),
+		index("im_todos_user_due_order_idx").on(table.userId, sql`(${table.dueAt} IS NULL)`, table.dueAt, sql`${table.createdAt} DESC`, sql`${table.id} DESC`),
+		index("im_todos_assignee_due_order_idx").on(table.assigneeId, sql`(${table.dueAt} IS NULL)`, table.dueAt, sql`${table.createdAt} DESC`, sql`${table.id} DESC`),
+		index("im_todos_user_title_order_idx").on(table.userId, sql`${table.title} COLLATE NOCASE`, sql`${table.createdAt} DESC`, sql`${table.id} DESC`),
+		index("im_todos_assignee_title_order_idx").on(table.assigneeId, sql`${table.title} COLLATE NOCASE`, sql`${table.createdAt} DESC`, sql`${table.id} DESC`),
+	],
+);
+
+export const imTodoSteps = sqliteTable(
+	"im_todo_steps",
+	{
+		id: text("id").primaryKey(),
+		todoId: text("todo_id").notNull().references(() => imTodos.id, { onDelete: "cascade" }),
+		title: text("title").notNull(),
+		done: integer("done", { mode: "boolean" }).notNull().default(false),
+		position: integer("position").notNull(),
+		version: integer("version").notNull().default(1),
+		createdAt: integer("created_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [index("im_todo_steps_todo_position_idx").on(table.todoId, table.position, table.id)],
+);
+
+export const imTodoDayEntries = sqliteTable(
+	"im_todo_day_entries",
+	{
+		todoId: text("todo_id").notNull().references(() => imTodos.id, { onDelete: "cascade" }),
+		userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+		day: text("day").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.todoId, table.userId] }),
+		index("im_todo_day_entries_user_day_idx").on(table.userId, table.day, table.todoId),
+	],
+);
+
+export const imTodoReminders = sqliteTable(
+	"im_todo_reminders",
+	{
+		id: text("id").primaryKey(),
+		todoId: text("todo_id").notNull().references(() => imTodos.id, { onDelete: "cascade" }),
+		userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+		revision: integer("revision").notNull(),
+		scheduledAt: integer("scheduled_at").notNull(),
+		createdAt: integer("created_at").notNull(),
+		seenAt: integer("seen_at"),
+		notifiedAt: integer("notified_at"),
+		attempts: integer("attempts").notNull().default(0),
+		nextAttemptAt: integer("next_attempt_at").notNull().default(0),
+	},
+	(table) => [
+		uniqueIndex("im_todo_reminders_todo_user_revision_idx").on(table.todoId, table.userId, table.revision),
+		index("im_todo_reminders_user_seen_idx").on(table.userId, table.seenAt, table.createdAt),
+		index("im_todo_reminders_delivery_idx").on(table.notifiedAt, table.nextAttemptAt, table.createdAt),
+	],
+);
+
+export const imTodoAttachments = sqliteTable(
+	"im_todo_attachments",
+	{
+		id: text("id").primaryKey(),
+		todoId: text("todo_id").notNull().references(() => imTodos.id, { onDelete: "cascade" }),
+		driveItemId: text("drive_item_id").references(() => driveItems.id, { onDelete: "set null" }),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [
+		uniqueIndex("im_todo_attachments_todo_item_idx").on(table.todoId, table.driveItemId),
+		index("im_todo_attachments_todo_idx").on(table.todoId, table.createdAt, table.id),
+	],
 );
 
 /**
@@ -1333,6 +1442,7 @@ export const imCalendarInvites = sqliteTable(
 
 export const schema = {
 	users,
+	imStateOutbox,
 	domains,
 	mailboxes,
 	mailboxAliases,

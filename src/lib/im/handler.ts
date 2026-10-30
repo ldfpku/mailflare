@@ -12,7 +12,7 @@ import { defaultAvatarResponse, defaultGroupAvatarSvg, defaultPersonAvatarSvg } 
 import { IM_CODE, IM_MFA_REQUIRED_MESSAGE, imFail, imOk } from "./response";
 import { issueImTokens, resolveImAccessToken, resolveImSocketToken, revokeImPair, rotateImRefreshToken, type ImUser } from "./tokens";
 import { IM_WS_TICKET_TTL_MS, formatImWsTicket } from "./ws-ticket-utils";
-import { IM_DEFAULT_USER_STATE_ID, IM_INVISIBLE_USER_STATE_ID, IM_USER_STATES, imAvatarUrl, parseImUserStateId, toImUserInfo } from "./users-utils";
+import { IM_USER_STATES, imAvatarUrl, parseImUserStateId, toImUserInfo } from "./users-utils";
 import { imFileIdFromUrl, randomHex } from "./files-utils";
 import { findImRoute, imApiPath, type ImRouteTable } from "./handler-utils";
 import {
@@ -68,9 +68,13 @@ import { parseImHistoryParams } from "./history-utils";
 import { parseImSearchParams } from "./search-utils";
 import { listDriveForPicker, listRoomFiles, removeRoomFile, saveRoomFileToDrive, sendDriveFileToRoom } from "./room-files";
 import { notifyImUsers } from "./notify";
+import { triggerPendingUserState } from "./state-outbox";
 import { rtcRoutes } from "./meeting-routes";
 import { draftMailTodo, summarizeRoom } from "./ai";
-import { createTodo, deleteTodo, listTodos, updateTodo } from "./todos";
+import { countDueTodos, createTodo, deleteTodo, getTodoDetail, listTodos, pageTodos, updateTodo } from "./todos";
+import { createTodoList, deleteTodoList, listTodoLists, listTodoSteps, createTodoStep, deleteTodoStep, reorderTodoLists, setTodoDay, updateTodoList, updateTodoStep } from "./todo-workspace";
+import { dismissTodoReminder, listTodoReminders } from "./todo-reminders";
+import { createTodoAttachment, deleteTodoAttachment, listTodoAttachments } from "./todo-attachments";
 import { issueWebSessionTokens } from "./web-app";
 import { listImPurgeChanges } from "./purge";
 import { getLoginDomain, resolveLoginEmail } from "@/lib/auth/login-domain";
@@ -199,16 +203,26 @@ const userRoutes: ImRouteTable<ImContext> = {
 	"POST im/user/state/changeState": async ({ request, env, user }) => {
 		const stateId = parseImUserStateId((await readBody(request)).id);
 		if (!stateId) throw new ImChatError(400, "状态无效");
-		const updated = await env.DB.prepare("UPDATE users SET im_state_id = ? WHERE id = ? AND disabled = 0 AND deleted_at IS NULL")
-			.bind(stateId, user.id).run();
+		const update = env.DB.prepare("UPDATE users SET im_state_id = ? WHERE id = ? AND disabled = 0 AND deleted_at IS NULL")
+			.bind(stateId, user.id);
+		const updated = env.IM_HUB
+			? (await env.DB.batch([
+				update,
+				env.DB.prepare(`INSERT INTO im_state_outbox (user_id, revision, updated_at)
+					SELECT id, 1, ? FROM users WHERE id = ? AND disabled = 0 AND deleted_at IS NULL
+					ON CONFLICT(user_id) DO UPDATE SET revision = im_state_outbox.revision + 1, updated_at = excluded.updated_at`)
+					.bind(Date.now(), user.id),
+			]))[0]
+			: await update.run();
 		if (!updated.meta?.changes) throw new ImChatError(403, "账号已停用或不存在");
-		const recipients = await profileRecipients(env, user.id);
-		await notifyImUsers(env, [user.id], { type: "userStateChange", data: { uid: user.id, userStateId: stateId } });
-		await notifyImUsers(env, recipients.filter((id) => id !== user.id), {
-			type: "userStateChange",
-			data: { uid: user.id, userStateId: stateId === IM_INVISIBLE_USER_STATE_ID ? IM_DEFAULT_USER_STATE_ID : stateId },
-		});
-		await reconcileVisiblePresence(env, user.id);
+		if (env.IM_HUB) {
+			try {
+				await triggerPendingUserState(env, user.id);
+			} catch (error) {
+				console.error("[im-state] State saved but notification is pending:", error);
+				return imFail(IM_CODE.SERVICE_UNAVAILABLE, "状态已保存，但同步失败，系统将自动重试");
+			}
+		} else await reconcileVisiblePresence(env, user.id);
 		return imOk(true);
 	},
 	// Contacts come from the organisation directory and there are no friend requests.
@@ -388,10 +402,43 @@ const userRoutes: ImRouteTable<ImContext> = {
 	},
 	// "我的待办" (see todos.ts).
 	"GET im/todo/list": async ({ env, user, url }) => imOk(await listTodos(env, user.id, url.searchParams.get("status"))),
+	"GET im/todo/page": async ({ env, user, url }) => imOk(await pageTodos(env, user.id, url.searchParams)),
+	"GET im/todo/detail": async ({ env, user, url }) => imOk(await getTodoDetail(env, user.id, url.searchParams.get("id"))),
+	"GET im/todo/counts": async ({ env, user, url }) => imOk(await countDueTodos(env, user.id, url.searchParams)),
+	"GET im/todo/lists": async ({ env, user }) => imOk(await listTodoLists(env, user.id)),
+	"POST im/todo/list/create": async ({ request, env, user }) => imOk(await createTodoList(env, user.id, await readBody(request))),
+	"POST im/todo/list/update": async ({ request, env, user }) => imOk(await updateTodoList(env, user.id, await readBody(request))),
+	"POST im/todo/lists/reorder": async ({ request, env, user }) => imOk(await reorderTodoLists(env, user.id, await readBody(request))),
+	"POST im/todo/list/delete": async ({ request, env, user }) => {
+		await deleteTodoList(env, user.id, (await readBody(request)).id);
+		return imOk(true);
+	},
+	"GET im/todo/steps": async ({ env, user, url }) => imOk(await listTodoSteps(env, user.id, url.searchParams.get("todoId"))),
+	"POST im/todo/day": async ({ request, env, user }) => {
+		await setTodoDay(env, user.id, await readBody(request));
+		return imOk(true);
+	},
+	"GET im/todo/attachments": async ({ env, user, url }) => imOk(await listTodoAttachments(env, user.id, url.searchParams.get("todoId"))),
+	"POST im/todo/attachment/create": async ({ request, env, user }) => imOk(await createTodoAttachment(env, user.id, await readBody(request))),
+	"POST im/todo/attachment/delete": async ({ request, env, user }) => {
+		await deleteTodoAttachment(env, user.id, await readBody(request));
+		return imOk(true);
+	},
+	"GET im/todo/reminders": async ({ env, user }) => imOk(await listTodoReminders(env, user.id)),
+	"POST im/todo/reminder/dismiss": async ({ request, env, user }) => {
+		await dismissTodoReminder(env, user.id, (await readBody(request)).id);
+		return imOk(true);
+	},
+	"POST im/todo/step/create": async ({ request, env, user }) => imOk(await createTodoStep(env, user.id, await readBody(request))),
+	"POST im/todo/step/update": async ({ request, env, user }) => imOk(await updateTodoStep(env, user.id, await readBody(request))),
+	"POST im/todo/step/delete": async ({ request, env, user }) => {
+		await deleteTodoStep(env, user.id, await readBody(request));
+		return imOk(true);
+	},
 	"POST im/todo": async ({ request, env, user }) => imOk(await createTodo(env, user, await readBody(request))),
 	"POST im/todo/update": async ({ request, env, user }) => imOk(await updateTodo(env, user.id, await readBody(request))),
 	"POST im/todo/delete": async ({ request, env, user }) => {
-		await deleteTodo(env, user.id, (await readBody(request)).id);
+		await deleteTodo(env, user.id, await readBody(request));
 		return imOk(true);
 	},
 	// Group announcements (see announcements.ts); deleting takes the id in the query, as HuLa sends it.
@@ -453,7 +500,7 @@ async function guardImChat(handler: () => Promise<Response> | Response): Promise
 		return await handler();
 	} catch (error) {
 		if (!(error instanceof ImChatError)) throw error;
-		const code = error.status === 403 ? IM_CODE.FORBIDDEN : error.status === 404 ? IM_CODE.NOT_FOUND : IM_CODE.BAD_REQUEST;
+		const code = error.status === 403 ? IM_CODE.FORBIDDEN : error.status === 404 ? IM_CODE.NOT_FOUND : error.status === 409 ? IM_CODE.CONFLICT : IM_CODE.BAD_REQUEST;
 		return imFail(code, error.message);
 	}
 }

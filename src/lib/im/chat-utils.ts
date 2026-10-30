@@ -321,7 +321,7 @@ export function defaultGroupName(names: string[]): string {
 /** A refusal the handler turns into HuLa's envelope; `status` is one of its codes. */
 export class ImChatError extends Error {
 	constructor(
-		readonly status: 400 | 403 | 404,
+		readonly status: 400 | 403 | 404 | 409,
 		message: string,
 	) {
 		super(message);

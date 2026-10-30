@@ -181,6 +181,7 @@
 	"error.emptyFolder": "Não foi possível esvaziar a pasta",
 	"list.resize": "Redimensionar lista de mensagens",
 	"compose.error.loadDraft": "Falha ao carregar o rascunho",
+	"compose.error.saveDraft": "Não foi possível guardar o rascunho. Verifique a ligação e tente novamente.",
 	"compose.error.noRecipient": "Adicione pelo menos um destinatário",
 	"compose.error.invalidAddress": "\"{address}\" não é um endereço de email válido",
 	"compose.error.emptyBody": "Escreva uma mensagem antes de enviar",

@@ -181,6 +181,7 @@
 	"error.emptyFolder": "No se pudo vaciar la carpeta",
 	"list.resize": "Cambiar el tamaño de la lista de mensajes",
 	"compose.error.loadDraft": "No se pudo cargar el borrador",
+	"compose.error.saveDraft": "No se pudo guardar el borrador. Comprueba la conexión e inténtalo de nuevo.",
 	"compose.error.noRecipient": "Añade al menos un destinatario",
 	"compose.error.invalidAddress": "\"{address}\" no es una dirección de correo válida",
 	"compose.error.emptyBody": "Escribe un mensaje antes de enviar",

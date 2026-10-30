@@ -177,6 +177,7 @@
 	"error.emptyFolder": "फ़ोल्डर खाली नहीं किया जा सका",
 	"list.resize": "संदेश सूची का आकार बदलें",
 	"compose.error.loadDraft": "ड्राफ़्ट लोड नहीं हो सका",
+	"compose.error.saveDraft": "ड्राफ़्ट सहेजा नहीं जा सका। कनेक्शन जाँचें और फिर कोशिश करें।",
 	"compose.error.noRecipient": "कम से कम एक प्राप्तकर्ता जोड़ें",
 	"compose.error.invalidAddress": "\"{address}\" मान्य ईमेल पता नहीं है",
 	"compose.error.emptyBody": "भेजने से पहले संदेश लिखें",

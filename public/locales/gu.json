@@ -177,6 +177,7 @@
 	"error.emptyFolder": "ફોલ્ડર ખાલી કરી શકાયું નથી",
 	"list.resize": "સંદેશ સૂચિનું કદ બદલો",
 	"compose.error.loadDraft": "ડ્રાફ્ટ લોડ કરવામાં નિષ્ફળ",
+	"compose.error.saveDraft": "ડ્રાફ્ટ સાચવી શકાયો નથી. કનેક્શન તપાસીને ફરી પ્રયાસ કરો.",
 	"compose.error.noRecipient": "ઓછામાં ઓછો એક પ્રાપ્તકર્તા ઉમેરો",
 	"compose.error.invalidAddress": "\"{address}\" માન્ય ઇમેઇલ સરનામું નથી",
 	"compose.error.emptyBody": "મોકલતા પહેલાં સંદેશો લખો",

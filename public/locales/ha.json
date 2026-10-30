@@ -177,6 +177,7 @@
 	"error.emptyFolder": "Ba a iya zubar da babban fayil ɗin ba",
 	"list.resize": "Canza girman jerin saƙonni",
 	"compose.error.loadDraft": "An kasa loda daftari",
+	"compose.error.saveDraft": "An kasa adana daftarin. Duba haɗin ku kuma sake gwadawa.",
 	"compose.error.noRecipient": "Ƙara aƙalla mai karɓa ɗaya",
 	"compose.error.invalidAddress": "\"{address}\" ba ingantaccen adireshin imel ba ne",
 	"compose.error.emptyBody": "Rubuta saƙo kafin aikawa",

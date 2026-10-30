@@ -12,6 +12,8 @@ interface CloudflareEnv {
 	AI_API_KEY?: string;
 	/** Workers AI model (`@cf/...`) for chat summaries and mail to-dos; defaults to the assistant's Workers AI model. */
 	IM_AI_MODEL?: string;
+	/** Maximum to-dos owned by one account; defaults to 10,000. */
+	IM_TODO_LIMIT?: string;
 	// The outbound queue also carries webhook retries so that scheduled redelivery needs no extra binding.
 	OUTBOUND_QUEUE: Queue<
 		| import("./src/lib/email/send").OutboundQueueMessage

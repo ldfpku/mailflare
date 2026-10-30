@@ -177,6 +177,7 @@
 	"error.emptyFolder": "ෆෝල්ඩරය හිස් කළ නොහැක",
 	"list.resize": "පණිවිඩ ලැයිස්තුවේ ප්‍රමාණය වෙනස් කරන්න",
 	"compose.error.loadDraft": "කෙටුම්පත පූරණය කිරීම අසාර්ථකයි",
+	"compose.error.saveDraft": "කෙටුම්පත සුරැකීමට නොහැකි විය. සම්බන්ධතාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.",
 	"compose.error.noRecipient": "අවම වශයෙන් එක් ලබන්නෙකු එක් කරන්න",
 	"compose.error.invalidAddress": "\"{address}\" වලංගු ඊමේල් ලිපිනයක් නොවේ",
 	"compose.error.emptyBody": "යැවීමට පෙර පණිවිඩයක් ලියන්න",

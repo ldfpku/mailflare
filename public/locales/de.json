@@ -177,6 +177,7 @@
 	"error.emptyFolder": "Der Ordner konnte nicht geleert werden",
 	"list.resize": "Größe der Nachrichtenliste ändern",
 	"compose.error.loadDraft": "Der Entwurf konnte nicht geladen werden",
+	"compose.error.saveDraft": "Der Entwurf konnte nicht gespeichert werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
 	"compose.error.noRecipient": "Fügen Sie mindestens einen Empfänger hinzu",
 	"compose.error.invalidAddress": "„{address}“ ist keine gültige E-Mail-Adresse",
 	"compose.error.emptyBody": "Schreiben Sie eine Nachricht, bevor Sie sie senden",

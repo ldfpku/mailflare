@@ -177,6 +177,7 @@
 	"error.emptyFolder": "ਫੋਲਡਰ ਖਾਲੀ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ",
 	"list.resize": "ਸੁਨੇਹਾ ਸੂਚੀ ਦਾ ਆਕਾਰ ਬਦਲੋ",
 	"compose.error.loadDraft": "ਡਰਾਫਟ ਲੋਡ ਕਰਨਾ ਅਸਫਲ",
+	"compose.error.saveDraft": "ਡਰਾਫਟ ਸੁਰੱਖਿਅਤ ਨਹੀਂ ਹੋ ਸਕਿਆ। ਕਨੈਕਸ਼ਨ ਜਾਂਚੋ ਅਤੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
 	"compose.error.noRecipient": "ਘੱਟੋ-ਘੱਟ ਇੱਕ ਪ੍ਰਾਪਤਕਰਤਾ ਜੋੜੋ",
 	"compose.error.invalidAddress": "\"{address}\" ਇੱਕ ਜਾਇਜ਼ ਈਮੇਲ ਪਤਾ ਨਹੀਂ ਹੈ",
 	"compose.error.emptyBody": "ਭੇਜਣ ਤੋਂ ਪਹਿਲਾਂ ਇੱਕ ਸੁਨੇਹਾ ਲਿਖੋ",

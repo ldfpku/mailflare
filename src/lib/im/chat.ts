@@ -440,7 +440,7 @@ export async function profileRecipients(env: Env, userId: string): Promise<strin
 	return [userId, ...result.results.map((row) => row.user_id)];
 }
 
-async function broadcastVisiblePresence(env: Env, userId: string, online: boolean, lastOptTime: number): Promise<void> {
+async function broadcastVisiblePresence(env: Env, userId: string, online: boolean, lastOptTime: number, requireDelivery: boolean): Promise<void> {
 	const status = await db(env).prepare(
 		`SELECT p.visible_online, p.last_opt_time
 		FROM users u LEFT JOIN im_presence p ON p.user_id = u.id WHERE u.id = ? AND ${ACTIVE_USER}`,
@@ -449,7 +449,7 @@ async function broadcastVisiblePresence(env: Env, userId: string, online: boolea
 	await notifyImUsers(env, await profileRecipients(env, userId), {
 		type: "presenceChanged",
 		data: { uid: userId, activeStatus: online ? IM_ONLINE : IM_OFFLINE, lastOptTime },
-	});
+	}, { requireDelivery });
 
 	const rooms = await db(env).prepare(
 		"SELECT r.id FROM im_rooms r JOIN im_room_members m ON m.room_id = r.id WHERE m.user_id = ? AND r.type = ?",
@@ -467,11 +467,11 @@ async function broadcastVisiblePresence(env: Env, userId: string, online: boolea
 		await notifyImUsers(env, members.results.map((member) => member.user_id), {
 			type: online ? "online" : "offline",
 			data: { uid: userId, type: 1, roomId: room.id, onlineNum: Number(count?.count ?? 0), lastOptTime },
-		});
+		}, { requireDelivery });
 	}
 }
 
-export async function reconcileVisiblePresence(env: Env, userId: string): Promise<void> {
+export async function reconcileVisiblePresence(env: Env, userId: string, options?: { replay?: boolean; requireDelivery?: boolean }): Promise<void> {
 	const transition = await db(env).prepare(
 		`UPDATE im_presence SET
 			visible_online = CASE WHEN online = 1 AND EXISTS (
@@ -483,10 +483,18 @@ export async function reconcileVisiblePresence(env: Env, userId: string): Promis
 		) THEN 1 ELSE 0 END
 		RETURNING visible_online, last_opt_time`,
 	).bind(Date.now(), userId).first<{ visible_online: number; last_opt_time: number }>();
-	if (transition) await broadcastVisiblePresence(env, userId, Boolean(transition.visible_online), transition.last_opt_time);
+	if (transition) {
+		await broadcastVisiblePresence(env, userId, Boolean(transition.visible_online), transition.last_opt_time, options?.requireDelivery ?? false);
+	} else if (options?.replay) {
+		const current = await db(env).prepare(
+			`SELECT p.visible_online, p.last_opt_time FROM im_presence p
+			JOIN users u ON u.id = p.user_id WHERE p.user_id = ? AND ${ACTIVE_USER}`,
+		).bind(userId).first<{ visible_online: number; last_opt_time: number }>();
+		if (current) await broadcastVisiblePresence(env, userId, Boolean(current.visible_online), current.last_opt_time, options.requireDelivery ?? false);
+	}
 }
 
-export async function setPresence(env: Env, userId: string, online: boolean): Promise<void> {
+export async function setPresence(env: Env, userId: string, online: boolean, options?: { replay?: boolean; requireDelivery?: boolean }): Promise<void> {
 	await db(env)
 		.prepare(
 			`INSERT INTO im_presence (user_id, online, visible_online, last_opt_time) VALUES (?, ?, 0, ?)
@@ -494,7 +502,7 @@ export async function setPresence(env: Env, userId: string, online: boolean): Pr
 		)
 		.bind(userId, Number(online), Date.now())
 		.run();
-	await reconcileVisiblePresence(env, userId);
+	await reconcileVisiblePresence(env, userId, options);
 }
 
 // Messages -------------------------------------------------------------------

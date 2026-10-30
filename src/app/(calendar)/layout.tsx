@@ -9,10 +9,7 @@ import { useLanguage } from "@/components/language-provider";
 import { AgentPanel } from "@/components/agent/agent-panel";
 import { AssistantOpenContext } from "@/components/agent/assistant-open-state";
 import { AuthGuard } from "@/components/auth/auth-guard";
-import { ComposeProvider } from "@/components/compose/compose-context";
-import { FloatingComposer } from "@/components/compose/floating-composer";
 import { MailSearchProvider } from "@/components/mail-search/mail-search-context";
-import { MailboxProvider } from "@/components/mailbox-provider";
 import { MailboxSelector } from "@/components/mailbox-selector";
 import { SidebarAside, MobileMenuButton } from "@/components/sidebar-aside";
 import { SidebarHeader } from "@/components/sidebar-header";
@@ -43,8 +40,6 @@ export default function CalendarLayout({ children }: { children: React.ReactNode
   return (
     <AuthGuard>
       <SidebarProvider mobileOverlay>
-        <MailboxProvider>
-          <ComposeProvider>
             <MailSearchProvider>
               <ShortcutsProvider>
                 <RouteTitle />
@@ -77,12 +72,9 @@ export default function CalendarLayout({ children }: { children: React.ReactNode
                     </aside>
                   </div>
                 </div>
-                <FloatingComposer />
               </div>
               </ShortcutsProvider>
             </MailSearchProvider>
-          </ComposeProvider>
-        </MailboxProvider>
       </SidebarProvider>
     </AuthGuard>
   );

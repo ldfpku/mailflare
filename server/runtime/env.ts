@@ -51,6 +51,7 @@ export function createNodeRuntime(): NodeRuntime {
 		AI_MODEL: optional("AI_MODEL"),
 		AI_BASE_URL: optional("AI_BASE_URL"),
 		AI_API_KEY: optional("AI_API_KEY"),
+		IM_TODO_LIMIT: optional("IM_TODO_LIMIT"),
 		REALTIME: realtime.namespace(),
 		ASSETS: openAssets(publicDir),
 		IMAGES: undefined as unknown as CloudflareEnv["IMAGES"],

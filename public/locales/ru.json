@@ -185,6 +185,7 @@
 	"error.emptyFolder": "Не удалось очистить папку",
 	"list.resize": "Изменить размер списка сообщений",
 	"compose.error.loadDraft": "Не удалось загрузить черновик",
+	"compose.error.saveDraft": "Не удалось сохранить черновик. Проверьте подключение и повторите попытку.",
 	"compose.error.noRecipient": "Добавьте хотя бы одного получателя",
 	"compose.error.invalidAddress": "«{address}» — недопустимый адрес электронной почты",
 	"compose.error.emptyBody": "Напишите сообщение перед отправкой",

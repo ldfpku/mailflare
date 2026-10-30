@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { useDismissible } from "@/components/use-dismissible";
 import { useLanguage } from "@/components/language-provider";
 import { useSelectedMailbox } from "@/components/mailbox-provider";
+import { useCompose } from "@/components/compose/compose-context";
+import { canLeaveMailEditor } from "@/components/compose/mail-navigation-guard";
 import { ProgressiveAvatarImage } from "@/components/progressive-avatar-image";
 import { isIdentityMailbox } from "@/components/mailbox-provider-utils";
 import { useMessageCounts } from "@/hooks/use-message-counts";
@@ -118,6 +120,7 @@ function MailboxAccountRow({ mailbox, unread, avatarUrl, onSelect }: MailboxAcco
 
 export function MailboxSelector({ initialUser }: MailboxSelectorProps = {}) {
 	const { t } = useLanguage();
+	const { closeComposer } = useCompose();
 	const { selectedMailbox, setSelectedMailbox, mailboxes, isLoading } = useSelectedMailbox();
 	const pathname = usePathname();
 	const router = useRouter();
@@ -223,21 +226,41 @@ export function MailboxSelector({ initialUser }: MailboxSelectorProps = {}) {
 	const adminActive = isAdminPath(pathname);
 
 	async function logout() {
-		const switched = await logoutClientSession();
-		setOpen(false);
-		router.replace(switched ? "/inbox" : "/login");
-		router.refresh();
+		const bridge = window.__smjMailNavigation;
+		if (!bridge) {
+			window.alert(t("compose.error.navigationUnavailable"));
+			return;
+		}
+		if (!bridge.prepare()) return;
+		try {
+			const switched = await logoutClientSession();
+			setOpen(false);
+			router.replace(switched ? "/inbox" : "/login");
+			router.refresh();
+		} finally {
+			bridge.release();
+		}
 	}
 
 	async function switchAccount(userId: string) {
-		const error = await switchBrowserAccount(userId);
-		setOpen(false);
-		if (error) {
-			router.push("/login?add=1");
+		const bridge = window.__smjMailNavigation;
+		if (!bridge) {
+			window.alert(t("compose.error.navigationUnavailable"));
 			return;
 		}
-		router.replace("/inbox");
-		router.refresh();
+		if (!bridge.prepare()) return;
+		try {
+			const error = await switchBrowserAccount(userId);
+			setOpen(false);
+			if (error) {
+				router.push("/login?add=1");
+				return;
+			}
+			router.replace("/inbox");
+			router.refresh();
+		} finally {
+			bridge.release();
+		}
 	}
 
 	return (
@@ -343,6 +366,8 @@ export function MailboxSelector({ initialUser }: MailboxSelectorProps = {}) {
 											unread={mailboxCount?.unread ?? 0}
 											avatarUrl={mailboxAvatarUrls[mailbox.id]}
 											onSelect={() => {
+												if (!canLeaveMailEditor(true)) return;
+												closeComposer();
 												setSelectedMailbox(mailbox);
 												setOpen(false);
 												router.push("/inbox");
@@ -395,7 +420,14 @@ export function MailboxSelector({ initialUser }: MailboxSelectorProps = {}) {
 						)}
 						<Link
 							href="/login?add=1"
-							onClick={() => setOpen(false)}
+							onClick={(event) => {
+								if (!canLeaveMailEditor(true)) {
+									event.preventDefault();
+									return;
+								}
+								setOpen(false);
+								closeComposer();
+							}}
 							className="flex items-center gap-3 px-5 py-4 text-sm font-medium text-neutral-800 hover:bg-[#f2f6fc]"
 						>
 							<UserPlus size={18} className="text-neutral-600" />

@@ -29,6 +29,9 @@ export default defineConfig({
 		},
 		triggers: [
 			triggers.scheduled({
+				schedule: "* * * * *",
+			}),
+			triggers.scheduled({
 				schedule: "0 2 * * *",
 			}),
 			triggers.scheduled({

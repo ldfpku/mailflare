@@ -45,15 +45,16 @@ export async function redeemMailSsoLink(env: Env, request: Request, code: string
 				.first<{ user_id: string }>()
 		: null;
 	const url = new URL(request.url);
-	if (!row) return redirect(`${url.origin}/login`, null);
+	if (!row) return redirect("/login", null);
 	const user = await env.DB.prepare("SELECT disabled, deleted_at FROM users WHERE id = ?").bind(row.user_id).first<{ disabled: number; deleted_at: number | null }>();
-	if (!user || user.disabled || user.deleted_at) return redirect(`${url.origin}/login`, null);
+	if (!user || user.disabled || user.deleted_at) return redirect("/login", null);
 	const token = await createSession(env, row.user_id);
-	const secure = url.protocol === "https:" ? "; Secure" : "";
+	const publicUrl = env.APP_URL?.trim() ? new URL(env.APP_URL.trim()) : url;
+	const secure = publicUrl.protocol === "https:" ? "; Secure" : "";
 	const cookie = `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`;
 	// Without a target, open the inbox rather than the public home page.
 	const next = safeNextPath(url.searchParams.get("next"));
-	return redirect(`${url.origin}${next === "/" ? "/inbox" : next}`, cookie);
+	return redirect(next === "/" ? "/inbox" : next, cookie);
 }
 
 function redirect(location: string, cookie: string | null): Response {

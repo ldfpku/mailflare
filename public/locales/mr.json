@@ -177,6 +177,7 @@
 	"error.emptyFolder": "फोल्डर रिकामे करता आले नाही",
 	"list.resize": "संदेश यादीचा आकार बदला",
 	"compose.error.loadDraft": "मसुदा लोड करता आला नाही",
+	"compose.error.saveDraft": "मसुदा जतन करता आला नाही. कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.",
 	"compose.error.noRecipient": "किमान एक प्राप्तकर्ता जोडा",
 	"compose.error.invalidAddress": "\"{address}\" हा वैध ईमेल पत्ता नाही",
 	"compose.error.emptyBody": "पाठवण्यापूर्वी संदेश लिहा",

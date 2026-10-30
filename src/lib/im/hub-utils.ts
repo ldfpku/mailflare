@@ -2,11 +2,15 @@
 export const IM_HEARTBEAT_REQUEST = '{"type":"2"}';
 /** HuLa only checks the type of the pong, so a constant works for the hibernation auto-response. */
 export const IM_HEARTBEAT_RESPONSE = '{"type":"3","timestamp":0}';
+export const IM_FOREGROUND_TIMEOUT_MS = 70_000;
+export const IM_BACKGROUND_TIMEOUT_MS = 600_000;
 
 export interface ImSocketAttachment {
 	userId: string;
 	clientId: string;
 	connectedAt: number;
+	lastActivityAt?: number;
+	background?: boolean;
 }
 
 /** A server push in HuLa's shape: `type` is an event name from its `WsResponseMessageType`. */

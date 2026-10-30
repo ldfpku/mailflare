@@ -177,6 +177,7 @@
 	"error.emptyFolder": "ಫೋಲ್ಡರ್ ಖಾಲಿ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ",
 	"list.resize": "ಸಂದೇಶ ಪಟ್ಟಿಯ ಗಾತ್ರ ಬದಲಿಸಿ",
 	"compose.error.loadDraft": "ಕರಡು ಲೋಡ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ",
+	"compose.error.saveDraft": "ಕರಡನ್ನು ಉಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಸಂಪರ್ಕ ಪರಿಶೀಲಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
 	"compose.error.noRecipient": "ಕನಿಷ್ಠ ಒಬ್ಬ ಸ್ವೀಕರಿಸುವವರನ್ನು ಸೇರಿಸಿ",
 	"compose.error.invalidAddress": "\"{address}\" ಮಾನ್ಯ ಇಮೇಲ್ ವಿಳಾಸವಲ್ಲ",
 	"compose.error.emptyBody": "ಕಳುಹಿಸುವ ಮೊದಲು ಸಂದೇಶ ಬರೆಯಿರಿ",

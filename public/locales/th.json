@@ -177,6 +177,7 @@
 	"error.emptyFolder": "ไม่สามารถล้างโฟลเดอร์ได้",
 	"list.resize": "ปรับขนาดรายการข้อความ",
 	"compose.error.loadDraft": "โหลดแบบร่างไม่สำเร็จ",
+	"compose.error.saveDraft": "บันทึกแบบร่างไม่ได้ โปรดตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง",
 	"compose.error.noRecipient": "เพิ่มผู้รับอย่างน้อยหนึ่งคน",
 	"compose.error.invalidAddress": "\"{address}\" ไม่ใช่ที่อยู่อีเมลที่ถูกต้อง",
 	"compose.error.emptyBody": "เขียนข้อความก่อนส่ง",

@@ -181,6 +181,7 @@
 	"error.emptyFolder": "Impossible de vider le dossier",
 	"list.resize": "Redimensionner la liste des messages",
 	"compose.error.loadDraft": "Échec du chargement du brouillon",
+	"compose.error.saveDraft": "Impossible d’enregistrer le brouillon. Vérifiez votre connexion et réessayez.",
 	"compose.error.noRecipient": "Ajoutez au moins un destinataire",
 	"compose.error.invalidAddress": "« {address} » n'est pas une adresse e-mail valide",
 	"compose.error.emptyBody": "Rédigez un message avant d'envoyer",

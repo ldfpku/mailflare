@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useSelectedMailbox } from "@/components/mailbox-provider";
-import { authFetch } from "@/lib/auth/client";
+import { AUTH_SESSION_CHANGED_EVENT, authFetch } from "@/lib/auth/client";
 import { formatEmailAddress, getEmailAddress } from "@/lib/email/address";
 import { useCompose } from "@/components/compose/compose-context";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,8 @@ import { RecipientInput } from "./recipient-input";
 import { RichTextEditor } from "./rich-text-editor";
 import { ScheduleSendMenu } from "./schedule-send-menu";
 import { isPastSchedule } from "./schedule-send-utils";
+import { DraftSaveQueue } from "./draft-save-queue";
+import { registerMailNavigationGuard } from "./mail-navigation-guard";
 import {
 	applyMailboxSignatureHtml,
 	hasMeaningfulHtml,
@@ -41,6 +43,8 @@ import type { ComposeAttachmentPolicy } from "./attachment-policy-types";
 
 type Toast = { type: "success" | "error"; message: string } | null;
 
+class DraftAttachmentError extends Error {}
+
 export function ComposeForm({
 	mode = "page",
 	draftIdToLoad,
@@ -51,6 +55,8 @@ export function ComposeForm({
 	onClose?: () => void;
 }) {
 	const { t } = useLanguage();
+	const translate = useRef(t);
+	useEffect(() => { translate.current = t; }, [t]);
 	const router = useRouter();
 	const { showNotice } = useCompose();
 	const { selectedMailbox, setSelectedMailbox, mailboxes } = useSelectedMailbox();
@@ -60,6 +66,7 @@ export function ComposeForm({
 	const isAgentDraft = agentRevision !== null;
 	// Set while an AI draft is being saved for review or its review is open, so autosave cannot change it underneath the approval.
 	const holdAutosave = useRef(false);
+	const sessionInvalidated = useRef(false);
 	const agentSavedPayload = useRef<string | null>(null);
 	const [to, setTo] = useState<string[]>([]);
 	const [cc, setCc] = useState<string[]>([]);
@@ -79,9 +86,13 @@ export function ComposeForm({
 	const [modalMode, setModalMode] = useState(false);
 	const [minimized, setMinimized] = useState(false);
 	const [toast, setToast] = useState<Toast>(null);
-	const [loading, setLoading] = useState(false);
-	const [loadingDraft, setLoadingDraft] = useState(false);
-	const [deletingDraft, setDeletingDraft] = useState(false);
+	const [loading, setLoadingState] = useState(false);
+	const [loadingDraft, setLoadingDraftState] = useState(false);
+	const [deletingDraft, setDeletingDraftState] = useState(false);
+	const operations = useRef({ loading: false, loadingDraft: false, deletingDraft: false });
+	const setLoading = (value: boolean) => { operations.current.loading = value; setLoadingState(value); };
+	const setLoadingDraft = (value: boolean) => { operations.current.loadingDraft = value; setLoadingDraftState(value); };
+	const setDeletingDraft = (value: boolean) => { operations.current.deletingDraft = value; setDeletingDraftState(value); };
 	const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
 	const [trackOpens, setTrackOpens] = useTrackOpens();
 	const [followUpDays, setFollowUpDays] = useState<number | null>(null);
@@ -93,6 +104,8 @@ export function ComposeForm({
 	const isPhone = useIsMobile();
 	const phoneSheet = mode === "popup" && isPhone;
 	const [closing, setClosing] = useState(false);
+	const [savingBeforeClose, setSavingBeforeClose] = useState(false);
+	const savingBeforeCloseRef = useRef(false);
 	const dragStart = useRef<number | null>(null);
 	const [dragY, setDragY] = useState(0);
 
@@ -111,17 +124,19 @@ export function ComposeForm({
 		},
 		onTouchEnd: () => {
 			dragStart.current = null;
-			if (dragY > 110) dismiss();
+			if (dragY > 110) void requestDismiss();
 			setDragY(0);
 		},
 	} : {};
-	const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const pendingSave = useRef<(() => Promise<void>) | null>(null);
 	const draftGeneration = useRef(0);
 	const draftIdRef = useRef<string | null>(null);
-	const saveQueue = useRef<Promise<void>>(Promise.resolve());
 	const uploadedFiles = useRef(new WeakSet<File>());
 	const rejectedFiles = useRef(new WeakSet<File>());
+	const reportSaveError = useRef<(error: unknown) => void>(() => {});
+	const [draftSaveQueue] = useState(() => new DraftSaveQueue());
+	const unsafeToLeave = useRef(false);
+	const changeRevision = useRef(0);
+	const savedRevision = useRef(0);
 	const attachmentInput = useRef<HTMLInputElement | null>(null);
 	const fileDragDepth = useRef(0);
 	const previousSignature = useRef("");
@@ -156,6 +171,50 @@ export function ComposeForm({
 	const fromAddr = selectedMailbox && selectedFrom
 		? formatEmailAddress(selectedFrom, selectedMailbox.displayName)
 		: "";
+	const bodyContent = htmlToPlainText(html).trim();
+	const signatureOnly = bodyContent === (selectedMailbox?.signature?.trim() ?? "");
+	const hasContent = Boolean(to.length || cc.length || bcc.length || subject.trim() || quotedHtml || attachments.length || (bodyContent && !signatureOnly));
+
+	useEffect(() => {
+		reportSaveError.current = (error) => {
+			console.error("Could not save draft", error);
+			setToast({ type: "error", message: error instanceof DraftAttachmentError ? t("compose.error.draftAttachments") : t("compose.error.saveDraft") });
+		};
+		draftSaveQueue.setErrorReporter(reportSaveError.current);
+	}, [draftSaveQueue, t]);
+
+	useEffect(() => {
+		unsafeToLeave.current = (hasContent && !fromAddr) || (isAgentDraft && attachments.length > 0);
+	}, [hasContent, fromAddr, isAgentDraft, attachments.length]);
+
+	async function requestDismiss() {
+		if (!onClose || savingBeforeCloseRef.current) return;
+		if (sessionInvalidated.current) {
+			if (!window.confirm(t("compose.confirmDiscardSessionDraft"))) return;
+			draftSaveQueue.discardPending();
+			holdAutosave.current = false;
+			unsafeToLeave.current = false;
+			savedRevision.current = changeRevision.current;
+			dismiss();
+			return;
+		}
+		if (unsafeToLeave.current || holdAutosave.current) {
+			setToast({ type: "error", message: t("compose.error.saveDraft") });
+			return;
+		}
+		savingBeforeCloseRef.current = true;
+		setSavingBeforeClose(true);
+		try {
+			await draftSaveQueue.flush();
+			if (changeRevision.current !== savedRevision.current) throw new Error("Draft has uncommitted changes");
+			dismiss();
+		} catch (error) {
+			reportSaveError.current(error);
+		} finally {
+			savingBeforeCloseRef.current = false;
+			setSavingBeforeClose(false);
+		}
+	}
 
 	useEffect(() => {
 		if (!senderAddresses.length) {
@@ -243,44 +302,74 @@ export function ComposeForm({
 		previousSignature.current = nextSignature;
 	}, [loadingDraft, selectedMailbox?.id, selectedMailbox?.signature]);
 
-	useEffect(() => () => {
-		void pendingSave.current?.();
-	}, []);
+	useEffect(() => {
+		const isUnsafe = () =>
+			draftSaveQueue.hasPending || unsafeToLeave.current || holdAutosave.current ||
+			operations.current.loading || operations.current.loadingDraft || operations.current.deletingDraft ||
+			changeRevision.current !== savedRevision.current;
+		const beforeUnload = (event: BeforeUnloadEvent) => {
+			if (!isUnsafe()) return;
+			event.preventDefault();
+			event.returnValue = "";
+		};
+		const unregister = registerMailNavigationGuard(isUnsafe, () => {
+			setToast({ type: "error", message: translate.current("compose.error.saveDraft") });
+		});
+		const onSessionChanged = () => {
+			if (!isUnsafe()) return;
+			sessionInvalidated.current = true;
+			holdAutosave.current = true;
+			draftGeneration.current += 1;
+			draftSaveQueue.discardPending();
+			setAgentReview(null);
+			setToast({ type: "error", message: translate.current("compose.error.sessionChanged") });
+		};
+		window.addEventListener(AUTH_SESSION_CHANGED_EVENT, onSessionChanged);
+		window.addEventListener("beforeunload", beforeUnload);
+		return () => {
+			unregister();
+			window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, onSessionChanged);
+			window.removeEventListener("beforeunload", beforeUnload);
+			void draftSaveQueue.flush().catch((error) => reportSaveError.current(error));
+		};
+	}, [draftSaveQueue]);
 
 	useEffect(() => {
-		pendingSave.current = null;
+		const wasSaving = draftSaveQueue.isSaving;
+		draftSaveQueue.discardPending();
 		if (holdAutosave.current) return;
-		const bodyContent = htmlToPlainText(html).trim();
-		const signatureOnly = bodyContent === (selectedMailbox?.signature?.trim() ?? "");
-		const hasContent =
-			to.length > 0 || cc.length > 0 || bcc.length > 0 || subject.trim() || quotedHtml || attachments.length > 0 || (bodyContent && !signatureOnly);
-		if (!fromAddr || !hasContent || loadingDraft) return;
-		if (saveTimer.current) clearTimeout(saveTimer.current);
+		if (!fromAddr || loadingDraft) return;
+		if (!hasContent && !draftIdRef.current && !wasSaving) {
+			savedRevision.current = changeRevision.current;
+			return;
+		}
 
 		const generation = draftGeneration.current;
-		const save = () => {
-			const run = saveQueue.current.then(async () => {
+		const revision = changeRevision.current;
+		const payload = {
+			mailboxId: selectedMailbox?.id,
+			from: fromAddr,
+			to: recipientsToHeader(to),
+			cc: recipientsToHeader(cc),
+			bcc: recipientsToHeader(bcc),
+			subject,
+			html: joinQuotedHtml(html, quotedHtml),
+			text: htmlToPlainText(joinQuotedHtml(html, quotedHtml)),
+			inReplyTo: threading?.inReplyTo ?? null,
+			references: threading?.references ?? null,
+			threadId: threading?.threadId ?? null,
+		};
+		const payloadKey = JSON.stringify(payload);
+		if (isAgentDraft && agentSavedPayload.current === null) {
+			agentSavedPayload.current = payloadKey;
+			savedRevision.current = revision;
+			return;
+		}
+		draftSaveQueue.schedule(async () => {
 				if (generation !== draftGeneration.current) return;
-				const payload = {
-					mailboxId: selectedMailbox?.id,
-					from: fromAddr,
-					to: recipientsToHeader(to),
-					cc: recipientsToHeader(cc),
-					bcc: recipientsToHeader(bcc),
-					subject,
-					html: joinQuotedHtml(html, quotedHtml),
-					text: htmlToPlainText(joinQuotedHtml(html, quotedHtml)),
-					inReplyTo: threading?.inReplyTo ?? null,
-					references: threading?.references ?? null,
-					threadId: threading?.threadId ?? null,
-				};
-				// Saving an AI draft bumps its revision and marks it human-edited, so skip saves that change nothing:
-				// the first pass after loading only records the baseline.
-				const payloadKey = JSON.stringify(payload);
-				if (isAgentDraft) {
-					const baseline = agentSavedPayload.current;
-					agentSavedPayload.current = payloadKey;
-					if (baseline === null || baseline === payloadKey) return;
+				if (isAgentDraft && agentSavedPayload.current === payloadKey) {
+					savedRevision.current = revision;
+					return;
 				}
 				const existingId = draftIdRef.current;
 				const res = await authFetch(existingId ? `/api/drafts/${existingId}` : "/api/drafts", {
@@ -289,43 +378,40 @@ export function ComposeForm({
 					body: JSON.stringify(payload),
 				});
 				const data = (await res.json()) as { draft?: { id: string } };
-				if (!res.ok || !data.draft?.id) return;
+				if (!res.ok || !data.draft?.id) throw new Error("Draft save failed");
 				if (generation !== draftGeneration.current) {
-					if (!existingId) void authFetch(`/api/drafts/${data.draft.id}`, { method: "DELETE" });
+					if (!existingId && !sessionInvalidated.current) void authFetch(`/api/drafts/${data.draft.id}`, { method: "DELETE" });
 					return;
 				}
 				draftIdRef.current = data.draft.id;
 				setDraftId(data.draft.id);
-				const pending = attachments.filter((attachment) => !uploadedFiles.current.has(attachment.file) && !rejectedFiles.current.has(attachment.file));
-				if (isAgentDraft || pending.length === 0) return;
-				const form = new FormData();
-				for (const attachment of pending) form.append("attachments", attachment.file);
-				const uploaded = await authFetch(`/api/drafts/${data.draft.id}/attachments`, { method: "POST", body: form });
-				const result = (await uploaded.json()) as { attachments?: ComposeStoredAttachment[]; error?: string };
-				if (!uploaded.ok) {
-					for (const attachment of pending) rejectedFiles.current.add(attachment.file);
-					setToast({ type: "error", message: result.error || t("compose.error.draftAttachments") });
+				if (isAgentDraft) agentSavedPayload.current = payloadKey;
+				if (attachments.some((attachment) => rejectedFiles.current.has(attachment.file))) throw new DraftAttachmentError();
+				const pending = attachments.filter((attachment) => !uploadedFiles.current.has(attachment.file));
+				if (isAgentDraft || pending.length === 0) {
+					savedRevision.current = revision;
 					return;
 				}
+				const form = new FormData();
+				for (const attachment of pending) form.append("attachments", attachment.file);
+				let result: { attachments?: ComposeStoredAttachment[] };
+				try {
+					const uploaded = await authFetch(`/api/drafts/${data.draft.id}/attachments`, { method: "POST", body: form });
+					result = (await uploaded.json()) as { attachments?: ComposeStoredAttachment[] };
+					if (!uploaded.ok || !Array.isArray(result.attachments) || result.attachments.length !== pending.length) throw new Error("Draft attachment upload failed");
+				} catch (error) {
+					for (const attachment of pending) rejectedFiles.current.add(attachment.file);
+					throw new DraftAttachmentError("Draft attachment upload failed", { cause: error });
+				}
+				if (generation !== draftGeneration.current) return;
 				for (const attachment of pending) uploadedFiles.current.add(attachment.file);
 				setStoredAttachments((current) => [...current, ...(result.attachments ?? [])]);
 				setAttachments((current) => current.filter((attachment) => !uploadedFiles.current.has(attachment.file)));
-			}).catch(() => {});
-			saveQueue.current = run;
-			return run;
-		};
-		pendingSave.current = save;
-		saveTimer.current = setTimeout(() => {
-			pendingSave.current = null;
-			void save();
-		}, 900);
-
-		return () => {
-			if (saveTimer.current) clearTimeout(saveTimer.current);
-		};
+				savedRevision.current = revision;
+		});
 	// Depend on whether this is an AI draft, not its revision: refreshing the revision when review opens
 	// must not schedule an autosave, which would bump the revision and invalidate the pending approval.
-	}, [isAgentDraft, attachments, bcc, cc, fromAddr, html, loadingDraft, quotedHtml, selectedMailbox?.id, selectedMailbox?.signature, subject, threading, to]);
+	}, [draftSaveQueue, hasContent, isAgentDraft, attachments, bcc, cc, fromAddr, html, loadingDraft, quotedHtml, selectedMailbox?.id, subject, threading, to]);
 
 	useEffect(() => {
 		if (!draftIdToLoad || loadingDraft) return;
@@ -334,6 +420,10 @@ export function ComposeForm({
 
 	async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
+		if (sessionInvalidated.current) {
+			setToast({ type: "error", message: t("compose.error.sessionChanged") });
+			return;
+		}
 		if (to.length === 0) {
 			setToast({ type: "error", message: t("compose.error.noRecipient") });
 			return;
@@ -351,37 +441,46 @@ export function ComposeForm({
 			setToast({ type: "error", message: t("schedule.pastTime") });
 			return;
 		}
-		if (saveTimer.current) clearTimeout(saveTimer.current);
-		pendingSave.current = null;
 		setLoading(true);
-		await saveQueue.current;
+		try {
+			await draftSaveQueue.flush();
+			if (sessionInvalidated.current) throw new Error(t("compose.error.sessionChanged"));
+			if (changeRevision.current !== savedRevision.current) throw new Error("Draft has uncommitted changes");
+		} catch (error) {
+			setLoading(false);
+			reportSaveError.current(error);
+			return;
+		}
 		const currentDraftId = draftIdRef.current;
 		const unsentAttachments = attachments.filter((attachment) => !uploadedFiles.current.has(attachment.file));
 		const fullHtml = joinQuotedHtml(html, quotedHtml);
 		if (draftId && agentRevision !== null) {
 			holdAutosave.current = true;
 			try {
-				if (saveTimer.current) clearTimeout(saveTimer.current);
 				if (attachments.length > 0) {
 					const form = new FormData();
 					for (const attachment of attachments) form.append("attachments", attachment.file);
 					const uploaded = await authFetch(`/api/drafts/${draftId}/attachments`, { method: "POST", body: form });
 					const result = await uploaded.json() as { attachments?: ComposeStoredAttachment[]; error?: string };
+					if (sessionInvalidated.current) throw new Error(t("compose.error.sessionChanged"));
 					if (!uploaded.ok) throw new Error(result.error || t("compose.error.draftAttachments"));
 					setStoredAttachments((current) => [...current, ...(result.attachments ?? [])]);
 					setAttachments([]);
 				}
 				const updated = await authFetch(`/api/drafts/${draftId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mailboxId: selectedMailbox?.id, from: fromAddr, to: recipientsToHeader(to), cc: recipientsToHeader(cc), bcc: recipientsToHeader(bcc), subject, html: fullHtml, text: htmlToPlainText(fullHtml), inReplyTo: threading?.inReplyTo ?? null, references: threading?.references ?? null, threadId: threading?.threadId ?? null, scheduledAt: scheduledAt?.toISOString() ?? null }) });
+				if (sessionInvalidated.current) throw new Error(t("compose.error.sessionChanged"));
 				if (!updated.ok) throw new Error(t("compose.error.saveForReview"));
 				const current = await fetchDraft(draftId);
+				if (sessionInvalidated.current) throw new Error(t("compose.error.sessionChanged"));
 				if (!current.agent) throw new Error(t("compose.error.aiMetadata"));
 				setAgentRevision(current.agent.revision);
 				const response = await authFetch("/api/agent/approvals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draftId, expectedRevision: current.agent.revision }) });
 				const result = await response.json() as { approvalId?: string; snapshot?: ReviewSnapshot; error?: string };
+				if (sessionInvalidated.current) throw new Error(t("compose.error.sessionChanged"));
 				if (!response.ok || !result.approvalId || !result.snapshot) throw new Error(result.error || t("compose.error.createReview"));
 				setAgentReview({ approvalId: result.approvalId, snapshot: result.snapshot });
 			} catch (cause) {
-				holdAutosave.current = false;
+				if (!sessionInvalidated.current) holdAutosave.current = false;
 				const message = cause instanceof Error ? cause.message : "";
 				setToast({ type: "error", message: message.startsWith("Draft changed") ? t("agent.review.draftChanged") : message || t("compose.error.reviewDraft") });
 			}
@@ -404,7 +503,7 @@ export function ComposeForm({
 					html: fullHtml,
 					mailboxId: selectedMailbox?.id,
 					threading: threading ?? undefined,
-					draftId,
+					draftId: currentDraftId,
 					scheduledAt,
 					undoSend: true,
 					trackOpens,
@@ -419,6 +518,10 @@ export function ComposeForm({
 		}
 		setLoading(false);
 
+		if (sessionInvalidated.current) {
+			setToast({ type: "error", message: t("compose.error.sessionChanged") });
+			return;
+		}
 		if (!res.ok) {
 			setToast({ type: "error", message: data.error?.startsWith("Sending is not set up") ? t("compose.error.sendingNotSet") : data.error ?? t("compose.error.sendFailed") });
 			return;
@@ -447,22 +550,34 @@ export function ComposeForm({
 
 		if (onClose) {
 			dismiss();
+			if (mode === "page") router.push("/sent");
 			return;
 		}
 		router.push("/sent");
 	}
 
 	async function deleteDraftAndClose() {
-		if (saveTimer.current) clearTimeout(saveTimer.current);
-		pendingSave.current = null;
+		if (sessionInvalidated.current) {
+			await requestDismiss();
+			return;
+		}
+		draftSaveQueue.discardPending();
 		draftGeneration.current += 1;
 		setDeletingDraft(true);
-		await saveQueue.current;
+		try {
+			await draftSaveQueue.waitForRunning();
+			if (sessionInvalidated.current) throw new Error(t("compose.error.sessionChanged"));
+		} catch (error) {
+			setDeletingDraft(false);
+			reportSaveError.current(error);
+			return;
+		}
 
 		if (draftIdRef.current) {
 			let deleted = false;
 			try {
 				const res = await authFetch(`/api/drafts/${draftIdRef.current}`, { method: "DELETE" });
+				if (sessionInvalidated.current) throw new Error(t("compose.error.sessionChanged"));
 				deleted = res.ok || res.status === 404;
 			} catch {
 				deleted = false;
@@ -492,6 +607,7 @@ export function ComposeForm({
 
 		if (onClose) {
 			dismiss();
+			if (mode === "page") router.push("/inbox");
 			return;
 		}
 		setDeletingDraft(false);
@@ -499,9 +615,17 @@ export function ComposeForm({
 	}
 
 	async function removeStoredAttachment(attachmentId: string) {
+		if (sessionInvalidated.current) {
+			setToast({ type: "error", message: t("compose.error.sessionChanged") });
+			return;
+		}
 		const currentDraftId = draftIdRef.current;
 		if (!currentDraftId) return;
 		const res = await authFetch(`/api/drafts/${currentDraftId}/attachments/${attachmentId}`, { method: "DELETE" });
+		if (sessionInvalidated.current) {
+			setToast({ type: "error", message: t("compose.error.sessionChanged") });
+			return;
+		}
 		if (!res.ok) {
 			setToast({ type: "error", message: t("compose.error.removeAttachment") });
 			return;
@@ -564,6 +688,15 @@ export function ComposeForm({
 		fileDragDepth.current = 0;
 		setDraggingFiles(false);
 		if (!loading && !loadingDraft) addAttachments(event.dataTransfer.files);
+	}
+
+	function markDraftInput(event: React.FormEvent<HTMLFormElement>) {
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return;
+		if (
+			["from", "to", "cc", "bcc", "subject", "text"].some((field) => target.id === `${mode}-${field}`)
+			|| target === attachmentInput.current
+		) changeRevision.current += 1;
 	}
 
 	function selectSender(value: string) {
@@ -639,7 +772,7 @@ export function ComposeForm({
 
 	return (
 		<>
-			{agentReview && <SendReview approvalId={agentReview.approvalId} snapshot={agentReview.snapshot} onClose={() => { holdAutosave.current = false; setAgentReview(null); }} onSent={() => { setAgentReview(null); if (onClose) dismiss(); else router.push("/sent"); }} />}
+			{agentReview && <SendReview approvalId={agentReview.approvalId} snapshot={agentReview.snapshot} onClose={() => { if (!sessionInvalidated.current) holdAutosave.current = false; setAgentReview(null); }} onSent={() => { setAgentReview(null); if (sessionInvalidated.current) return; if (onClose) dismiss(); if (!onClose || mode === "page") router.push("/sent"); }} />}
 			{mode === "popup" && modalMode && !minimized && <div className="fixed inset-0 z-40 bg-neutral-950/65" aria-hidden="true" />}
 			{toast && (
 				<div
@@ -652,7 +785,7 @@ export function ComposeForm({
 					{toast.message}
 				</div>
 			)}
-			<form onSubmit={onSubmit} className={cn(frameClass, closing && "compose-sheet-closing")} style={dragY ? { transform: `translateY(${dragY}px)`, transition: "none" } : undefined} ref={formRef} role={modalMode && !minimized ? "dialog" : mode === "popup" ? "region" : undefined} aria-modal={modalMode && !minimized || undefined} aria-label={mode === "popup" ? t("compose.dialogLabel") : undefined} onKeyDown={(event) => { if (modalMode && !minimized && event.key === "Escape") { event.preventDefault(); setModalMode(false); } }} onDragEnterCapture={minimized ? undefined : onFileDragEnter} onDragOverCapture={minimized ? undefined : onFileDragOver} onDragLeaveCapture={minimized ? undefined : onFileDragLeave} onDropCapture={minimized ? undefined : onFileDrop}>
+			<form onSubmit={onSubmit} inert={savingBeforeClose || undefined} aria-busy={savingBeforeClose || undefined} className={cn(frameClass, closing && "compose-sheet-closing")} style={dragY ? { transform: `translateY(${dragY}px)`, transition: "none" } : undefined} ref={formRef} role={modalMode && !minimized ? "dialog" : mode === "popup" ? "region" : undefined} aria-modal={modalMode && !minimized || undefined} aria-label={mode === "popup" ? t("compose.dialogLabel") : undefined} onInputCapture={markDraftInput} onChangeCapture={markDraftInput} onKeyDown={(event) => { if (modalMode && !minimized && event.key === "Escape") { event.preventDefault(); setModalMode(false); } }} onDragEnterCapture={minimized ? undefined : onFileDragEnter} onDragOverCapture={minimized ? undefined : onFileDragOver} onDragLeaveCapture={minimized ? undefined : onFileDragLeave} onDropCapture={minimized ? undefined : onFileDrop}>
 				{draggingFiles && !minimized && (
 					<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed border-blue-400 bg-blue-50/90 text-sm font-medium text-blue-700" aria-hidden="true">
 						{t("compose.dropFiles")}
@@ -680,7 +813,7 @@ export function ComposeForm({
 							<button type="button" onClick={() => { if (minimized) setMinimized(false); setModalMode((current) => !current); }} aria-label={modalMode ? t("compose.restoreFloating") : t("compose.openModal")} title={modalMode ? t("compose.restoreFloating") : t("compose.openModal")} className="max-md:hidden rounded p-1 dark:hover:bg-neutral-200 hover:bg-neutral-700 hover:text-white">
 								{modalMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
 							</button>
-							<button type="button" onClick={dismiss} aria-label={t("compose.close")} title={t("compose.close")} className="rounded p-1 max-md:-m-2 max-md:p-3 hover:bg-neutral-700 dark:hover:bg-neutral-200 hover:text-white">
+							<button type="button" onClick={() => void requestDismiss()} aria-label={t("compose.close")} title={t("compose.close")} className="rounded p-1 max-md:-m-2 max-md:p-3 hover:bg-neutral-700 dark:hover:bg-neutral-200 hover:text-white">
 								<X className="h-4 w-4" />
 							</button>
 						</div>
@@ -774,7 +907,7 @@ export function ComposeForm({
 					footerContent={attachmentContent}
 					toolbarStart={
 						<div className="flex items-center max-md:contents">
-							<Button type="button" variant="secondary" size="sm" onClick={dismiss} className="md:hidden max-md:h-10 max-md:px-3.5 max-md:text-[15px]">
+							<Button type="button" variant="secondary" size="sm" onClick={() => void requestDismiss()} className="md:hidden max-md:h-10 max-md:px-3.5 max-md:text-[15px]">
 								{t("common.cancel")}
 							</Button>
 							<div className="flex items-center max-md:order-last max-md:ml-auto">

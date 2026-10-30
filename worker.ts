@@ -32,6 +32,7 @@ import { runDriveTrashRetention } from "./src/lib/drive/retention";
 import { runAccountRetention } from "./src/lib/accounts/deletion";
 import { runJmapChangeRetention } from "./src/lib/jmap/changes";
 import { runFollowUpReminders } from "./src/lib/follow-ups/service";
+import { scheduleImMinuteTasks } from "./src/lib/im/scheduled";
 export { RealtimeHub } from "./src/lib/realtime/hub";
 export { ImUserHub } from "./src/lib/im/hub";
 
@@ -179,6 +180,10 @@ export default {
 
 	async scheduled(controller: ScheduledController, rawEnv: CloudflareEnv, ctx: ExecutionContext) {
 		const env = withStorage(rawEnv);
+		if (controller.cron === "* * * * *") {
+			scheduleImMinuteTasks(env, ctx);
+			return;
+		}
 		if (controller.cron === "0 2 * * *") ctx.waitUntil(runScheduledDatabaseBackup(env, new Date(controller.scheduledTime)));
 		ctx.waitUntil(runAgentMaintenance(env));
 		ctx.waitUntil(runTrashRetention(env, new Date(controller.scheduledTime)));

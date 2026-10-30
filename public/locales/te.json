@@ -177,6 +177,7 @@
 	"error.emptyFolder": "ఫోల్డర్‌ను ఖాళీ చేయలేకపోయాం",
 	"list.resize": "సందేశ జాబితా పరిమాణాన్ని మార్చండి",
 	"compose.error.loadDraft": "డ్రాఫ్ట్‌ను లోడ్ చేయడం విఫలమైంది",
+	"compose.error.saveDraft": "డ్రాఫ్ట్‌ను సేవ్ చేయలేకపోయాము. కనెక్షన్‌ను తనిఖీ చేసి మళ్లీ ప్రయత్నించండి.",
 	"compose.error.noRecipient": "కనీసం ఒక గ్రహీతను జోడించండి",
 	"compose.error.invalidAddress": "\"{address}\" చెల్లుబాటయ్యే ఇమెయిల్ చిరునామా కాదు",
 	"compose.error.emptyBody": "పంపే ముందు ఒక సందేశం రాయండి",

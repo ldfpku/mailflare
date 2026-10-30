@@ -177,6 +177,7 @@
 	"error.emptyFolder": "폴더를 비울 수 없습니다",
 	"list.resize": "메시지 목록 크기 조절",
 	"compose.error.loadDraft": "임시보관 메일을 불러오지 못했습니다",
+	"compose.error.saveDraft": "임시보관 메일을 저장할 수 없습니다. 연결을 확인하고 다시 시도하세요.",
 	"compose.error.noRecipient": "받는사람을 한 명 이상 추가하세요",
 	"compose.error.invalidAddress": "\"{address}\"은(는) 올바른 이메일 주소가 아닙니다",
 	"compose.error.emptyBody": "보내기 전에 메시지를 작성하세요",

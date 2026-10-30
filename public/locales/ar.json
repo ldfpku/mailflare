@@ -193,6 +193,7 @@
 	"error.emptyFolder": "تعذّر تفريغ المجلد",
 	"list.resize": "تغيير حجم قائمة الرسائل",
 	"compose.error.loadDraft": "فشل تحميل المسودة",
+	"compose.error.saveDraft": "تعذر حفظ المسودة. تحقق من اتصالك وحاول مجددًا.",
 	"compose.error.noRecipient": "أضف مستلمًا واحدًا على الأقل",
 	"compose.error.invalidAddress": "\"{address}\" ليس عنوان بريد إلكتروني صالحًا",
 	"compose.error.emptyBody": "اكتب رسالة قبل الإرسال",

@@ -18,8 +18,17 @@ domain. All data lives in the `mailflare-data` volume (`/data` in the
 container): the SQLite database, raw messages, attachments and backups.
 
 Behind a reverse proxy, set `APP_URL=https://mail.example.com` so links in
-password-reset mail and the JMAP session point at the public address, and
-forward WebSocket upgrades for `/api/realtime`.
+password-reset mail and the JMAP session point at the public address and IM
+single sign-on sets a secure session cookie. Its redirects stay on the
+browser's original origin even when the proxy uses an internal hostname.
+Account switching checks the browser's `Origin` against the origin of
+`APP_URL` (including scheme and port); requests from other aliases are rejected.
+Forward WebSocket upgrades for `/api/realtime`.
+The Node runtime does not provide the HuLa IM WebSocket hub: user availability
+is stored locally, but IM status changes are not pushed to other clients.
+On Workers, failed status broadcasts remain in a database outbox and the
+one-minute scheduled task retries them; the client may see an error even
+though its selected state has already been saved.
 
 ### PWA and push notifications
 

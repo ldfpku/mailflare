@@ -33,11 +33,11 @@ export function cookieOptions(maxAge = COOKIE_MAX_AGE) {
 }
 
 /** Cross-site POSTs must not be able to switch or add accounts. */
-export function isSameOrigin(request: Request): boolean {
+export function isSameOrigin(request: Request, publicUrl?: string): boolean {
 	const origin = request.headers.get("Origin");
 	if (!origin) return true;
 	try {
-		return new URL(origin).host === new URL(request.url).host;
+		return origin === new URL(publicUrl?.trim() || request.url).origin;
 	} catch {
 		return false;
 	}

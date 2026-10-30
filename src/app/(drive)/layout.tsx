@@ -3,9 +3,7 @@
 import { SkipToContent } from "@/components/skip-to-content";
 import { Suspense } from "react";
 import { AuthGuard } from "@/components/auth/auth-guard";
-import { ComposeProvider } from "@/components/compose/compose-context";
 import { MailSearchProvider } from "@/components/mail-search/mail-search-context";
-import { MailboxProvider } from "@/components/mailbox-provider";
 import { MailboxSelector } from "@/components/mailbox-selector";
 import { SidebarAside, MobileMenuButton } from "@/components/sidebar-aside";
 import { SidebarHeader } from "@/components/sidebar-header";
@@ -44,16 +42,12 @@ export default function DriveLayout({ children }: { children: React.ReactNode })
 	return (
 		<AuthGuard>
 			<SidebarProvider mobileOverlay>
-				<MailboxProvider>
-					<ComposeProvider>
 						<MailSearchProvider>
 							<ShortcutsProvider>
 							  <RouteTitle />
 								<DriveFrame>{children}</DriveFrame>
 							</ShortcutsProvider>
 						</MailSearchProvider>
-					</ComposeProvider>
-				</MailboxProvider>
 			</SidebarProvider>
 		</AuthGuard>
 	);

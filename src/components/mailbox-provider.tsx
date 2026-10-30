@@ -22,6 +22,7 @@ import { PROFILE_NAME_CHANGED_EVENT } from "@/lib/profile/name-client";
 import { PROFILE_AVATAR_CHANGED_EVENT } from "@/lib/profile/avatar-client";
 import { MAILBOX_SIGNATURES_CHANGED_EVENT, MAILBOX_SIGNATURES_CHANGED_KEY } from "@/lib/business-card/signature-client";
 import type { ProfileNameChangedDetail } from "@/lib/profile/types";
+import { fetchSessionInfo } from "@/hooks/use-current-user";
 
 export type MailboxOption = {
 	id: string;
@@ -59,12 +60,19 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
 	const [mailboxes, setMailboxes] = useState<MailboxOption[]>([]);
 	const [selectedMailbox, setSelectedMailboxState] = useState<MailboxOption | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
+	const [sessionRevision, setSessionRevision] = useState(0);
 
 	useEffect(() => {
 		let cancelled = false;
 		const sessionToken = getClientSessionToken();
 
-		fetchMailboxOptions()
+		fetchSessionInfo()
+			.then((session) => {
+				if (cancelled || sessionToken !== getClientSessionToken()) return [];
+				if (session?.status === 401) return [];
+				if (!session || session.status !== 200) throw new Error("Could not verify mailbox session");
+				return fetchMailboxOptions();
+			})
 			.then((items) => {
 				if (cancelled || sessionToken !== getClientSessionToken()) return;
 				setMailboxes(items);
@@ -84,7 +92,7 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
 					localStorage.setItem(SELECTED_MAILBOX_STORAGE_KEY, primary.id);
 				}
 			})
-			.catch(() => {})
+			.catch((error) => { if (!cancelled) console.error("Could not load mailboxes", error); })
 			.finally(() => {
 				if (!cancelled && sessionToken === getClientSessionToken()) setIsLoading(false);
 			});
@@ -92,13 +100,14 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [sessionRevision]);
 
 	useEffect(() => {
 		function resetMailboxState() {
 			setMailboxes([]);
 			setSelectedMailboxState(null);
 			setIsLoading(true);
+			setSessionRevision((revision) => revision + 1);
 		}
 
 		window.addEventListener(AUTH_SESSION_CHANGED_EVENT, resetMailboxState);

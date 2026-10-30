@@ -173,6 +173,7 @@
 	"error.emptyFolder": "Tidak dapat mengosongkan folder",
 	"list.resize": "Ubah ukuran daftar pesan",
 	"compose.error.loadDraft": "Gagal memuat draf",
+	"compose.error.saveDraft": "Draf tidak dapat disimpan. Periksa koneksi Anda dan coba lagi.",
 	"compose.error.noRecipient": "Tambahkan setidaknya satu penerima",
 	"compose.error.invalidAddress": "\"{address}\" bukan alamat email yang valid",
 	"compose.error.emptyBody": "Tulis pesan sebelum mengirim",

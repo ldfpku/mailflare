@@ -13,9 +13,19 @@ export function LogoutButton() {
 			variant="outline"
 			className="w-full"
 			onClick={async () => {
-				const switched = await logoutClientSession();
-				router.replace(switched ? "/inbox" : "/login");
-				router.refresh();
+				const bridge = window.__smjMailNavigation;
+				if (!bridge) {
+					window.alert(t("compose.error.navigationUnavailable"));
+					return;
+				}
+				if (!bridge.prepare()) return;
+				try {
+					const switched = await logoutClientSession();
+					router.replace(switched ? "/inbox" : "/login");
+					router.refresh();
+				} finally {
+					bridge.release();
+				}
 			}}
 		>
 			{t("auth.logout")}

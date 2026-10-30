@@ -13,9 +13,15 @@ import { clearMessageClientState } from "@/hooks/utils";
 import { clearMessageDetailCache } from "@/lib/messages/detail-cache";
 import { clearCurrentUserCache } from "@/hooks/use-current-user";
 import { AUTH_SESSION_CHANGED_EVENT } from "@/lib/auth/client";
+import { installMailNavigationGuard } from "@/components/compose/mail-navigation-guard";
+import { ComposeProvider } from "@/components/compose/compose-context";
+import { FloatingComposer } from "@/components/compose/floating-composer";
+import { MailboxProvider } from "@/components/mailbox-provider";
 
 export function Providers({ children, initialBranding }: { children: React.ReactNode; initialBranding?: Branding }) {
 	const realtime = useMessagePolling();
+
+	useEffect(() => installMailNavigationGuard(), []);
 
 	const [client] = useState(
 		() =>
@@ -47,8 +53,11 @@ export function Providers({ children, initialBranding }: { children: React.React
 	return (
 		<QueryClientProvider client={client}>
 			<BrandingProvider initialBranding={initialBranding}>
+				<MailboxProvider>
+				<ComposeProvider>
 				<PwaServiceWorker />
 				{children}
+				<FloatingComposer />
 				<ThemeSync />
 				<div role="status" aria-live="polite">
 					{realtime.notification && (
@@ -58,6 +67,8 @@ export function Providers({ children, initialBranding }: { children: React.React
 						/>
 					)}
 				</div>
+				</ComposeProvider>
+				</MailboxProvider>
 			</BrandingProvider>
 		</QueryClientProvider>
 	);

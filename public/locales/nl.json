@@ -177,6 +177,7 @@
 	"error.emptyFolder": "Map kan niet worden geleegd",
 	"list.resize": "Formaat van berichtenlijst aanpassen",
 	"compose.error.loadDraft": "Concept laden mislukt",
+	"compose.error.saveDraft": "Het concept kon niet worden opgeslagen. Controleer je verbinding en probeer het opnieuw.",
 	"compose.error.noRecipient": "Voeg ten minste één ontvanger toe",
 	"compose.error.invalidAddress": "\"{address}\" is geen geldig e-mailadres",
 	"compose.error.emptyBody": "Schrijf een bericht voordat je verzendt",

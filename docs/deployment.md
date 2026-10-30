@@ -98,6 +98,14 @@ For an existing installation, apply `0084_add_im_display_name.sql` before deploy
 
 Before deploying the AI-consent update, apply `0085_pause_unconfirmed_ai_drafts.sql`. It turns off previously enabled automatic drafts so mailbox managers can review the recurring AI usage warning and opt back in; it does not delete accounts, mail, or drafts.
 
+The IM workspace and reliable status update require the pending migrations
+through `0094_add_im_state_outbox.sql` before this version serves traffic.
+The one-minute Worker schedule retries pending status notifications. Foreground
+IM connections are checked after 70 seconds without a heartbeat; background or
+unclassified connections use a ten-minute grace period. These checks wake each
+connected user's Durable Object periodically and should be included in capacity
+and cost planning.
+
 ## Object storage (R2, Backblaze B2 or AWS S3)
 
 Raw mail, attachments, Drive files, avatars, branding icons, JMAP uploads and backups all live in one bucket. By default that is the `BUCKET` R2 binding in `wrangler.jsonc`. To use Backblaze B2 instead, set four Worker variables (as secrets, or in `.dev.vars` locally):

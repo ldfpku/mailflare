@@ -25,6 +25,8 @@ await build({
 			export { exportDatabaseRecords, restoreDatabaseRecords } from "./src/lib/backups/export.ts";
 			export { defaultImAvatarForUser } from "./src/lib/im/users-utils.ts";
 			export { setPresence } from "./src/lib/im/chat.ts";
+			export { deliverPendingUserState } from "./src/lib/im/state-outbox.ts";
+			export { retryPendingUserStates } from "./src/lib/im/state-outbox.ts";
 		`,
 		resolveDir: root,
 		sourcefile: "hula-im-test-entry.ts",
@@ -44,7 +46,7 @@ const {
 	resolveImSocketToken, findImRoute, imApiPath, parseImPairId, imPairSessionIds, listShareTargets, shareMailToChats,
 	postRoomMailCard, countUnreadMail, listDriveGroupFolders, listDriveGroupFiles, serveRoomFileForDrive,
 	exportDatabaseRecords, restoreDatabaseRecords,
-	defaultImAvatarForUser, setPresence,
+	defaultImAvatarForUser, setPresence, deliverPendingUserState, retryPendingUserStates,
 } = await import(pathToFileURL(join(directory, "entry.mjs")).href);
 
 async function fixture(t) {
@@ -54,11 +56,17 @@ async function fixture(t) {
 	database.db.prepare("INSERT INTO users (id, email, password_hash, name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)")
 		.run("u1", "sam@one.test", hashPassword("right-password"), "Sam", "user", 1);
 	const pushes = [];
+	const failedPushes = new Set();
 	const IM_HUB = {
 		getByName: (userId) => ({
 			fetch: async (url, init) => {
-				if (url.endsWith("/notify")) pushes.push({ userId, ...JSON.parse(init.body) });
+				if (url.endsWith("/notify")) {
+					const event = JSON.parse(init.body);
+					if (failedPushes.has(`${userId}:${event.type}`)) return new Response(null, { status: 503 });
+					pushes.push({ userId, ...event });
+				}
 				if (url.endsWith("/ticket")) return Response.json({ secret: "d".repeat(48) });
+				if (url.endsWith("/sync-user-state")) await deliverPendingUserState(env, userId);
 				return new Response(null, { status: 204 });
 			},
 		}),
@@ -132,7 +140,7 @@ async function fixture(t) {
 		database.db.prepare("INSERT INTO users (id, email, password_hash, name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)")
 			.run(id, email, hashPassword("right-password"), name, "user", 1);
 	const raw = (method, url, init = {}) => handleImRequest(new Request(url, { method, ...init }), env);
-	return { database, env, call, raw, login, expireAccess, addUser, pushes, objects, multipart };
+	return { database, env, call, raw, login, expireAccess, addUser, pushes, failedPushes, objects, multipart };
 }
 
 test("signs in with the mailflare email and password and answers in HuLa's envelope", async (t) => {
@@ -555,6 +563,115 @@ test("user-selected availability persists and invisibility is respected by other
 	assert.equal((await call("POST", "im/user/state/changeState", { token: owner, body: { id: "0" } })).code, 200);
 	assert.equal((await call("GET", "im/user/userInfo", { token: owner })).data.userStateId, "1");
 	assert.equal((await call("GET", "im/room/group/list", { token: peer })).data[0].onlineNum, 2);
+});
+
+test("a failed user-state broadcast remains durable and retries the current invisible state", async (t) => {
+	const { database, env, call, login, addUser, pushes, failedPushes } = await fixture(t);
+	addUser("u2", "kim@one.test", "Kim");
+	const owner = (await login()).data.token;
+	await call("GET", "im/room/group/list", { token: owner });
+	database.db.prepare("INSERT INTO im_presence (user_id, online, visible_online, last_opt_time) VALUES ('u1', 1, 1, 1)").run();
+	failedPushes.add("u2:presenceChanged");
+	const originalError = console.error;
+	console.error = () => {};
+	t.after(() => { console.error = originalError; });
+	const failed = await call("POST", "im/user/state/changeState", { token: owner, body: { id: "5" } });
+	assert.equal(failed.code, 503);
+	assert.match(failed.msg, /状态已保存/);
+	assert.equal(database.db.prepare("SELECT im_state_id FROM users WHERE id = 'u1'").get().im_state_id, "5");
+	assert.ok(database.db.prepare("SELECT revision FROM im_state_outbox WHERE user_id = 'u1'").get());
+	failedPushes.clear();
+	pushes.length = 0;
+	await retryPendingUserStates(env);
+	assert.equal(database.db.prepare("SELECT revision FROM im_state_outbox WHERE user_id = 'u1'").get(), undefined);
+	assert.ok(pushes.some((event) => event.userId === "u1" && event.type === "userStateChange" && event.data.userStateId === "5"));
+	assert.ok(pushes.some((event) => event.userId === "u2" && event.type === "userStateChange" && event.data.userStateId === "1"));
+	assert.ok(pushes.some((event) => event.userId === "u2" && event.type === "presenceChanged" && event.data.activeStatus === 2));
+});
+
+test("the state update rolls back if its durable notification cannot be recorded", async (t) => {
+	const { database, call, login } = await fixture(t);
+	const token = (await login()).data.token;
+	database.db.prepare("DROP TABLE im_state_outbox").run();
+	await assert.rejects(call("POST", "im/user/state/changeState", { token, body: { id: "2" } }));
+	assert.equal(database.db.prepare("SELECT im_state_id FROM users WHERE id = 'u1'").get().im_state_id, "1");
+});
+
+test("Node without an IM hub still updates its local visible status", async (t) => {
+	const { database, env, call, login } = await fixture(t);
+	const token = (await login()).data.token;
+	database.db.prepare("INSERT INTO im_presence (user_id, online, visible_online, last_opt_time) VALUES ('u1', 1, 1, 1)").run();
+	delete env.IM_HUB;
+	assert.equal((await call("POST", "im/user/state/changeState", { token, body: { id: "5" } })).code, 200);
+	assert.equal(database.db.prepare("SELECT visible_online FROM im_presence WHERE user_id = 'u1'").get().visible_online, 0);
+	assert.equal(database.db.prepare("SELECT COUNT(*) AS count FROM im_state_outbox").get().count, 0);
+});
+
+test("failing user-state retries do not starve later users", async (t) => {
+	const { database, env } = await fixture(t);
+	const insertUser = database.db.prepare("INSERT INTO users (id, email, password_hash, name, role, created_at) VALUES (?, ?, 'test', 'Test', 'user', 1)");
+	const insertPending = database.db.prepare("INSERT INTO im_state_outbox (user_id, revision, updated_at) VALUES (?, 1, 1)");
+	for (let index = 0; index < 51; index++) {
+		const id = `retry-${String(index).padStart(2, "0")}`;
+		insertUser.run(id, `${id}@example.test`);
+		insertPending.run(id);
+	}
+	const attempted = [];
+	env.IM_HUB = {
+		getByName: (userId) => ({
+			fetch: async () => {
+				attempted.push(userId);
+				if (userId !== "retry-50") return new Response(null, { status: 503 });
+				database.db.prepare("DELETE FROM im_state_outbox WHERE user_id = ?").run(userId);
+				return new Response(null, { status: 204 });
+			},
+		}),
+	};
+	const originalError = console.error;
+	console.error = () => {};
+	t.after(() => { console.error = originalError; });
+	await retryPendingUserStates(env);
+	assert.equal(attempted.includes("retry-50"), false);
+	await retryPendingUserStates(env);
+	assert.equal(attempted.includes("retry-50"), true);
+	assert.equal(database.db.prepare("SELECT COUNT(*) AS count FROM im_state_outbox").get().count, 50);
+});
+
+test("user-state retries are bounded and apply a hub timeout", async (t) => {
+	const { database, env } = await fixture(t);
+	const insertUser = database.db.prepare("INSERT INTO users (id, email, password_hash, name, role, created_at) VALUES (?, ?, 'test', 'Test', 'user', 1)");
+	const insertPending = database.db.prepare("INSERT INTO im_state_outbox (user_id, revision, updated_at) VALUES (?, 1, 1)");
+	for (let index = 0; index < 12; index++) {
+		const id = `bounded-${index}`;
+		insertUser.run(id, `${id}@example.test`);
+		insertPending.run(id);
+	}
+	let release;
+	const gate = new Promise((resolve) => { release = resolve; });
+	t.after(() => release());
+	let active = 0;
+	let maximum = 0;
+	env.IM_HUB = {
+		getByName: (userId) => ({
+			fetch: async (_url, init) => {
+				assert.ok(init.signal instanceof AbortSignal);
+				active++;
+				maximum = Math.max(maximum, active);
+				await gate;
+				active--;
+				database.db.prepare("DELETE FROM im_state_outbox WHERE user_id = ?").run(userId);
+				return new Response(null, { status: 204 });
+			},
+		}),
+	};
+	const pending = retryPendingUserStates(env);
+	const deadline = Date.now() + 2_000;
+	while (active < 10 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+	assert.equal(active, 10);
+	release();
+	await pending;
+	assert.equal(maximum, 10);
+	assert.equal(database.db.prepare("SELECT COUNT(*) AS count FROM im_state_outbox").get().count, 0);
 });
 
 test("connection presence changes notify authorized peers without duplicate transitions", async (t) => {
@@ -1037,25 +1154,40 @@ test("files over one part go up in parts and become one file", async (t) => {
 });
 
 test("mail: one-time web sign-in link, inbox unread count", async (t) => {
-	const { database, call, raw, login } = await fixture(t);
+	const { database, env, call, raw, login } = await fixture(t);
 	const sam = (await login()).data.token;
 	const link = (await call("GET", "im/mail/sso", { token: sam, query: { next: "/inbox" } })).data.url;
 	assert.match(link, /^https:\/\/mail\.one\.test\/api\/im\/mail\/sso\/[a-f0-9]{48}\?next=%2Finbox$/);
 	const signedIn = await raw("GET", link);
 	assert.equal(signedIn.status, 302);
-	assert.equal(signedIn.headers.get("Location"), "https://mail.one.test/inbox");
+	assert.equal(signedIn.headers.get("Location"), "/inbox");
 	const cookie = signedIn.headers.get("Set-Cookie");
 	assert.match(cookie, /^ep_session=sess_[^;]+; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure$/);
 	const again = await raw("GET", link);
-	assert.equal(again.headers.get("Location"), "https://mail.one.test/login", "the link works once");
+	assert.equal(again.headers.get("Location"), "/login", "the link works once");
 	assert.equal(again.headers.get("Set-Cookie"), null);
 	const desktop = (await call("GET", "im/mail/sso", { token: sam, query: { next: "/inbox?folder=sent&smj_desktop=1" } })).data.url;
-	assert.equal((await raw("GET", desktop)).headers.get("Location"), "https://mail.one.test/inbox?folder=sent&smj_desktop=1");
+	assert.equal((await raw("GET", desktop)).headers.get("Location"), "/inbox?folder=sent&smj_desktop=1");
+
+	const proxyLink = (await call("GET", "im/mail/sso", { token: sam, query: { next: "/inbox" } })).data.url;
+	const internalUrl = new URL(proxyLink);
+	internalUrl.protocol = "http:";
+	internalUrl.host = "localhost:3000";
+	const proxied = await raw("GET", internalUrl);
+	assert.equal(proxied.headers.get("Location"), "/inbox", "the browser stays on its original public origin");
+	assert.match(proxied.headers.get("Set-Cookie"), /; Secure$/, "configured HTTPS is retained behind a proxy");
+	env.APP_URL = undefined;
+	const httpLink = (await call("GET", "im/mail/sso", { token: sam })).data.url;
+	const localUrl = new URL(httpLink);
+	localUrl.protocol = "http:";
+	localUrl.host = "localhost:3000";
+	assert.doesNotMatch((await raw("GET", localUrl)).headers.get("Set-Cookie"), /; Secure$/);
+	env.APP_URL = "https://mail.one.test";
 
 	const offsite = (await call("GET", "im/mail/sso", { token: sam, query: { next: "//evil.test/x" } })).data.url;
 	assert.ok(!offsite.includes("next="), "only same-origin paths survive");
 	database.db.prepare("UPDATE sessions SET expires_at = 1 WHERE id LIKE 'imsso_%'").run();
-	assert.equal((await raw("GET", offsite)).headers.get("Location"), "https://mail.one.test/login", "expired links sign nobody in");
+	assert.equal((await raw("GET", offsite)).headers.get("Location"), "/login", "expired links sign nobody in");
 
 	database.db.prepare("INSERT INTO domains (id, user_id, hostname, zone_id, created_at) VALUES ('d1', 'u1', 'one.test', 'z', 1)").run();
 	database.db.prepare("INSERT INTO mailboxes (id, user_id, domain_id, local_part, created_at) VALUES ('m1', 'u1', 'd1', 'sam', 1)").run();
