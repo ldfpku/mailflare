@@ -26,6 +26,7 @@ Want to support the mailflare? <a target="_blank" href="https://store.paymug.co/
 - **Domains**: Connect your Cloudflare domains and choose Cloudflare, Resend, or Amazon SES for each.
 - **Mailboxes**: Create personal or shared mailboxes and give other people access to them.
 - **Email**: Send and receive mail with attachments, rich text, signatures, and automatic replies.
+- **Attachment preview**: Preview supported images, PDF, audio, video, text and HTML; HTML previews are isolated, do not run scripts or load remote resources, and may differ from the original. Other file types can be downloaded.
 - **Calendar**: Schedule repeating events with time zones and attendees, who receive email invitations.
 - **Booking pages**: Share a public link so anyone can book a free time on your calendar.
 - **Organization**: Keep your inbox tidy with search, folders, stars, snooze, archive, spam, and trash.

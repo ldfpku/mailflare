@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { useLanguage } from "@/components/language-provider";
 import { authFetch } from "@/lib/auth/client";
+import { prepareEmailHtml } from "@/lib/email/html";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { MessageAttachmentViewerProps } from "./message-attachment-viewer-types";
 import {
@@ -26,8 +27,7 @@ export function MessageAttachmentViewer({
 	open,
 }: MessageAttachmentViewerProps) {
 	const { t } = useLanguage();
-	const [textContent, setTextContent] = useState("");
-	const [textError, setTextError] = useState("");
+	const [textResult, setTextResult] = useState<{ url: string; content: string | null; error: string } | null>(null);
 
 	const previewKind = attachment ? getAttachmentPreviewKind(attachment) : "unsupported";
 	const previewUrl = attachment
@@ -36,22 +36,22 @@ export function MessageAttachmentViewer({
 	const downloadUrl = attachment
 		? getAttachmentFileUrl(messageId, attachment.id, "download")
 		: "";
+	const textContent = textResult?.url === previewUrl ? textResult.content : null;
+	const textError = textResult?.url === previewUrl ? textResult.error : "";
 
 	useEffect(() => {
-		if (!open || !attachment || previewKind !== "text") return;
+		if (!open || !attachment || (previewKind !== "text" && previewKind !== "html")) return;
 		let cancelled = false;
-		setTextContent("");
-		setTextError("");
 
 		authFetch(previewUrl)
 			.then(async (response) => {
 				if (!response.ok) throw new Error(t("attachment.loadFailed"));
 				const content = await response.text();
-				if (!cancelled) setTextContent(content);
+				if (!cancelled) setTextResult({ url: previewUrl, content, error: "" });
 			})
 			.catch((error) => {
 				if (!cancelled) {
-					setTextError(error instanceof Error ? error.message : t("attachment.loadFailed"));
+					setTextResult({ url: previewUrl, content: null, error: error instanceof Error ? error.message : t("attachment.loadFailed") });
 				}
 			});
 
@@ -91,10 +91,20 @@ export function MessageAttachmentViewer({
 					{previewKind === "video" && (
 						<video src={previewUrl} controls className="max-h-full max-w-full" />
 					)}
-					{previewKind === "text" && (
-						textError || textContent ? (
+					{(previewKind === "text" || previewKind === "html") && (
+						textError ? (
+							<p className="p-5 text-sm text-neutral-800">{textError}</p>
+						) : textContent !== null ? previewKind === "html" ? (
+							<iframe
+								title={attachment.filename}
+								sandbox=""
+								referrerPolicy="no-referrer"
+								srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">${prepareEmailHtml(textContent, { reader: true }).html}`}
+								className="h-full w-full border-0 bg-white"
+							/>
+						) : (
 							<pre className="h-full w-full overflow-auto whitespace-pre-wrap p-5 text-sm text-neutral-800">
-								{textError || textContent}
+								{textContent}
 							</pre>
 						) : (
 							<div className="h-full w-full space-y-3 bg-white p-5">
