@@ -5,7 +5,7 @@ import { getEnv } from "@/lib/cloudflare";
 import { getAttachmentContentDisposition } from "@/app/api/messages/[messageId]/attachments/[attachmentId]/utils";
 import type { SharedFileParams } from "./types";
 
-export async function GET(_request: Request, { params }: SharedFileParams) {
+async function sharedFile({ params }: SharedFileParams, headOnly: boolean) {
 	const { id } = await params;
 	const env = getEnv();
 	const [file] = await getDb(env)
@@ -14,9 +14,7 @@ export async function GET(_request: Request, { params }: SharedFileParams) {
 		.innerJoin(messageAttachments, eq(sharedAttachmentLinks.attachmentId, messageAttachments.id))
 		.where(and(eq(sharedAttachmentLinks.id, id), gt(sharedAttachmentLinks.expiresAt, new Date())))
 		.limit(1);
-	if (!file) return new Response("Link expired or not found", { status: 404 });
-	const object = await env.BUCKET.get(file.r2Key);
-	if (!object) return new Response("File not found", { status: 404 });
+	if (!file) return new Response(headOnly ? null : "Link expired or not found", { status: 404, headers: { "Cache-Control": "private, no-store" } });
 	const headers = new Headers();
 	headers.set("Content-Type", file.contentType);
 	headers.set("Content-Length", String(file.size));
@@ -25,5 +23,20 @@ export async function GET(_request: Request, { params }: SharedFileParams) {
 	headers.set("Content-Security-Policy", "default-src 'none'; sandbox");
 	headers.set("Referrer-Policy", "no-referrer");
 	headers.set("Cache-Control", "private, no-store");
+
+	if (headOnly) {
+		if (!await env.BUCKET.head(file.r2Key)) return new Response(null, { status: 404, headers: { "Cache-Control": "private, no-store" } });
+		return new Response(null, { headers });
+	}
+	const object = await env.BUCKET.get(file.r2Key);
+	if (!object) return new Response("File not found", { status: 404, headers: { "Cache-Control": "private, no-store" } });
 	return new Response(object.body, { headers });
+}
+
+export async function GET(_request: Request, params: SharedFileParams) {
+	return sharedFile(params, false);
+}
+
+export async function HEAD(_request: Request, params: SharedFileParams) {
+	return sharedFile(params, true);
 }

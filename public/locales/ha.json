@@ -228,6 +228,7 @@
 	"compose.send": "Aika",
 	"compose.attachTooltip": "Haɗa fayiloli (har zuwa {max} MB gaba ɗaya). Ana aika fayilolin da suka wuce 3 MB a matsayin hanyoyin sauke R2 masu aiki na kwana 30.",
 	"compose.attachFiles": "Haɗa fayiloli",
+	"compose.attachmentDeliveryNotice": "Ana iya aika wasu fayiloli a matsayin hanyoyin saukewa da ke ƙarewa bayan kwanaki 30. Duk wanda ke da hanyar zai iya sauke fayil ɗin kafin ta ƙare.",
 	"compose.trackOpens": "Rasidin karantawa",
 	"followUp.remindMe": "Tunatar da ni idan ba amsa",
 	"followUp.remindOn": "Tunatarwa idan ba amsa: {when}",

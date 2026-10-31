@@ -226,6 +226,7 @@
 	"compose.send": "Gönder",
 	"compose.attachTooltip": "Dosya ekleyin (toplam {max} MB'a kadar). 3 MB'tan büyük dosyalar 30 gün geçerli R2 indirme bağlantıları olarak gönderilir.",
 	"compose.attachFiles": "Dosya ekle",
+	"compose.attachmentDeliveryNotice": "Bazı dosyalar 30 gün sonra sona eren indirme bağlantıları olarak gönderilebilir. Süresi dolana kadar bağlantıya sahip olan herkes dosyayı indirebilir.",
 	"compose.trackOpens": "Okundu bilgisi",
 	"followUp.remindMe": "Yanıt gelmezse hatırlat",
 	"followUp.remindOn": "Yanıt gelmezse hatırlatma: {when}",

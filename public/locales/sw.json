@@ -228,6 +228,7 @@
 	"compose.send": "Tuma",
 	"compose.attachTooltip": "Ambatisha faili (hadi MB {max} kwa jumla). Faili zinazozidi MB 3 hutumwa kama viungo vya kupakua vya R2 vinavyodumu siku 30.",
 	"compose.attachFiles": "Ambatisha faili",
+	"compose.attachmentDeliveryNotice": "Baadhi ya faili zinaweza kutumwa kama viungo vya kupakua vinavyoisha muda baada ya siku 30. Mtu yeyote aliye na kiungo anaweza kupakua faili kabla muda wake haujaisha.",
 	"compose.trackOpens": "Risiti ya kusoma",
 	"followUp.remindMe": "Nikumbushe ikiwa hakuna jibu",
 	"followUp.remindOn": "Kikumbusho bila jibu: {when}",

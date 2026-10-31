@@ -228,6 +228,7 @@
 	"compose.send": "Hantar",
 	"compose.attachTooltip": "Lampirkan fail (sehingga {max} MB jumlah). Fail melebihi 3 MB dihantar sebagai pautan muat turun R2 yang sah selama 30 hari.",
 	"compose.attachFiles": "Lampirkan fail",
+	"compose.attachmentDeliveryNotice": "Sesetengah fail mungkin dihantar sebagai pautan muat turun yang tamat tempoh selepas 30 hari. Sesiapa yang mempunyai pautan boleh memuat turun fail sehingga pautan tamat tempoh.",
 	"compose.trackOpens": "Resit baca",
 	"followUp.remindMe": "Ingatkan jika tiada balasan",
 	"followUp.remindOn": "Peringatan jika tiada balasan: {when}",

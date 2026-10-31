@@ -17,6 +17,7 @@ await build({
 			export { SqliteDatabase } from "./server/runtime/sqlite-database.ts";
 			export { sendEmail, processOutboundQueue } from "./src/lib/email/send.ts";
 			export { GET as getSharedFile } from "./src/app/api/shared-files/[id]/route.ts";
+			export { HEAD as headSharedFile } from "./src/app/api/shared-files/[id]/route.ts";
 			export { assertBackupTablesCoverDatabase, exportDatabaseRecords, restoreDatabaseRecords } from "./src/lib/backups/export.ts";
 			export { requestAgentSend, confirmAgentSend } from "./src/lib/agent/approvals/utils.ts";
 			export { editAgentDraft } from "./src/lib/agent/edit-draft.ts";
@@ -51,7 +52,7 @@ await build({
 });
 const { SqliteDatabase, startMailAttachmentUpload, uploadMailAttachmentPart, completeMailAttachmentUpload,
 	cancelMailAttachmentUpload, cleanExpiredAttachmentUploads, copyMessageAttachments, loadMessageAttachmentReferences, prepareCloudflareAttachments,
-	sendEmail, processOutboundQueue, getSharedFile, assertBackupTablesCoverDatabase, exportDatabaseRecords, restoreDatabaseRecords,
+	sendEmail, processOutboundQueue, getSharedFile, headSharedFile, assertBackupTablesCoverDatabase, exportDatabaseRecords, restoreDatabaseRecords,
 	requestAgentSend, confirmAgentSend, editAgentDraft } =
 	await import(pathToFileURL(join(directory, "test.mjs")).href);
 
@@ -175,6 +176,8 @@ test("500 MB uploads in bounded parts, survives completion retry, and becomes a 
 	assert.match(prepared.text, /https:\/\/mail\.example\.test\/api\/shared-files\//);
 	assert.match(prepared.text, /500\.0 MB/);
 	assert.match(prepared.text, /项目📎\.bin/);
+	assert.match(prepared.html, /aria-label="项目📎\.bin">↓<\/a>/);
+	assert.doesNotMatch(prepared.html, />Download file<\/a>/);
 });
 
 test("rejects malformed parts and cancels an owned unfinished upload", async (t) => {
@@ -333,6 +336,21 @@ test("sending and scheduled delivery preserve a 500 MB file after its draft is r
 	await env.BUCKET.delete(missingKey);
 	await env.BUCKET.delete("draft/source");
 	db.db.prepare("DELETE FROM messages WHERE id = 'draft1'").run();
+	const params = { params: Promise.resolve({ id: url.pathname.split("/").at(-1) }) };
+	const getObject = env.BUCKET.get;
+	let objectReads = 0;
+	env.BUCKET.get = (...args) => { objectReads++; return getObject(...args); };
+	const head = await headSharedFile(new Request(url, { method: "HEAD" }), params);
+	assert.equal(head.status, 200);
+	assert.equal(Number(head.headers.get("content-length")), 500_000_000);
+	assert.equal(await head.text(), "");
+	assert.match(head.headers.get("content-disposition"), /filename\*=UTF-8''/);
+	assert.equal(objectReads, 0, "HEAD does not read or buffer the attachment body");
+	const sentKey = db.db.prepare("SELECT r2_key FROM message_attachments WHERE message_id = ?").get(sent.messageId).r2_key;
+	const savedSize = env.BUCKET.objects.get(sentKey);
+	env.BUCKET.objects.delete(sentKey);
+	assert.equal((await headSharedFile(new Request(url, { method: "HEAD" }), params)).status, 404);
+	env.BUCKET.objects.set(sentKey, savedSize);
 	const response = await getSharedFile(new Request(url), { params: Promise.resolve({ id: url.pathname.split("/").at(-1) }) });
 	assert.equal(response.status, 200);
 	assert.equal(Number(response.headers.get("content-length")), 500_000_000);
@@ -342,6 +360,7 @@ test("sending and scheduled delivery preserve a 500 MB file after its draft is r
 	assert.equal(received, 500_000_000);
 	db.db.prepare("UPDATE shared_attachment_links SET expires_at = 1 WHERE id = ?").run(url.pathname.split("/").at(-1));
 	assert.equal((await getSharedFile(new Request(url), { params: Promise.resolve({ id: url.pathname.split("/").at(-1) }) })).status, 404);
+	assert.equal((await headSharedFile(new Request(url, { method: "HEAD" }), params)).status, 404);
 	await processOutboundQueue(env, { ...queued[0], scheduledAt: new Date(Date.now() - 1000).toISOString() });
 	assert.equal(globalThis.mailTestSent.length, 2);
 	assert.match(globalThis.mailTestSent[1].text, /500\.0 MB/);

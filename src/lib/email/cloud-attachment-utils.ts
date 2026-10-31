@@ -49,7 +49,7 @@ export async function prepareCloudflareAttachments(
 	});
 	const intro = "Attachments (download links expire after 30 days):";
 	const textLinks = files.map((file) => `${file.filename} (${(file.size / 1_000_000).toFixed(1)} MB): ${file.url}`).join("\n");
-	const htmlLinks = files.map((file) => `<li>${escapeHtml(file.filename)} (${(file.size / 1_000_000).toFixed(1)} MB): <a href="${escapeHtml(file.url)}">Download file</a></li>`).join("");
+	const htmlLinks = files.map((file) => `<li>${escapeHtml(file.filename)} (${(file.size / 1_000_000).toFixed(1)} MB): <a href="${escapeHtml(file.url)}" aria-label="${escapeHtml(file.filename)}">↓</a></li>`).join("");
 	const text = [message.text?.trim(), intro, textLinks].filter(Boolean).join("\n\n");
 	const html = `${message.html ?? ""}<div><p>${escapeHtml(intro)}</p><ul>${htmlLinks}</ul></div>`;
 	if (estimatedSize + encoder.encode(textLinks + htmlLinks + intro + intro).byteLength + 4096 > GENERAL_MESSAGE_LIMIT_BYTES - MIME_SAFETY_MARGIN_BYTES) {

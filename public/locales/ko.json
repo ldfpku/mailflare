@@ -228,6 +228,7 @@
 	"compose.send": "보내기",
 	"compose.attachTooltip": "파일 첨부 (총 {max}MB까지). 3MB를 초과하는 파일은 30일간 유효한 R2 다운로드 링크로 전송됩니다.",
 	"compose.attachFiles": "파일 첨부",
+	"compose.attachmentDeliveryNotice": "일부 파일은 30일 후 만료되는 다운로드 링크로 전송될 수 있습니다. 만료 전까지 링크를 가진 사람은 누구나 파일을 다운로드할 수 있습니다.",
 	"compose.trackOpens": "읽음 확인",
 	"followUp.remindMe": "답장이 없으면 알림",
 	"followUp.remindOn": "답장이 없으면 알림: {when}",

@@ -224,6 +224,7 @@
 	"compose.send": "Kirim",
 	"compose.attachTooltip": "Lampirkan file (total hingga {max} MB). File di atas 3 MB dikirim sebagai tautan unduhan R2 yang berlaku 30 hari.",
 	"compose.attachFiles": "Lampirkan file",
+	"compose.attachmentDeliveryNotice": "Beberapa file dapat dikirim sebagai tautan unduhan yang kedaluwarsa setelah 30 hari. Siapa pun yang memiliki tautan dapat mengunduh file hingga tautan kedaluwarsa.",
 	"compose.trackOpens": "Tanda terbaca",
 	"followUp.remindMe": "Ingatkan jika tidak dibalas",
 	"followUp.remindOn": "Pengingat jika tidak dibalas: {when}",

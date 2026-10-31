@@ -232,6 +232,7 @@
 	"compose.send": "Invia",
 	"compose.attachTooltip": "Allega file (fino a {max} MB in totale). I file oltre 3 MB vengono inviati come link di download R2 validi 30 giorni.",
 	"compose.attachFiles": "Allega file",
+	"compose.attachmentDeliveryNotice": "Alcuni file possono essere inviati come link di download che scadono dopo 30 giorni. Chiunque abbia il link può scaricare il file fino alla scadenza.",
 	"compose.trackOpens": "Conferma di lettura",
 	"followUp.remindMe": "Ricordamelo se non rispondono",
 	"followUp.remindOn": "Promemoria senza risposta: {when}",

@@ -228,6 +228,7 @@
 	"compose.send": "යවන්න",
 	"compose.attachTooltip": "ගොනු අමුණන්න (මුළු {max} MB දක්වා). 3 MB ට වැඩි ගොනු දින 30ක බාගැනීම් සබැඳි ලෙස යවනු ලැබේ.",
 	"compose.attachFiles": "ගොනු අමුණන්න",
+	"compose.attachmentDeliveryNotice": "සමහර ගොනු දින 30කට පසු කල් ඉකුත් වන බාගත කිරීමේ සබැඳි ලෙස යැවිය හැක. කල් ඉකුත් වන තුරු සබැඳිය ඇති ඕනෑම අයෙකුට ගොනුව බාගත කළ හැක.",
 	"compose.trackOpens": "කියවූ බවට රිසිට්පත",
 	"followUp.remindMe": "පිළිතුරක් නැත්නම් මතක් කරන්න",
 	"followUp.remindOn": "පිළිතුරක් නැත්නම් සිහිකැඳවීම: {when}",

@@ -224,6 +224,7 @@
 	"compose.send": "Gửi",
 	"compose.attachTooltip": "Đính kèm tệp (tổng tối đa {max} MB). Các tệp trên 3 MB được gửi dưới dạng liên kết tải xuống R2 có hiệu lực 30 ngày.",
 	"compose.attachFiles": "Đính kèm tệp",
+	"compose.attachmentDeliveryNotice": "Một số tệp có thể được gửi dưới dạng liên kết tải xuống hết hạn sau 30 ngày. Bất kỳ ai có liên kết đều có thể tải tệp xuống trước khi liên kết hết hạn.",
 	"compose.trackOpens": "Xác nhận đã đọc",
 	"followUp.remindMe": "Nhắc tôi nếu không có phản hồi",
 	"followUp.remindOn": "Nhắc nếu không có phản hồi: {when}",

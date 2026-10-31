@@ -4,6 +4,7 @@ import { useLanguage } from "@/components/language-provider";
 import { useEffect, useRef, useState } from "react";
 import { prepareReaderEmailHtml } from "@/lib/remote-images/reader";
 import { collapseQuotedEmailHtml } from "@/app/(dashboard)/inbox/[messageId]/quote-collapse-utils";
+import { prepareSharedAttachmentLinks, startSharedAttachmentDownload } from "./shared-attachment-links";
 
 const BASE_STYLE = `
 :host { display:block; min-width:0; isolation:isolate; contain:paint; }
@@ -14,6 +15,8 @@ const BASE_STYLE = `
 .email-quote-toggle > summary::-webkit-details-marker { display:none; }
 .email-quote-toggle > summary::before { content:'•••'; }
 .email-quote-content { display:flow-root; }
+.mailflare-shared-download { display:inline-flex; vertical-align:middle; align-items:center; justify-content:center; padding:4px; color:#2563eb; border-radius:4px; }
+.mailflare-shared-download:hover, .mailflare-shared-download:focus-visible { background:#eff6ff; }
 `;
 
 export function EmailHtmlRenderer({ html, className, preserveLeadingQuote = false, autoAllowRemote = false, onAllowRemote }: {
@@ -25,9 +28,13 @@ export function EmailHtmlRenderer({ html, className, preserveLeadingQuote = fals
 }) {
 	const { t } = useLanguage();
 	const quoteToggleLabel = t("message.quote.toggle");
+	const downloadLabel = t("attachment.download");
+	const downloadErrorLabel = t("attachment.loadFailed");
+	const sharedAttachmentIntro = t("compose.attachmentDeliveryNotice");
 	const host = useRef<HTMLDivElement>(null);
 	const [choice, setChoice] = useState<{ source: string; allow: boolean } | null>(null);
 	const [hasRemote, setHasRemote] = useState(false);
+	const [downloadError, setDownloadError] = useState("");
 	const allowRemote = choice?.source === html ? choice.allow : autoAllowRemote;
 	// Mail is authored for white paper. Under the dark theme it is inverted
 	// (images inverted back) instead of glaring as a white slab.
@@ -53,14 +60,29 @@ export function EmailHtmlRenderer({ html, className, preserveLeadingQuote = fals
 		base.textContent = `${BASE_STYLE}\n${prepared.rootTag} { display:block; font:14px/1.5 Arial,sans-serif; color:#202124; background:#fff; color-scheme:light; }\n${prepared.bodyTag} { display:block; }\n:host(.mf-dark) ${prepared.rootTag} { background:transparent; }`;
 		const content = document.createElement("template");
 		content.innerHTML = collapseQuotedEmailHtml(prepared.html, preserveLeadingQuote, quoteToggleLabel) ?? "";
+		const sharedLinks = prepareSharedAttachmentLinks(content.content, window.location.origin, {
+			download: downloadLabel,
+			intro: sharedAttachmentIntro,
+		});
 		root.replaceChildren(base, content.content);
 		const mailBody = root.querySelector(prepared.bodyTag);
 		// An LTR scroller cannot reach left-side overflow from an RTL email.
 		if (mailBody) host.current.dir = window.getComputedStyle(mailBody).direction;
 		// Document fragment navigation does not automatically find IDs inside a shadow tree.
+		let active = true;
 		const navigate = (event: Event) => {
 			const target = event.target as Element | null;
 			const anchor = target?.closest("a[href]");
+			const downloadUrl = anchor && sharedLinks.get(anchor);
+			if (downloadUrl) {
+				event.preventDefault();
+				setDownloadError("");
+				void startSharedAttachmentDownload(downloadUrl).catch((error: unknown) => {
+					console.error("Could not download shared attachment", error);
+					if (active) setDownloadError(downloadErrorLabel);
+				});
+				return;
+			}
 			const href = anchor?.getAttribute("href");
 			if (!href?.startsWith("#")) return;
 			event.preventDefault();
@@ -71,9 +93,13 @@ export function EmailHtmlRenderer({ html, className, preserveLeadingQuote = fals
 			} catch { /* Ignore malformed fragments. */ }
 		};
 		root.addEventListener("click", navigate);
-		return () => root.removeEventListener("click", navigate);
-	}, [html, allowRemote, preserveLeadingQuote, quoteToggleLabel]);
+		return () => {
+			active = false;
+			root.removeEventListener("click", navigate);
+		};
+	}, [html, allowRemote, preserveLeadingQuote, quoteToggleLabel, downloadLabel, downloadErrorLabel, sharedAttachmentIntro]);
 	return <div className={`min-w-0 max-w-full ${className ?? ""}`}>
+		{downloadError && <p role="alert" className="mb-2 text-sm text-red-600">{downloadError}</p>}
 		{hasRemote && <div className="mb-2 flex justify-end">
 			<button type="button" aria-pressed={allowRemote} className="rounded px-2 py-1 text-xs text-blue-600 hover:bg-blue-50"
 				onClick={() => {

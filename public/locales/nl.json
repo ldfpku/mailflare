@@ -228,6 +228,7 @@
 	"compose.send": "Verzenden",
 	"compose.attachTooltip": "Bestanden bijvoegen (tot {max} MB in totaal). Bestanden groter dan 3 MB worden verzonden als R2-downloadlinks die 30 dagen geldig zijn.",
 	"compose.attachFiles": "Bestanden bijvoegen",
+	"compose.attachmentDeliveryNotice": "Sommige bestanden worden mogelijk als downloadlinks verzonden die na 30 dagen verlopen. Iedereen met de link kan het bestand downloaden totdat de link verloopt.",
 	"compose.trackOpens": "Leesbevestiging",
 	"followUp.remindMe": "Herinner me zonder antwoord",
 	"followUp.remindOn": "Herinnering zonder antwoord: {when}",

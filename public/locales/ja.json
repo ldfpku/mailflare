@@ -224,6 +224,7 @@
 	"compose.send": "送信",
 	"compose.attachTooltip": "ファイルを添付（合計 {max} MB まで）。3 MB を超えるファイルは、30 日間有効な R2 ダウンロードリンクとして送信されます。",
 	"compose.attachFiles": "ファイルを添付",
+	"compose.attachmentDeliveryNotice": "一部のファイルは、30日後に期限切れになるダウンロードリンクとして送信される場合があります。有効期限内は、リンクを持つ人なら誰でもファイルをダウンロードできます。",
 	"compose.trackOpens": "開封確認",
 	"followUp.remindMe": "返信がなければリマインド",
 	"followUp.remindOn": "返信がない場合のリマインド: {when}",
