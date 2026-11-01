@@ -1,3 +1,9 @@
+> ⚠️ **本仓库已归档（Archived），不再维护。**
+> 代码已迁入 monorepo **SMJ Workspace**，唯一维护与发布源为 👉 **https://github.com/ldfpku/smj-workspace**（本仓库对应其中的 `apps/server`）。
+> 本仓库仅作历史备份保留，请勿在此提交或部署。
+
+---
+
 <img src="/public/icon-96.png" alt="Mailflare" width="72" />
 
 # Mailflare
