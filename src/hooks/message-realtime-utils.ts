@@ -71,6 +71,9 @@ export async function showBrowserNewMessageNotification(event: NewMessageEvent):
 		});
 		notification.onclick = () => {
 			window.focus();
+			// 这是浏览器通知的原生 onclick 回调，并非 React 组件，拿不到 useRouter；
+			// 点击系统通知后需要聚焦并整页打开该邮件，这里用 location.assign 是正确做法。
+			// eslint-disable-next-line nextjs-js/no-location-assign-relative-destination
 			window.location.assign(`/inbox/${event.messageId}`);
 			notification.close();
 		};

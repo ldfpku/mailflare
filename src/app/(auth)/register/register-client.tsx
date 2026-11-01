@@ -49,6 +49,8 @@ export function RegisterClient() {
 
   useEffect(() => {
     void runPreparation();
+    // 仅在挂载时拉取一次安装状态（外部数据）；runPreparation 每次渲染都会重建，加入依赖会导致重复拉取，故豁免。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const accountDomain = setupDomain ?? primaryDomain;
@@ -57,6 +59,8 @@ export function RegisterClient() {
     if (step !== 3 || !accountDomain) return;
 
     let active = true;
+    // 进入第 3 步后对外部（Cloudflare MX 记录）做网络探测，此处为拉取前的加载态初始化，属外部同步。
+    // eslint-disable-next-line react/set-state-in-effect
     setMxChecking(true);
     setMxRecordsExist(null);
     setReplaceMxRecords(false);

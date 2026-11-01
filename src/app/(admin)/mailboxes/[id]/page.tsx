@@ -53,6 +53,8 @@ export default function MailboxSettingsPage() {
 
   useEffect(() => {
     if (mailbox.data) {
+      // 外部系统同步：信箱数据来自服务端（react-query），到达或变化时用它初始化本地可编辑的表单字段。
+      // eslint-disable-next-line react/set-state-in-effect
       setDisplayName(mailbox.data.displayName ?? "");
       setUseAllDomains(mailbox.data.useAllDomains);
       setAliasDomainId((current) => current || mailbox.data.domainId);

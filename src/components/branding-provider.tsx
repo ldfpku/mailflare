@@ -21,7 +21,10 @@ export function BrandingProvider({ children, initialBranding }: { children: Reac
 	}
 
 	useEffect(() => {
+		// 外部系统同步：挂载时从 /api/branding 拉取品牌配置，刷新函数每次渲染都会重建，故依赖数组留空。
+		// eslint-disable-next-line react/set-state-in-effect
 		void refreshBranding();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	return (

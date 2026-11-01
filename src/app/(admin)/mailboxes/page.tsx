@@ -49,6 +49,8 @@ export default function MailboxesPage() {
 
 	useEffect(() => {
 		if (!createOpen) return;
+		// 外部系统同步：打开新建对话框时，用服务端返回的当前账户信息（react-query）预填表单默认值，仅在字段为空时填充。
+		// eslint-disable-next-line react/set-state-in-effect
 		setDisplayName((currentName) => currentName || account.data?.user?.name?.trim() || "");
 		setOwnerUserId((currentId) => currentId || account.data?.user?.id || "");
 	}, [account.data?.user?.id, account.data?.user?.name, createOpen]);
@@ -112,6 +114,13 @@ export default function MailboxesPage() {
 	const domainMap = new Map(
 		(domains.data?.domains ?? []).map((d) => [d.id, d.hostname]),
 	);
+	const maxPersonalMailboxes = mailboxes.data?.maxPersonalMailboxes ?? 3;
+	// Undefined when the selected owner's tally is unknown (e.g. another account); only block on a known full count.
+	// The default mailbox provisioned per account counts toward this cap, so an owner can add at most (max - 1) extra.
+	const ownerPersonalCount = ownerUserId ? mailboxes.data?.personalMailboxCounts?.[ownerUserId] : undefined;
+	const personalCountKnown = mailboxType === "personal" && ownerPersonalCount !== undefined;
+	const personalLimitReached = personalCountKnown && ownerPersonalCount! >= maxPersonalMailboxes;
+	const personalRemaining = personalCountKnown ? Math.max(0, maxPersonalMailboxes - ownerPersonalCount!) : 0;
 	const mailboxOwners = [...(accounts.data?.accounts ?? [])];
 	if (account.data?.user?.id && !mailboxOwners.some((owner) => owner.id === account.data?.user?.id)) {
 		mailboxOwners.unshift({
@@ -138,87 +147,99 @@ export default function MailboxesPage() {
 							<DialogTitle>{t("mailboxes.createTitle")}</DialogTitle>
 							<DialogDescription>{t("mailboxes.createDescription")}</DialogDescription>
 						</DialogHeader>
-						<div className="space-y-4">
-							{mailboxes.data?.canCreateShared && (
-								<div className="space-y-2">
-									<Label htmlFor="mailbox-type">{t("mailboxes.type")}</Label>
-									<Select
-										id="mailbox-type"
-										value={mailboxType}
-										onChange={(event) => setMailboxType(event.target.value as "personal" | "shared")}
-										className="flex h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm shadow-sm shadow-neutral-200/50 focus-visible:border-blue-600 focus-visible:outline-none"
-									>
-										<option value="personal">{t("mailboxes.personalInbox")}</option>
-										<option value="shared">{t("mailboxes.sharedInbox")}</option>
-									</Select>
+						<div className="mt-2 space-y-5">
+							<div className="space-y-4">
+								{mailboxes.data?.canCreateShared && (
+									<div className="space-y-1.5">
+										<Label htmlFor="mailbox-type">{t("mailboxes.type")}</Label>
+										<Select
+											id="mailbox-type"
+											value={mailboxType}
+											onChange={(event) => setMailboxType(event.target.value as "personal" | "shared")}
+											className="flex h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm shadow-sm shadow-neutral-200/50 focus-visible:border-blue-600 focus-visible:outline-none"
+										>
+											<option value="personal">{t("mailboxes.personalInbox")}</option>
+											<option value="shared">{t("mailboxes.sharedInbox")}</option>
+										</Select>
+									</div>
+								)}
+								{mailboxType === "personal" ? (
+									<div className="space-y-1.5">
+										<Label htmlFor="mailbox-owner">{t("mailboxes.account")}</Label>
+										<Select
+											id="mailbox-owner"
+											value={ownerUserId}
+											onChange={(event) => {
+												const owner = mailboxOwners.find((item) => item.id === event.target.value);
+												setOwnerUserId(event.target.value);
+												if (owner) setDisplayName(owner.name);
+											}}
+											className="flex h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm shadow-sm shadow-neutral-200/50 focus-visible:border-blue-600 focus-visible:outline-none"
+										>
+											{mailboxOwners.map((owner) => (
+												<option key={owner.id} value={owner.id}>
+													{owner.name} ({owner.email})
+												</option>
+											))}
+										</Select>
+									</div>
+								) : (
+									<p className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800">
+										{t("mailboxes.sharedHint")}
+									</p>
+								)}
+								<div className="space-y-1.5">
+									<Label htmlFor="mailbox-name">{t("common.name")}</Label>
+									<Input
+										id="mailbox-name"
+										value={displayName}
+										onChange={(event) => setDisplayName(event.target.value)}
+										placeholder={t("mailboxes.namePlaceholder")}
+									/>
 								</div>
-							)}
-							{mailboxType === "personal" ? (
-							<div className="space-y-2">
-								<Label htmlFor="mailbox-owner">{t("mailboxes.account")}</Label>
-								<Select
-									id="mailbox-owner"
-									value={ownerUserId}
-									onChange={(event) => {
-										const owner = mailboxOwners.find((item) => item.id === event.target.value);
-										setOwnerUserId(event.target.value);
-										if (owner) setDisplayName(owner.name);
-									}}
-									className="flex h-10 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm shadow-sm shadow-neutral-200/50 focus-visible:border-blue-600 focus-visible:outline-none"
-								>
-									{mailboxOwners.map((owner) => (
-										<option key={owner.id} value={owner.id}>
-											{owner.name} ({owner.email})
-										</option>
-									))}
-								</Select>
+								<div className="space-y-1.5">
+									<Label htmlFor="mailbox-username">{t("mailboxes.emailAddress")}</Label>
+									<div className="flex h-10 items-center overflow-hidden rounded-md border border-neutral-200 bg-white shadow-sm shadow-neutral-200/50 focus-within:border-blue-600">
+										<Input
+											id="mailbox-username"
+											value={localPart}
+											onChange={(event) => setLocalPart(event.target.value)}
+											placeholder={t("mailboxes.localPlaceholder")}
+											className="h-full min-w-0 flex-1 rounded-none border-0 shadow-none focus-visible:border-0"
+										/>
+										<span className="flex shrink-0 items-center px-1 text-sm text-neutral-400">@</span>
+										<Select
+											aria-label={t("accounts.domain")}
+											className="h-full min-w-0 max-w-[48%] shrink-0 border-0 border-l border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-700 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+											value={domainId}
+											onChange={(event) => setDomainId(event.target.value)}
+										>
+											<option value="">{t("accounts.selectDomain")}</option>
+											{(domains.data?.domains ?? []).map((domain) => (
+												<option key={domain.id} value={domain.id}>
+													{domain.hostname}
+												</option>
+											))}
+										</Select>
+									</div>
+								</div>
 							</div>
-							) : (
-								<p className="rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">
-									{t("mailboxes.sharedHint")}
+							{personalLimitReached ? (
+								<p role="alert" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+									{t("mailboxes.personalLimitReached", { max: maxPersonalMailboxes })}
+								</p>
+							) : personalCountKnown && (
+								<p className="rounded-xl bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+									{t("mailboxes.personalRemaining", { used: ownerPersonalCount!, max: maxPersonalMailboxes, remaining: personalRemaining })}
 								</p>
 							)}
-							<div className="space-y-2">
-								<Label htmlFor="mailbox-name">{t("common.name")}</Label>
-								<Input
-									id="mailbox-name"
-									value={displayName}
-									onChange={(event) => setDisplayName(event.target.value)}
-									placeholder={t("mailboxes.namePlaceholder")}
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="mailbox-username">{t("mailboxes.emailAddress")}</Label>
-								<div className="flex h-10 overflow-hidden rounded-md border border-neutral-200 bg-white shadow-sm shadow-neutral-200/50 focus-within:border-blue-600">
-									<Input
-										id="mailbox-username"
-										value={localPart}
-										onChange={(event) => setLocalPart(event.target.value)}
-										placeholder={t("mailboxes.localPlaceholder")}
-										className="min-w-0 flex-1 rounded-none border-0 shadow-none focus-visible:border-0"
-									/>
-									<span className="flex items-center text-sm text-neutral-500">@</span>
-									<Select
-										aria-label={t("accounts.domain")}
-										className="min-w-0 max-w-[55%] bg-transparent px-3 text-sm text-neutral-700 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-										value={domainId}
-										onChange={(event) => setDomainId(event.target.value)}
-									>
-										<option value="">{t("accounts.selectDomain")}</option>
-										{(domains.data?.domains ?? []).map((domain) => (
-											<option key={domain.id} value={domain.id}>
-												{domain.hostname}
-											</option>
-										))}
-									</Select>
-								</div>
-							</div>
 							{create.isError && (
 								<p role="alert" className="text-sm text-red-600">{(create.error as Error).message}</p>
 							)}
 							<Button
+								className="w-full"
 								onClick={() => create.mutate()}
-								disabled={(mailboxType === "personal" && !ownerUserId) || !displayName.trim() || !domainId || !localPart || create.isPending}
+								disabled={(mailboxType === "personal" && !ownerUserId) || !displayName.trim() || !domainId || !localPart || create.isPending || personalLimitReached}
 							>
 								{create.isPending ? t("accounts.creating") : t("mailboxes.createButton")}
 							</Button>

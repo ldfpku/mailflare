@@ -7,7 +7,11 @@ import type { AssistantAvailabilityResponse } from "./assistant-availability-typ
 
 export function useAssistantAvailability() {
 	const [enabled, setEnabled] = useState<boolean | null>(null);
-	useLayoutEffect(() => setEnabled(readInitialAssistantAvailability()), []);
+	useLayoutEffect(() => {
+		// 外部系统同步：挂载时从 localStorage 读取助手可用性的初始值；SSR 阶段无 localStorage，必须在挂载后读取以避免 hydration 不匹配。
+		// eslint-disable-next-line react/set-state-in-effect
+		setEnabled(readInitialAssistantAvailability());
+	}, []);
 
 	useEffect(() => {
 		let active = true;

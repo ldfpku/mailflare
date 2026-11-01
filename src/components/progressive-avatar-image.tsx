@@ -11,7 +11,10 @@ export function ProgressiveAvatarImage({ src, alt, className, onError }: Progres
 	const [failedFor, setFailedFor] = useState<string | null>(null);
 	const imageRef = useRef<HTMLImageElement>(null);
 	const onErrorRef = useRef(onError);
-	onErrorRef.current = onError;
+	// 把最新的 onError 回调缓存到 ref：ref 不能在渲染期写入，改到 effect 中同步，语义等价。
+	useEffect(() => {
+		onErrorRef.current = onError;
+	}, [onError]);
 	const showFull = previewFailedFor === src || fullReadyFor === src;
 
 	useEffect(() => {

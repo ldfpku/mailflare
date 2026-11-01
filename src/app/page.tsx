@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { heroMessages, sidebarItems } from "./utils";
 import { Inbox, Mail, Search, ShieldCheck } from "lucide-react";
@@ -32,7 +33,7 @@ export default async function HomePage() {
           className="flex items-center gap-3"
           aria-label={t("home.homeLabel", { app: branding.appName })}
         >
-          <img src={branding.hasCustomIcon ? "/api/branding/icon" : "/icon-96.png"} height={32} width={32} alt="" />
+          <Image src={branding.hasCustomIcon ? "/api/branding/icon" : "/icon-96.png"} height={32} width={32} unoptimized alt="" />
           <span className="hidden text-base font-semibold tracking-tight sm:inline">
             {branding.appName}
           </span>

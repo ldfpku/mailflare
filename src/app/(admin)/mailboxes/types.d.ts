@@ -33,4 +33,7 @@ export type MailboxOwner = {
 export type MailboxesResponse = {
 	mailboxes: Mailbox[];
 	canCreateShared: boolean;
+	maxPersonalMailboxes?: number;
+	/** Personal inbox count keyed by owner account id, for enforcing the per-account cap in the UI. */
+	personalMailboxCounts?: Record<string, number>;
 };

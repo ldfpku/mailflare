@@ -20,6 +20,8 @@ export function MessageSourceDialog({ messageId, open, onOpenChange }: MessageSo
 	useEffect(() => {
 		if (!open) return;
 		const controller = new AbortController();
+		// 外部系统同步：对话框打开时清空上次状态并从服务端拉取邮件原文；setLoading(true) 是进入这次网络请求的加载态。
+		// eslint-disable-next-line react/set-state-in-effect
 		setSource(null);
 		setError(null);
 		setCopied(false);
@@ -36,7 +38,7 @@ export function MessageSourceDialog({ messageId, open, onOpenChange }: MessageSo
 				if (!controller.signal.aborted) setLoading(false);
 			});
 		return () => controller.abort();
-	}, [messageId, open]);
+	}, [messageId, open, t]);
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>

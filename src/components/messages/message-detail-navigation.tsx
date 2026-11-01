@@ -32,7 +32,9 @@ export function MessageDetailNavigationProvider({ children, config }: MessageDet
 	}, [key]);
 
 	useEffect(() => {
+		// 外部系统同步：从模块级队列取出「刚打开的未读邮件」id（跨组件传递的一次性信号），据此登记未读状态。
 		const messageId = takeOpenedUnreadMessage();
+		// eslint-disable-next-line react/set-state-in-effect
 		if (messageId) recordUnread(messageId);
 	}, [recordUnread]);
 
@@ -70,7 +72,7 @@ export function MessageDetailNavigation({ messageId, unread }: MessageDetailNavi
 	const router = useRouter();
 	useEffect(() => {
 		if (unread) context?.recordUnread(messageId);
-	}, [context?.recordUnread, messageId, unread]);
+	}, [context, messageId, unread]);
 	if (!context) return null;
 	const { previousId, nextId, unreadOrder, totalUnread } = getMessageDetailNavigationState(context.entries, messageId);
 

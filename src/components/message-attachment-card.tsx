@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { ArrowDownToLine, Play } from "lucide-react";
 import { formatAttachmentSize } from "@/app/(dashboard)/inbox/[messageId]/utils";
 import { useLanguage } from "@/components/language-provider";
@@ -24,10 +25,13 @@ export function MessageAttachmentCard({
 			className="group flex w-full items-center gap-3 rounded-lg border border-neutral-200 p-2.5 text-left transition-colors hover:border-blue-200 hover:bg-blue-50/40"
 		>
 			{visual.thumbnail === "image" && (
-				<img
+				<Image
 					src={previewUrl}
 					alt=""
+					width={56}
+					height={56}
 					loading="lazy"
+					unoptimized
 					className="h-14 w-14 shrink-0 rounded-md bg-neutral-100 object-cover"
 				/>
 			)}

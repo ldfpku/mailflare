@@ -12,11 +12,16 @@ export function useMessageNavigation(href: string, message: Message): MessageNav
 	const router = useRouter();
 	const [progress, setProgress] = useState<number | null>(null);
 
+	// 导航完成（pathname 变化）时把进度条补到 100% 再延时清空，是对外部系统（路由切换 + 定时器）的同步。
+	// 只应在路由变化时触发：把 progress 加进依赖会在 12→100→null 之间反复重跑并重置定时器，破坏动画。
 	useEffect(() => {
 		if (progress === null) return;
+		// setState 发生在对外部系统（路由切换）的同步 effect 中，故豁免 set-state-in-effect。
+		// eslint-disable-next-line react/set-state-in-effect
 		setProgress(100);
 		const timer = window.setTimeout(() => setProgress(null), 220);
 		return () => window.clearTimeout(timer);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [pathname]);
 
 	function onNavigate(event: MouseEvent<HTMLAnchorElement>, markRead = false) {

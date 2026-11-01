@@ -7,6 +7,13 @@ import { newId } from "@/lib/ids";
 import { listAccessibleMailboxes } from "@/lib/mailboxes/access";
 import type { SessionUser } from "@/lib/auth/types";
 
+/**
+ * Each account may own at most this many personal inboxes (shared inboxes do not count). The default mailbox
+ * provisioned by `ensurePersonalMailbox` is itself a personal inbox and counts toward this cap, so a user can
+ * create at most (MAX_PERSONAL_MAILBOXES - 1) additional personal mailboxes for their own account.
+ */
+export const MAX_PERSONAL_MAILBOXES = 3;
+
 export async function ensurePersonalMailbox(env: CloudflareEnv, db: AppDatabase, user: SessionUser) {
 	const current = await listAccessibleMailboxes(db, user);
 	if (current.some((mailbox) => mailbox.userId === user.id && mailbox.type === "personal")) return current;

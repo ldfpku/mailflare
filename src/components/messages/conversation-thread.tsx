@@ -139,6 +139,8 @@ export function ConversationMessageCard({
 	const isAssistantOpen = useAssistantOpen();
 	const isAnyPanelVisible = messageListVisible || isAssistantOpen;
 
+	// 将服务端的已读状态（message.read，外部数据）同步进本地乐观状态，仅在该 prop 变化时重置。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => setLocallyRead(message.read), [message.read]);
 
 	let body: { html: string | null; text: string; quotedHtml: string | null } | null = null;

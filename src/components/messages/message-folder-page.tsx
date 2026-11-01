@@ -69,8 +69,12 @@ function MessageListRow({
 	const [read, setRead] = useState(message.read);
 	const [threadUnread, setThreadUnread] = useState(message.threadUnread);
 	const [starred, setStarred] = useState(message.starred);
+	// 将服务端的已读/未读/星标状态（message 上的 prop，外部数据）同步进本地乐观状态，仅在对应 prop 变化时重置。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => setRead(message.read), [message.read]);
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => setThreadUnread(message.threadUnread), [message.threadUnread]);
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => setStarred(message.starred), [message.starred]);
 	const rowMessage = { ...message, read, starred, threadUnread };
 	const unread = isMessageListRowUnread(rowMessage);
@@ -353,13 +357,18 @@ export function MessageFolderPage({
 		ids.flatMap((id) => rowMessageIds(messages.find((message) => message.id === id) ?? { id } as Message));
 
 	useEffect(() => {
+		// 查询条件/邮箱/文件夹等外部输入变化时，重置分页与已选消息，属外部输入同步。
+		// eslint-disable-next-line react/set-state-in-effect
 		setOffset(0);
+		// eslint-disable-next-line react/set-state-in-effect
 		setSelectedMessages([]);
-	}, [query, selectedMailbox?.id, config.folder, config.folderId, unreadOnly, grouped]);
+	}, [query, selectedMailbox?.id, config.folder, config.folderId, unreadOnly, grouped, setOffset, setSelectedMessages]);
 
 	useEffect(() => {
+		// 翻页（offset 变化）时清空已选消息，属外部输入同步。
+		// eslint-disable-next-line react/set-state-in-effect
 		setSelectedMessages([]);
-	}, [offset]);
+	}, [offset, setSelectedMessages]);
 
 	useEffect(() => {
 		const originalTitle = document.title;
@@ -381,14 +390,18 @@ export function MessageFolderPage({
 
 	useEffect(() => {
 		if (isLoading) return;
+		// 列表数据（messages，外部数据）刷新后，剔除已不存在的已选项，保持选择集与外部数据一致。
+		// eslint-disable-next-line react/set-state-in-effect
 		setSelectedMessages((current) => {
 			const remaining = current.filter((item) => messages.some((message) => message.id === item.id));
 			return remaining.length === current.length ? current : remaining;
 		});
-	}, [messages, isLoading]);
+	}, [messages, isLoading, setSelectedMessages]);
 
 	useEffect(() => {
 		if (isLoading || offset === 0 || messages.length > 0) return;
+		// 当前页无数据（外部数据）时回退到最后一个有数据的页，属外部数据同步。
+		// eslint-disable-next-line react/set-state-in-effect
 		setOffset(total > 0 ? Math.floor((total - 1) / limit) * limit : 0);
 	}, [isLoading, offset, messages.length, total, limit]);
 

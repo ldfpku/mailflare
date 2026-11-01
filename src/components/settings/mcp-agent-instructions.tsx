@@ -11,6 +11,8 @@ export function McpAgentInstructions(props: McpAgentInstructionsProps) {
 	const { t } = useLanguage();
 	const [origin, setOrigin] = useState("");
 	const [copied, setCopied] = useState(false);
+	// 挂载后读取浏览器的 window.location.origin（外部 DOM，SSR 渲染期不可用），在 effect 中同步。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => setOrigin(window.location.origin), []);
 	const prompt = buildMcpAgentPrompt(origin, props);
 

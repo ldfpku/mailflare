@@ -40,7 +40,6 @@ import {
   FOLDER_COLOR_OPTIONS,
 } from "@/lib/folders/colors";
 import type { FolderColor } from "@/lib/folders/types";
-import { cn } from "@/lib/utils";
 import { NavItem } from "./components-nav";
 import type { NavLink } from "./components-nav-types";
 import type { CustomFolder } from "./dashboard-nav-types";
@@ -159,6 +158,8 @@ export function DashboardNav({ className }: { className?: string }) {
   });
 
   useEffect(() => {
+    // 外部系统同步：从 localStorage 读取用户上次的展开偏好，仅在挂载时执行。
+    // eslint-disable-next-line react/set-state-in-effect
     setMoreOpen(readStorage(MORE_OPEN_KEY, false));
     setFoldersOpen(readStorage(FOLDERS_OPEN_KEY, false));
   }, []);
@@ -189,6 +190,8 @@ export function DashboardNav({ className }: { className?: string }) {
 
   useEffect(() => {
     if (!selectedMailbox?.id) {
+      // 外部系统同步：所选信箱变化时按信箱重新加载自定义文件夹，无信箱时清空列表。
+      // eslint-disable-next-line react/set-state-in-effect
       setFolders([]);
       return;
     }

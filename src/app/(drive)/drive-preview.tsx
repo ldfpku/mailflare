@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Download } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { canPreview } from "./drive-utils";
@@ -14,7 +15,7 @@ export function DrivePreviewBody({ src, downloadHref, contentType, name }: { src
 			</div>
 		);
 	}
-	if (contentType.startsWith("image/")) return <img src={src} alt={name} className="mx-auto max-h-full max-w-full object-contain" />;
+	if (contentType.startsWith("image/")) return <div className="relative h-full w-full"><Image src={src} alt={name} fill unoptimized className="object-contain" /></div>;
 	if (contentType.startsWith("video/")) return <video src={src} controls className="mx-auto max-h-full max-w-full" />;
 	if (contentType.startsWith("audio/")) return <div className="flex h-full items-center justify-center"><audio src={src} controls /></div>;
 	return <iframe src={src} title={name} className="h-full w-full rounded-lg" style={{ background: "#fff", colorScheme: "light" }} />;

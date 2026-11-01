@@ -7,7 +7,7 @@ import { getDb } from "@/db";
 import { messages, outboundJobs } from "@/db/schema";
 import { getContactDisplayNameMap } from "@/lib/contacts/service";
 import { getFirstEmailAddressEntry, normalizeEmailAddress } from "@/lib/email/address";
-import { getMailboxAccessLevel, hasMailboxPermission, listAccessibleMailboxes } from "@/lib/mailboxes/access";
+import { getMailboxAccessLevel, listAccessibleMailboxes } from "@/lib/mailboxes/access";
 import { tracksAccountIdentity } from "@/lib/profile/identity-utils";
 import { buildSearchConditions } from "@/lib/search/conditions";
 import { getRequestTimeZone } from "@/lib/time/utils";
@@ -212,6 +212,8 @@ export async function GET(request: Request) {
 	// `Message.textBody`/`htmlBody` are optional on the wire type and the
 	// reading pane loads them from /api/messages/[id]/thread, so they are
 	// neither selected nor sent here.
+	// 故意解构丢弃 rawR2Key，使其不出现在下发给前端的 message 里；该键仅用于排除，不会被引用。
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const enrichedRows = rows.map(({ rawR2Key: _rawR2Key, ...message }) => {
 		const threadStats = message.threadId ? threadCounts.get(message.threadId) : undefined;
 		const folderUnread = scopedThreadCounts.get(message.threadId ?? message.id)?.unread;

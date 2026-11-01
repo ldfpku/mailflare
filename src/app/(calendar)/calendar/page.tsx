@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { DragEvent, PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import toast, { Toaster } from "react-hot-toast";
-import { AlignLeft, CalendarPlus2, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, MapPin, MoreVertical, Palette, Plus, Repeat2, Trash2, UsersRound, X } from "lucide-react";
+import { AlignLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, MapPin, MoreVertical, Palette, Plus, Repeat2, Trash2, UsersRound, X } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { mobilePrimaryActionClass } from "@/components/page-header-utils";
 import { Button } from "@/components/ui/button";
@@ -99,6 +99,8 @@ export default function CalendarPage() {
     : null, [dragPreview, previewEvent]);
 
   useEffect(() => {
+    // 外部系统同步：挂载后读取 DOM 里的 header 占位节点作为 portal 目标，必须在 effect 中执行。
+    // eslint-disable-next-line react/set-state-in-effect
     setHeaderTarget(document.getElementById("calendar-header-slot"));
   }, []);
 
@@ -126,6 +128,8 @@ export default function CalendarPage() {
 
   useEffect(() => {
     let active = true;
+    // 外部系统同步：按可见日期范围从服务端拉取日历事件；setLoading(true) 是进入这次网络请求的加载态。
+    // eslint-disable-next-line react/set-state-in-effect
     setLoading(true);
     const start = new Date(Math.min(today.getTime(), weekStart.getTime(), startOfDay(visibleDate).getTime()));
     const end = new Date(Math.max(addDays(today, 90).getTime(), addDays(weekStart, 7).getTime(), addDays(visibleDate, 1).getTime()));
@@ -149,7 +153,7 @@ export default function CalendarPage() {
     editEvent(event);
     // Drop the param so picking the same event again re-opens it.
     router.replace("/calendar");
-  }, [events, eventFromUrl]);
+  }, [events, eventFromUrl, router]);
 
   function openNewEvent(day = visibleDate, startAt?: Date) {
     const start = startAt ? new Date(startAt) : defaultCalendarStart(day);
@@ -419,7 +423,7 @@ export default function CalendarPage() {
                 </div>
                 <div className="grid grid-cols-7">
                   {([0, 1, 2, 3, 4, 5, 6] as const).map((weekday) => (
-                    <span key={weekday} aria-label={t(`weekday.${weekday}`)} className="flex h-10 items-center justify-center text-sm font-medium text-neutral-500">{t(`weekday.${weekday}`).charAt(0).toUpperCase()}</span>
+                    <span key={weekday} aria-label={t(`weekday.${weekday}`)} className="flex h-10 items-center justify-center text-sm font-medium text-neutral-500">{t(`calendar.weekdayNarrow.${weekday}` as TranslationKey)}</span>
                   ))}
                   {pickerDates.map((day) => {
                     const selected = dateKey(day) === dateKey(visibleDate);

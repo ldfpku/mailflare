@@ -31,6 +31,8 @@ export function DriveShareDialog({ item, onClose, onChanged }: { item: DriveItem
 	}, [id, t]);
 
 	useEffect(() => {
+		// 切换分享对象时，先清空上一个项目的分享数据再重新拉取（外部数据同步前的状态重置）。
+		// eslint-disable-next-line react/set-state-in-effect
 		setShares([]); setLinkToken(null); setEmail("");
 		void load();
 	}, [load]);

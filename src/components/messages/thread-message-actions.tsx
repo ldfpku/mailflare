@@ -45,8 +45,12 @@ export function ThreadMessageActions({
 		? getOwnAddressForMessage(message, ownAddresses)
 		: ownAddress;
 
+	// 将服务端的星标状态（message.starred，外部数据）同步进本地乐观状态，仅在该 prop 变化时重置。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => setStarred(message.starred), [message.starred]);
 	useEffect(() => {
+		// starOnly 为外部输入，切换到仅星标模式时关闭更多菜单，属外部输入同步。
+		// eslint-disable-next-line react/set-state-in-effect
 		if (starOnly) setMoreOpen(false);
 	}, [starOnly]);
 

@@ -26,6 +26,8 @@ export function ContactAvatar({
 	const [avatarVersion, setAvatarVersion] = useState(0);
 
 	useEffect(() => {
+		// 当联系人身份（地址/邮箱/头像来源）变化时，重置头像相关本地状态以便按新身份重新加载——属外部输入同步。
+		// eslint-disable-next-line react/set-state-in-effect
 		setManagedAvatar(hasManagedAvatar);
 		setAvatarUrl(null);
 		setImageFailed(false);
@@ -46,6 +48,8 @@ export function ContactAvatar({
 	}, [address]);
 
 	useEffect(() => {
+		// 根据当前头像来源与版本号解析出实际头像 URL（含随外部自定义事件更新的 avatarVersion），需在 effect 中同步。
+		// eslint-disable-next-line react/set-state-in-effect
 		setImageFailed(false);
 		if (managedAvatarUrl) {
 			setAvatarUrl(managedAvatarUrl);

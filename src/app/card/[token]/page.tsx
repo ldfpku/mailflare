@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import { Download, Globe, Mail, MapPin, Phone, Smartphone } from "lucide-react";
 import { BusinessCardBack, BusinessCardFront } from "@/components/business-card/business-card-faces";
@@ -55,8 +56,8 @@ export default function PublicBusinessCardPage() {
 		<main className="flex min-h-dvh flex-col bg-[#f6f8fc] px-4 pb-8 pt-6 text-neutral-900 sm:pt-12">
 			<div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6">
 				<header className="flex items-center justify-between">
-					<img src="/brand/smj-signature-color.svg" alt={BUSINESS_CARD_COMPANY.name} className="h-7 w-auto dark:hidden" />
-					<img src="/brand/smj-signature-reverse.svg" alt={BUSINESS_CARD_COMPANY.name} className="hidden h-7 w-auto dark:block" />
+					<Image src="/brand/smj-signature-color.svg" alt={BUSINESS_CARD_COMPANY.name} width={160} height={28} unoptimized className="h-7 w-auto dark:hidden" />
+					<Image src="/brand/smj-signature-reverse.svg" alt={BUSINESS_CARD_COMPANY.name} width={160} height={28} unoptimized className="hidden h-7 w-auto dark:block" />
 				</header>
 
 				{missing ? (
@@ -83,7 +84,7 @@ export default function PublicBusinessCardPage() {
 						<p className="-mt-3 text-center font-mono text-[11px] uppercase tracking-[0.12em] text-neutral-500">{t("publicCard.flipHint")}</p>
 
 						<section className="flex items-center gap-4">
-							<img src={card.avatarUrl} alt="" className="h-14 w-14 shrink-0 rounded-full bg-neutral-100 object-cover" />
+							<Image src={card.avatarUrl} alt="" width={56} height={56} unoptimized className="h-14 w-14 shrink-0 rounded-full bg-neutral-100 object-cover" />
 							<div className="min-w-0">
 								<h1 className="truncate text-xl font-bold text-neutral-900">{card.name}</h1>
 								{cardTitleLine(card) && <p className="truncate text-sm text-neutral-600">{cardTitleLine(card)}</p>}

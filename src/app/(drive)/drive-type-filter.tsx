@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
 import { Check, ListFilter } from "lucide-react";
@@ -14,7 +14,13 @@ export function DriveTypeFilter({ value: applied, onChange }: { value: DriveCate
 	// Local copy so quick successive clicks build on each other while the URL update is still in flight.
 	const [value, setValue] = useState(applied);
 	const appliedKey = applied.join(",");
-	useEffect(() => { setValue(appliedKey ? (appliedKey.split(",") as DriveCategory[]) : []); }, [appliedKey]);
+	// applied（来自 URL）变化时同步本地副本：改用官方「渲染期 setState + 前值比较」，
+	// 行为与原 effect 一致，但不再触发级联渲染。
+	const [lastAppliedKey, setLastAppliedKey] = useState(appliedKey);
+	if (lastAppliedKey !== appliedKey) {
+		setLastAppliedKey(appliedKey);
+		setValue(appliedKey ? (appliedKey.split(",") as DriveCategory[]) : []);
+	}
 	const update = (next: DriveCategory[]) => { setValue(next); onChange(next); };
 	const labels: Record<DriveCategory, string> = { photos: t("drive.photos"), videos: t("drive.videos"), documents: t("drive.documents"), others: t("drive.others") };
 	const active = value.length > 0;

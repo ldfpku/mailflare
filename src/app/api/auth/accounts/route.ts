@@ -15,6 +15,8 @@ export async function GET(request: Request) {
 		Array.from(new Set(parseAccountTokens(jar.get(ACCOUNTS_COOKIE)?.value).concat(active ?? []))),
 	);
 	const response = NextResponse.json({
+		// 故意解构丢弃 avatarKey（以及用于比较后即丢弃的 token），避免把它们下发到响应里。
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		accounts: accounts.map(({ token, avatarKey, ...account }) => ({ ...account, active: token === active })),
 	});
 	response.headers.set("Cache-Control", "no-store");

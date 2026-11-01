@@ -43,6 +43,8 @@ export function EmailClientsSettings() {
 	// rendered in the browser and never leaves the page.
 	useEffect(() => {
 		if (!key) {
+			// 无密钥时清空二维码；有密钥时下方异步生成（QRCode.toDataURL 为异步副作用），故在 effect 中设置状态。
+			// eslint-disable-next-line react/set-state-in-effect
 			setQr(null);
 			return;
 		}

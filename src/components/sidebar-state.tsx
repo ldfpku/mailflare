@@ -24,19 +24,27 @@ export function SidebarProvider({ children, expandedWidth = 260, mobileOverlay =
 	const overlay = mobileOverlay && mobile;
 
 	useEffect(() => {
+		// 外部系统同步：路由或视口变化时关闭移动端抽屉，避免覆盖层残留打开。
+		// eslint-disable-next-line react/set-state-in-effect
 		setMobileOpen(false);
 	}, [pathname, mobile]);
 
 	// Collapse on first load and after every navigation on phones, so the overlay never sticks open.
 	useEffect(() => {
+		// 外部系统同步：手机视口下首次加载与每次导航后折叠侧边栏。
+		// eslint-disable-next-line react/set-state-in-effect
 		if (mobile) setMinimal(true);
 	}, [pathname, mobile]);
 
 	useEffect(() => {
+		// 外部系统同步：非移动端时从持久化偏好恢复折叠状态。
+		// eslint-disable-next-line react/set-state-in-effect
 		if (!mobile) setMinimal(readInitialSidebarMinimal());
 	}, [mobile]);
 
 	useLayoutEffect(() => {
+		// 外部系统同步：挂载时从 localStorage 读取折叠偏好与列宽，完成后再启用过渡动画。
+		// eslint-disable-next-line react/set-state-in-effect
 		setMinimal(readInitialSidebarMinimal());
 		setWidth(readInitialColumnWidth("sidebar", expandedWidth, 200, 480));
 		const frame = requestAnimationFrame(() => setWidthReady(true));
@@ -71,6 +79,8 @@ export function SidebarProvider({ children, expandedWidth = 260, mobileOverlay =
 				}
 			})
 			.catch(() => undefined);
+		// 仅在挂载时读取一次当前用户的持久化侧边栏偏好；expandedWidth 只作为默认值，不应因其变化而重新覆盖用户偏好。
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	function toggle() {

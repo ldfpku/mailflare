@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { useLanguage } from "@/components/language-provider";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -15,7 +16,7 @@ export function DriveOwnerAvatar({ item }: { item: Pick<DriveItemDto, "ownerId" 
 	return (
 		<Tooltip label={label}>
 			{item.ownerHasAvatar && !failed
-				? <img src={`/api/drive/owners/${encodeURIComponent(item.ownerId)}/avatar`} alt={label} onError={() => setFailed(true)} className={`${className} object-cover`} />
+				? <Image src={`/api/drive/owners/${encodeURIComponent(item.ownerId)}/avatar`} alt={label} width={24} height={24} unoptimized onError={() => setFailed(true)} className={`${className} object-cover`} />
 				: <span role="img" aria-label={label} className={`${className} flex items-center justify-center text-xs font-semibold`} style={getAvatarColorStyle(item.ownerName || item.ownerId)}>{(item.ownerName.trim().slice(0, 1) || "?").toUpperCase()}</span>}
 		</Tooltip>
 	);

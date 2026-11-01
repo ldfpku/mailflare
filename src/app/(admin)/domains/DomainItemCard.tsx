@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import Image from "next/image";
 import { useLanguage } from "@/components/language-provider";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -52,9 +53,11 @@ export default function DomainItemCard({
       <div className="flex flex-col items-start gap-3 md:flex-row md:gap-4">
         <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100 text-neutral-600">
           <Globe2 className="h-5 w-5" />
-          <img
+          <Image
             src={`https://${item.hostname}/favicon.ico`}
             alt=""
+            fill
+            unoptimized
             className="absolute inset-0 h-full w-full object-contain p-1"
             onError={(event) => event.currentTarget.remove()}
           />

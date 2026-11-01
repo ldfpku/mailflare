@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Camera, LoaderCircle, User } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
@@ -28,10 +28,15 @@ export default function MailboxAvatarForm({
 	const [busy, setBusy] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 
-	useEffect(() => {
+	// 当传入的 mailboxId / initialHasAvatar 变化时重置头像状态：改用官方「渲染期 setState + 前值比较」，
+	// 保持原 effect 的重置行为但避免级联渲染。
+	const propsKey = `${mailboxId}|${initialHasAvatar}`;
+	const [lastPropsKey, setLastPropsKey] = useState(propsKey);
+	if (lastPropsKey !== propsKey) {
+		setLastPropsKey(propsKey);
 		setHasAvatar(initialHasAvatar);
 		setAvatarUrl(`/api/mailboxes/${mailboxId}/avatar`);
-	}, [initialHasAvatar, mailboxId]);
+	}
 
 	async function onPick(event: React.ChangeEvent<HTMLInputElement>) {
 		const picked = event.target.files?.[0] ?? null;

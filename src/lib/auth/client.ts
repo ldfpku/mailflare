@@ -84,6 +84,8 @@ export async function authFetch(input: RequestInfo | URL, init: AuthFetchOptions
 	if (response.status === 401 && redirectOnUnauthorized && typeof window !== "undefined" &&
 		!unauthenticated && requestGeneration === sessionGeneration && requestSession === getClientSessionToken()) {
 		clearClientSessionToken();
+		// 这里是普通工具模块（非 React 组件），拿不到 useRouter；会话失效时需要整页重载到登录页以彻底清空所有已挂载组件里的会话缓存状态。
+		// eslint-disable-next-line nextjs-js/no-location-assign-relative-destination
 		window.location.assign("/login");
 	}
 

@@ -42,11 +42,14 @@ export default function AccountMailboxesPage() {
   }
 
   useEffect(() => {
+    // 外部系统同步：按账户 id 从服务端加载账户、信箱与域名；load 每次渲染都会重建，故不纳入依赖。
+    // eslint-disable-next-line react/set-state-in-effect
     void load().catch((error) =>
       setMessage(
         error instanceof Error ? error.message : t("account.mailboxes.loadFailed"),
       ),
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, t]);
 
   async function addMailbox(event: React.FormEvent<HTMLFormElement>) {

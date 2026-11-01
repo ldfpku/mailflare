@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, Check, HardDrive, ChevronDown, Inbox, LogOut, Settings, ShieldCheck, UserPlus, UserRound, UsersRound } from "lucide-react";
+import { CalendarDays, Check, HardDrive, ChevronDown, Inbox, LogOut, Settings, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useDismissible } from "@/components/use-dismissible";
 import { useLanguage } from "@/components/language-provider";
@@ -51,9 +51,13 @@ function AccountAvatar({
 	const sizeClass = size === "large" ? "h-16 w-16 text-xl" : "h-10 w-10 text-sm";
 	const [imageFailed, setImageFailed] = useState(false);
 
-	useEffect(() => {
+	// 渲染期根据头像来源变化重置失败态（React 官方「prop 变化时重置 state」推荐做法），避免在 effect 中同步 setState。
+	const avatarKey = `${avatarUrl}:${hasAvatar}`;
+	const [lastAvatarKey, setLastAvatarKey] = useState(avatarKey);
+	if (lastAvatarKey !== avatarKey) {
+		setLastAvatarKey(avatarKey);
 		setImageFailed(false);
-	}, [avatarUrl, hasAvatar]);
+	}
 
 	if (hasAvatar && !imageFailed) {
 		return (

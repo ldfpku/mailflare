@@ -40,6 +40,9 @@ export function MessageSplitLayout({
 	const renderedListWidth = Math.max(250, Math.min(listWidth, (containerWidth || 1000) - 280));
 
 	useLayoutEffect(() => {
+		// 外部系统同步：挂载时从 localStorage 读取列宽与列表可见偏好，读完后再用 rAF 启用过渡动画，
+		// SSR 阶段无 localStorage，故必须在挂载后的 effect 中 setState。
+		// eslint-disable-next-line react/set-state-in-effect
 		setListWidth(readInitialColumnWidth("message-list", 360, 250, 1200));
 		setManualListVisible(readInitialMessageListVisible());
 		const frame = requestAnimationFrame(() => setWidthReady(true));
@@ -48,7 +51,9 @@ export function MessageSplitLayout({
 
 	useEffect(() => {
 		if (!userId) return;
+		// 外部系统同步：拿到 userId 后从该用户的持久化偏好读取列宽并回写，属于与 localStorage 的同步。
 		const savedWidth = readColumnWidth(userId, "message-list", readInitialColumnWidth("message-list", 360, 250, 1200), 250, 1200);
+		// eslint-disable-next-line react/set-state-in-effect
 		setListWidth(savedWidth);
 		saveColumnWidth(userId, "message-list", savedWidth);
 	}, [userId]);
@@ -60,6 +65,8 @@ export function MessageSplitLayout({
 		}
 		const container = containerRef.current;
 		if (!container) return;
+		// 外部系统同步：测量容器宽度并用 ResizeObserver 订阅后续尺寸变化，属于与 DOM 布局的同步。
+		// eslint-disable-next-line react/set-state-in-effect
 		setContainerWidth(container.clientWidth);
 		const observer = new ResizeObserver(() => setContainerWidth(container.clientWidth));
 		observer.observe(container);

@@ -38,6 +38,8 @@ export default function AdminAgentPage() {
 
 	useEffect(() => {
 		let active = true;
+		// 外部系统同步：挂载时（t 变化时）从服务端拉取 Agent 管理配置并写入本地表单状态。
+		// eslint-disable-next-line react/set-state-in-effect
 		void loadAgentAdminSettings().then((data) => {
 			if (!active) return;
 			setForm({ provider: data.config.provider, preset: data.config.preset, baseUrl: data.config.baseUrl, apiKey: "", model: data.config.models.join(", "), rates: data.config.rates });
@@ -74,6 +76,8 @@ export default function AdminAgentPage() {
 			}).finally(() => { if (!controller.signal.aborted) setModelsLoading(false); });
 		}, form.provider === "cloudflare" ? 0 : 500);
 		return () => { window.clearTimeout(timer); controller.abort(); };
+		// 刻意只依赖 form 的具体字段：form 每次渲染都是新对象，整体加入依赖会让该 effect 在每次渲染时反复触发模型拉取。
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [loaded, form.provider, form.preset, form.baseUrl, form.apiKey, canUseSavedKey, t]);
 
 	async function submit(event: React.FormEvent<HTMLFormElement>) {

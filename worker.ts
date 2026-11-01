@@ -102,7 +102,7 @@ export default {
 		return vinextHandler.fetch(request, env, ctx);
 	},
 
-	async email(message: ForwardableEmailMessage, rawEnv: CloudflareEnv, ctx: ExecutionContext) {
+	async email(message: ForwardableEmailMessage, rawEnv: CloudflareEnv) {
 		const env = withStorage(rawEnv);
 		try {
 			if (message.rawSize > 25 * 1024 * 1024) {

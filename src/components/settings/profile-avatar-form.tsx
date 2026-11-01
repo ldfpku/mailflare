@@ -39,6 +39,8 @@ export function ProfileAvatarForm({
 
 	useEffect(() => {
 		if (mailboxId) {
+			// 外部系统同步：指定了信箱时用传入的 props 初始化头像状态；未指定时从服务端拉取当前用户资料。
+			// eslint-disable-next-line react/set-state-in-effect
 			setHasAvatar(initialHasAvatar);
 			setAvatarUrl(`/api/mailboxes/${mailboxId}/avatar`);
 			return;

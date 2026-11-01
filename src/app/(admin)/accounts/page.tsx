@@ -64,6 +64,8 @@ export default function AccountsPage() {
 			const text = error instanceof Error ? error.message : t("accounts.loadFailed");
 			setMessage(text);
 		}).finally(() => setLoading(false));
+		// 仅在挂载时拉取一次账户与域名；t 来自 i18n 且稳定，仅用于错误兜底文案，无需作为重新拉取的触发条件。
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	async function createAccount(event: React.FormEvent<HTMLFormElement>) {

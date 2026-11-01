@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CalendarDays, ChevronDown, Clock3, MapPin, MoreHorizontal, Plus, Trash2, UserRound } from "lucide-react";
 import clsx from "clsx";
 import { useLanguage } from "@/components/language-provider";
@@ -23,7 +23,14 @@ export function BookingEditor({ form, open, editingId, username, hosts, canManag
 	const [moreOpen, setMoreOpen] = useState(false);
 	const [hostQuery, setHostQuery] = useState("");
 	const [hostError, setHostError] = useState("");
-	useEffect(() => { if (open) { setActiveSection(null); setNameEditing(false); setMoreOpen(false); setHostQuery(""); setHostError(""); } }, [editingId, open]);
+	// 每次打开编辑器或切换编辑对象时把各分段状态复位：改用官方「渲染期 setState + 前值比较」，
+	// 行为与原 effect 完全一致（仅在 open 为 true 时复位），同时避免级联渲染。
+	const [lastOpenKey, setLastOpenKey] = useState(`${editingId}|${open}`);
+	const openKey = `${editingId}|${open}`;
+	if (lastOpenKey !== openKey) {
+		setLastOpenKey(openKey);
+		if (open) { setActiveSection(null); setNameEditing(false); setMoreOpen(false); setHostQuery(""); setHostError(""); }
+	}
 	const sectionClass = "border-b border-neutral-200 px-5 py-5";
 	const headingClass = "flex w-full items-center justify-between gap-3 text-left text-base font-semibold text-neutral-900";
 	const fieldClass = "h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm";

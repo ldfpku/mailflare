@@ -108,6 +108,8 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		runningRef.current = false;
 		queueGenerationRef.current += 1;
 		queuedMessagesRef.current = [];
+		// 面板打开状态/所选邮箱变化时重置整个会话与队列并重新拉取数据，属外部输入同步。
+		// eslint-disable-next-line react/set-state-in-effect
 		setQueuedMessages([]);
 		setBusy(false);
 		if (!open || !mailboxId) return;
@@ -133,6 +135,8 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 			if (!cancelled && selectedConversationRef.current === savedId) setLoadingConversation(false);
 		});
 		return () => { cancelled = true; abort.current?.abort(); };
+		// t 仅用于错误回退文案，不应作为重新初始化面板/重新拉取的触发条件；加入 t 会在切换语言时重置整个会话，故豁免。
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [mailboxId, open, refresh]);
 
 	useLayoutEffect(() => { resizeAgentInput(inputRef.current); }, [input, view]);
@@ -218,6 +222,8 @@ export function AgentPanel({ open, fullSize, onClose, onToggleFullSize }: AgentP
 		const generation = queueGenerationRef.current;
 		const userMessageId = crypto.randomUUID();
 		const assistantMessageId = crypto.randomUUID();
+		// send 为事件处理函数（非渲染期），此处记录发送起始时间用于计算耗时，Date.now 调用正确且必要。
+		// eslint-disable-next-line react/purity
 		const startedAt = Date.now();
 		let accepted = false;
 		let streamErrored = false;

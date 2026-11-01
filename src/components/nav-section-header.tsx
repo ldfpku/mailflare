@@ -9,6 +9,9 @@ import { readStorage, writeStorage } from "./reorderable-list-utils";
 /** Open/closed state of a menu section, remembered in localStorage. Starts open. */
 export function useSectionOpen(storageKey: string): [boolean, () => void] {
 	const [open, setOpen] = useState(true);
+	// 从 localStorage 读取持久化的展开状态属于与外部系统同步：SSR 阶段没有 localStorage，
+	// 只能在挂载后读取以避免 hydration 不匹配，所以这里必须在 effect 里 setState。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => { setOpen(readStorage(storageKey, true)); }, [storageKey]);
 	function toggle() {
 		writeStorage(storageKey, !open);

@@ -59,6 +59,7 @@ export default function MessageDetailPage() {
     useState<MessageAttachment | null>(null);
   const [threadExpanded, setThreadExpanded] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [lastMessageId, setLastMessageId] = useState(messageId);
   const [latestMessagesFirst] = useLatestMessagesFirst();
   const { enabled: showFullRecipientAddresses } = useShowFullRecipientAddresses();
   const remote = useRemoteContent(
@@ -103,10 +104,12 @@ export default function MessageDetailPage() {
     };
   }, [messageId]);
 
-  useEffect(() => {
+  // 渲染期根据 messageId 变化重置折叠态（React 官方「prop 变化时重置 state」推荐做法），避免在 effect 中同步 setState。
+  if (lastMessageId !== messageId) {
+    setLastMessageId(messageId);
     setThreadExpanded(false);
     setDetailsOpen(false);
-  }, [messageId]);
+  }
 
   if (loading) {
     return <MessageDetailSkeleton />;

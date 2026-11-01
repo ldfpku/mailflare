@@ -18,11 +18,15 @@ export function SectionNavSheet({ label, title, children, className }: SectionNa
 	const mobile = useIsMobile();
 	const pathname = usePathname();
 	const [open, setOpen] = useState(false);
-	const hidden = mobile && !open;
-
-	useEffect(() => {
+	// 路由或移动端状态变化时收起底部弹层：用官方「渲染期 setState + 前值比较」替代 effect，
+	// 既避免级联渲染，又保持切换页面即关闭的原有行为。
+	const [lastClosedFor, setLastClosedFor] = useState(`${pathname}|${mobile}`);
+	const closeKey = `${pathname}|${mobile}`;
+	if (lastClosedFor !== closeKey) {
+		setLastClosedFor(closeKey);
 		setOpen(false);
-	}, [pathname, mobile]);
+	}
+	const hidden = mobile && !open;
 
 	useEffect(() => {
 		if (!open) return;

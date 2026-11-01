@@ -26,6 +26,8 @@ export function useMessageCounts(mailboxId?: string | null, enabled = true) {
 
 	useEffect(() => {
 		if (!enabled) {
+			// 外部系统同步：此 effect 订阅全局消息变更事件并从服务端拉取未读计数；禁用时仅结束加载态。
+			// eslint-disable-next-line react/set-state-in-effect
 			setIsLoading(false);
 			return;
 		}

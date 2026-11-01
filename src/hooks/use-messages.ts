@@ -64,6 +64,10 @@ export function useMessages(
 			window.removeEventListener("mailflare:messages-changed", onMessagesChanged);
 			if (refreshTimer) window.clearTimeout(refreshTimer);
 		};
+		// 这里依赖 filters 的各具体字段而非整个 filters 对象：getMessageQueryParams 实际只读取
+		// query/read/title/limit/offset/group，上述字段已完整覆盖；改用整个 filters 会因调用方每次渲染
+		// 重建对象而导致不必要的重复拉取，故此处豁免。
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [enabled, filters?.group, filters?.limit, filters?.offset, filters?.query, filters?.read, filters?.title, folder, folderId, mailboxId]);
 
 	return { messages, unreadCount, isLoading, total, limit, offset, updateMessages: setMessages };

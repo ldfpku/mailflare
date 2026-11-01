@@ -14,6 +14,7 @@ const REQUIRED_BACKUP_TABLES: DatabaseBackupTable[] = ["users", "domains", "mail
 const INSERT_BATCH_SIZE = 50;
 
 export function getBackupConfigurationStatus(_env?: CloudflareEnv) {
+	void _env;
 	return { configured: true, missing: [] };
 }
 

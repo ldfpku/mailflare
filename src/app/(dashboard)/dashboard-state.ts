@@ -11,7 +11,9 @@ export function useDashboardState() {
 	const [storagePrefix, setStoragePrefix] = useState<string | null>(null);
 
 	useLayoutEffect(() => {
+		// 外部系统同步：挂载时从 localStorage 读取助手面板的持久化状态；SSR 阶段无 localStorage，必须在挂载后读取以避免 hydration 不匹配。
 		const saved = readInitialAssistantPanelState();
+		// eslint-disable-next-line react/set-state-in-effect
 		setAssistantOpen(saved.open);
 		setAssistantFullSize(saved.fullSize);
 		setPanelRestored(true);

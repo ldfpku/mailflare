@@ -34,9 +34,13 @@ export function NavItem({ link, iconClassName, labelClassName, wrap }: Props) {
 
   useEffect(() => {
     if (navigationProgress === null) return;
+    // 外部系统同步：路由（pathname）变化表示导航已完成，这里把进度条推到 100% 再淡出。
+    // eslint-disable-next-line react/set-state-in-effect
     setNavigationProgress(100);
     const timer = window.setTimeout(() => setNavigationProgress(null), 220);
     return () => window.clearTimeout(timer);
+    // 刻意只依赖 pathname：把 navigationProgress 加入依赖会在每次进度变化时重启定时器，破坏动画。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   if (!link.href) {

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { BrandIcon } from "@/components/brand-icon";
 import { useBranding } from "@/components/branding-provider";
 import { LanguageSelector } from "@/components/language-selector";
@@ -24,7 +25,7 @@ export function AuthShell({
             {branding.hasCustomIcon ? (
               <BrandIcon className="h-8 w-8" />
             ) : (
-              <img src="/brand/smj-wordmark-reverse.svg" alt="SMJ" className="h-7 w-auto" />
+              <Image src="/brand/smj-wordmark-reverse.svg" alt="SMJ" width={338} height={124} unoptimized className="h-7 w-auto" />
             )}
             <span className="h-6 w-px bg-[#fff]/60" aria-hidden="true" />
             <span className="truncate text-base font-semibold text-[#fff]">

@@ -22,6 +22,8 @@ export function ChatShareDialog({ messageId, open, onOpenChange }: ChatShareDial
 	useEffect(() => {
 		if (!open) return;
 		let cancelled = false;
+		// 外部系统同步：对话框打开时清空上次的表单状态并从服务端重新拉取可分享的会话列表。
+		// eslint-disable-next-line react/set-state-in-effect
 		setTargets(null);
 		setSelected(new Set());
 		setQuery("");

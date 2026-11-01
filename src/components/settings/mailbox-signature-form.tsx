@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLanguage } from "@/components/language-provider";
 import { useSelectedMailbox } from "@/components/mailbox-provider";
 import { isHtmlSignature } from "@/components/compose/rich-text-utils";
@@ -18,12 +18,16 @@ export function MailboxSignatureForm() {
 	const [status, setStatus] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 
-	useEffect(() => {
+	// 渲染期根据所选信箱重置本地草稿（React 官方「prop 变化时重置 state」推荐做法），避免在 effect 中同步 setState。
+	const signatureKey = `${selectedMailbox?.id ?? ""}:${selectedMailbox?.signature ?? ""}`;
+	const [lastSignatureKey, setLastSignatureKey] = useState(signatureKey);
+	if (lastSignatureKey !== signatureKey) {
 		const nextSignature = selectedMailbox?.signature ?? "";
+		setLastSignatureKey(signatureKey);
 		setSignature(nextSignature);
 		setSavedSignature(nextSignature);
 		setStatus(null);
-	}, [selectedMailbox?.id, selectedMailbox?.signature]);
+	}
 
 	async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();

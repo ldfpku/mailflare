@@ -26,6 +26,13 @@ export function UpcomingSidebar({ events, onSelect, drawer = false, refreshKey }
 	const sentinelRef = useRef<HTMLDivElement | null>(null);
 	const today = useMemo(() => startOfDay(new Date()), []);
 	const shownEvents = events ?? loadedEvents;
+	// 事件列表引用变化时把分页重置回首批：改用官方「渲染期 setState + 前值比较」替代原 effect，
+	// 比较的是 shownEvents 的引用（与原 [shownEvents] 依赖一致），避免级联渲染。
+	const [lastShownEvents, setLastShownEvents] = useState(shownEvents);
+	if (lastShownEvents !== shownEvents) {
+		setLastShownEvents(shownEvents);
+		setVisibleCount(UPCOMING_BATCH_SIZE);
+	}
 	const groups = useMemo(() => groupUpcomingEvents(shownEvents, today, t), [shownEvents, today, t]);
 	const total = useMemo(() => groups.reduce((count, group) => count + group.events.length, 0), [groups]);
 	const visibleGroups = useMemo(() => takeUpcomingGroups(groups, visibleCount), [groups, visibleCount]);
@@ -44,7 +51,7 @@ export function UpcomingSidebar({ events, onSelect, drawer = false, refreshKey }
 		return () => { active = false; };
 	}, [events, today, refreshKey]);
 
-	useEffect(() => { setVisibleCount(UPCOMING_BATCH_SIZE); }, [shownEvents]);
+
 
 	useEffect(() => {
 		if (minimal || visibleCount >= total || !scrollRef.current || !sentinelRef.current) return;

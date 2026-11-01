@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { ArrowDownToLine, FileWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,9 +73,15 @@ export function MessageAttachmentViewer({
 
 				<div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-lg bg-neutral-100">
 					{previewKind === "image" && (
-						<img
+						// 附件预览是任意尺寸的用户上传图片，经同源鉴权端点取回；用 unoptimized 跳过优化器的域名/尺寸限制，
+						// width/height 置 0 配合 sizes，让实际尺寸交给 CSS（max-h/max-w + object-contain）控制，行为与原 <img> 一致。
+						<Image
 							src={previewUrl}
 							alt={attachment.filename}
+							width={0}
+							height={0}
+							sizes="100vw"
+							unoptimized
 							className="max-h-full max-w-full object-contain"
 						/>
 					)}

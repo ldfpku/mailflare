@@ -66,6 +66,9 @@ export function DriveNav({ onNavigate }: { onNavigate?: () => void }) {
 	}, []);
 
 	useEffect(() => {
+		// 从 localStorage 读取展开状态属于与外部系统同步：SSR 阶段没有 localStorage，
+		// 只能挂载后读取以避免 hydration 不匹配，所以必须在 effect 里 setState。
+		// eslint-disable-next-line react/set-state-in-effect
 		try { setFoldersOpen(localStorage.getItem(FOLDERS_OPEN_KEY) === "1"); } catch { /* storage unavailable */ }
 	}, []);
 
@@ -78,6 +81,9 @@ export function DriveNav({ onNavigate }: { onNavigate?: () => void }) {
 
 	useEffect(() => {
 		if (!foldersOpen) return;
+		// 展开时从服务器拉取文件夹列表并订阅外部刷新事件，属于与外部系统（网络 + 全局事件）同步；
+		// setFolders 发生在异步 fetch 与事件回调中，正是 effect 的用途。
+		// eslint-disable-next-line react/set-state-in-effect
 		void loadFolders();
 		window.addEventListener(DRIVE_FOLDERS_EVENT, loadFolders);
 		return () => window.removeEventListener(DRIVE_FOLDERS_EVENT, loadFolders);

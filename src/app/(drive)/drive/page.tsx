@@ -107,16 +107,26 @@ export default function DrivePage() {
 	// Reload after a change; other cached listings may be stale now, so they are dropped.
 	const refresh = useCallback(() => { clearDriveListings(); return load(); }, [load]);
 
+	// 外部系统同步：请求键变化时从服务端拉取当前目录列表。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => { void load(); }, [load]);
+	// 外部系统同步：URL 的 q 参数（路由状态）变化时，把搜索框重置为地址栏里的查询词。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => { setSearch(query); }, [query]);
 	useEffect(() => {
 		const onRefresh = () => void refresh();
 		window.addEventListener(DRIVE_REFRESH_EVENT, onRefresh);
 		return () => window.removeEventListener(DRIVE_REFRESH_EVENT, onRefresh);
 	}, [refresh]);
+	// 外部系统同步：切换视图/文件夹（requestKey 源自 URL）时清空已选项。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => { setSelectedIds(new Set()); }, [requestKey]);
 	// Keep only selected items that are still listed (after a move, trash, upload or reload).
+	// 外部系统同步：列表数据（来自服务端）变化后，仅保留仍存在的已选项；大小不变时返回原引用避免多余渲染。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => { setSelectedIds((current) => { const present = new Set(items.map((item) => item.id)); const next = new Set([...current].filter((id) => present.has(id))); return next.size === current.size ? current : next; }); }, [items]);
+	// 外部系统同步：挂载后从 DOM 读取 header 插槽节点，供 createPortal 渲染搜索框。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => { setHeaderTarget(document.getElementById("drive-header-slot")); }, []);
 
 	const patchUpload = useCallback((id: string, patch: Partial<DriveUploadEntry>) => setUploads((list) => list.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry))), []);

@@ -23,6 +23,8 @@ export function AppearanceSettings() {
 	const [preference, setPreference] = useState<ThemePreference>("system");
 
 	useEffect(() => {
+		// 外部系统同步：主题偏好存在 localStorage，挂载时读取并订阅跨标签页/组件的变更事件。
+		// eslint-disable-next-line react/set-state-in-effect
 		setPreference(readThemePreference());
 		const sync = () => setPreference(readThemePreference());
 		window.addEventListener(THEME_CHANGED_EVENT, sync);

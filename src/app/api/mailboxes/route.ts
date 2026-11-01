@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { getEnv } from "@/lib/cloudflare";
 import { getDb } from "@/db";
 import { domains, mailboxAliases, mailboxes, users } from "@/db/schema";
@@ -8,13 +8,20 @@ import { newId } from "@/lib/ids";
 import { tracksAccountIdentity } from "@/lib/profile/identity-utils";
 import { mailboxSchema } from "@/lib/validators";
 import { ensureMailboxDomainRouting, getMailboxDomainAddresses } from "@/lib/mailboxes/domain-addresses";
-import { ensurePersonalMailbox } from "./utils";
+import { ensurePersonalMailbox, MAX_PERSONAL_MAILBOXES } from "./utils";
 
 export async function GET(request: Request) {
 	const env = getEnv();
 	const user = await requireUser(env, request);
 	const db = getDb(env);
 	const rows = await ensurePersonalMailbox(env, db, user);
+	// Per-account personal inbox tally so the UI can enforce the same cap the POST handler does.
+	const personalMailboxCounts: Record<string, number> = {};
+	for (const mailbox of rows) {
+		if (mailbox.type === "personal") {
+			personalMailboxCounts[mailbox.userId] = (personalMailboxCounts[mailbox.userId] ?? 0) + 1;
+		}
+	}
 	return NextResponse.json({
 		mailboxes: await Promise.all(rows.map(async (mailbox) => ({
 			...mailbox,
@@ -24,6 +31,8 @@ export async function GET(request: Request) {
 			senderAddresses: await getMailboxDomainAddresses(db, mailbox),
 		}))),
 		canCreateShared: user.role === "admin",
+		maxPersonalMailboxes: MAX_PERSONAL_MAILBOXES,
+		personalMailboxCounts,
 	});
 }
 
@@ -53,6 +62,18 @@ export async function POST(request: Request) {
 			.where(and(eq(users.id, ownerUserId), eq(users.createdByUserId, user.id)))
 			.limit(1);
 		if (!owner) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+	}
+	if (mailboxType === "personal") {
+		const [{ total }] = await db
+			.select({ total: count() })
+			.from(mailboxes)
+			.where(and(eq(mailboxes.userId, ownerUserId), eq(mailboxes.type, "personal")));
+		if (total >= MAX_PERSONAL_MAILBOXES) {
+			return NextResponse.json(
+				{ error: `This account already has the maximum of ${MAX_PERSONAL_MAILBOXES} personal mailboxes (the default mailbox is included).` },
+				{ status: 409 },
+			);
+		}
 	}
 	const [domain] = await db
 		.select()

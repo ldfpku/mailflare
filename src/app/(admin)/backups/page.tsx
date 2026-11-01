@@ -68,6 +68,8 @@ export default function BackupsPage() {
   useEffect(() => {
     if (backups.data?.settings && !settings) {
       savedSettings.current = backups.data.settings;
+      // 外部系统同步：从服务端（react-query）首次拿到备份设置后写入本地可编辑副本，仅初始化一次。
+      // eslint-disable-next-line react/set-state-in-effect
       setSettings(backups.data.settings);
     }
   }, [backups.data?.settings, settings]);
@@ -101,6 +103,9 @@ export default function BackupsPage() {
   const download = useMutation({ mutationFn: downloadBackup });
   const restore = useMutation({
     mutationFn: restoreBackup,
+    // 恢复备份会整体替换数据库，当前会话随之失效，必须整页重载到登录页以清空所有已挂载组件里的缓存状态；
+    // router.push 只做客户端软导航，会留下指向旧数据/旧会话的过期界面。
+    // eslint-disable-next-line nextjs-js/no-location-assign-relative-destination
     onSuccess: () => window.location.assign("/login"),
   });
   const error =

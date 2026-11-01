@@ -22,6 +22,8 @@ export function ReorderableList({ lists, storageKey, enabled = true }: Reorderab
 	const suppressClick = useRef(false);
 	const latest = useRef({ layout: {} as ReorderableLayout, target: null as ReorderableDropTarget | null });
 
+	// 按 storageKey 从本地存储读取保存的排序布局（外部存储同步），需在 effect 中回填。
+	// eslint-disable-next-line react/set-state-in-effect
 	useEffect(() => { setStored(readStorage<ReorderableLayout>(storageKey, {})); }, [storageKey]);
 
 	const layout = resolveLayout(Object.fromEntries(lists.map((list) => [list.id, list.items.map((item) => item.id)])), stored);

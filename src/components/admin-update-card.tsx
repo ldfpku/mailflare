@@ -34,6 +34,8 @@ export function AdminUpdateCard() {
 		return () => {
 			isActive = false;
 		};
+		// t 仅用于错误回退文案，仅需挂载时检查一次迁移状态（外部数据）；加入 t 会在切换语言时重复请求，故豁免。
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	async function handleMigrate() {

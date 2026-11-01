@@ -5,7 +5,8 @@ import type { RefObject } from "react";
 
 export function useDismissible(open: boolean, onClose: () => void, container: RefObject<HTMLElement | null>) {
 	const close = useRef(onClose);
-	close.current = onClose;
+	// 把「最新回调」写入 ref 的操作移到 effect 中执行，避免在渲染期读写 ref.current（refs 规则）。
+	useEffect(() => { close.current = onClose; }, [onClose]);
 
 	useEffect(() => {
 		if (!open) return;

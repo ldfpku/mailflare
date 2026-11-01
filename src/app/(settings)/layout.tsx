@@ -1,8 +1,6 @@
 "use client";
 
 import { SkipToContent } from "@/components/skip-to-content";
-import Link from "next/link";
-import { HelpCircle } from "lucide-react";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { MailSearchInput } from "@/components/mail-search/mail-search-input";
 import { MailSearchProvider } from "@/components/mail-search/mail-search-context";

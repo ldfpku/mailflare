@@ -52,6 +52,8 @@ export default function ReceivingProviderConfig({ domainId, provider, onReady }:
 			.catch((err) => { if (active) setError(err instanceof Error ? err.message : t("domains.providerUnreachable")); })
 			.finally(() => { if (active) setLoading(false); });
 		return () => { active = false; };
+		// t 仅用于错误回退文案，不应作为重新拉取数据的触发条件；加入 t 会在切换语言时重复请求，故此处豁免。
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [domainId, provider, reload]);
 
 	useEffect(() => { if (!loading) onReady?.(view ? view.ready : credentials === false ? false : null); }, [loading, view, credentials, onReady]);

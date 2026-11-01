@@ -20,6 +20,8 @@ export function useDriveColumns() {
 	useEffect(() => {
 		try {
 			const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<Record<DriveColumn, number>> | null;
+			// 挂载时从 localStorage 读取用户记忆的列宽（外部存储同步），需要在 effect 中回填。
+			// eslint-disable-next-line react/set-state-in-effect
 			if (saved) setWidths((current) => ({ owner: clamp(saved.owner ?? current.owner), updatedAt: clamp(saved.updatedAt ?? current.updatedAt), size: clamp(saved.size ?? current.size) }));
 		} catch { /* storage unavailable: keep defaults */ }
 	}, []);

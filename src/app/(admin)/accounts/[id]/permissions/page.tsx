@@ -72,7 +72,9 @@ export default function AccountPermissionsPage() {
 			await transferPrimaryAdmin(transferTarget.id);
 			clearCurrentUserCache();
 			setTransferOpen(false);
-			// A full reload drops the stale cached session so the navigation reflects the new role.
+			// 移交主管理员后当前用户已被降权，必须整页重载以清空所有已挂载组件里的会话缓存，
+			// 让导航与权限 UI 反映新角色；router.push 做的是客户端软导航，会留下过期的管理员界面。
+			// eslint-disable-next-line nextjs-js/no-location-assign-relative-destination
 			window.location.assign(`/accounts/${transferTarget.id}/permissions`);
 		} catch (error) {
 			setMessage(error instanceof Error ? error.message : t("account.permissions.transferFailed"));

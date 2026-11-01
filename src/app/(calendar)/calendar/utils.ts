@@ -53,6 +53,7 @@ function recurringStart(first: Date, repeat: CalendarRepeat, index: number, time
 }
 
 export function calendarTimeZone(_event?: CalendarEvent | null): string {
+  void _event;
   return getUserTimeZone();
 }
 
