@@ -19,10 +19,11 @@ export default defineConfig({
 		observability: {
 			enabled: true,
 		},
-		// D1 lives in APAC while requests land at the colo nearest the user; a settings page or
-		// mail list makes several D1 round trips each, so run the Worker next to the database.
+		// D1 lives in APAC (near Tokyo) while requests land at the colo nearest the user; a settings
+		// page or mail list makes several D1 round trips each, so run the Worker next to the database.
+		// Smart placement stayed "local-" at low traffic, so the region is named.
 		placement: {
-			mode: "smart",
+			region: "aws:ap-northeast-1",
 		},
 		assets: {
 			notFoundHandling: "none",
